@@ -27,6 +27,15 @@
   <input type="file" id="itemImage" accept="image/*" required /><br />
   <button type="submit">Add Menu Item</button>
 </form>
+  <h3>Menu Items</h3>
+<table border="1" id="menuTable">
+  <thead>
+    <tr>
+      <th>Name</th><th>Category</th><th>Price</th><th>In Stock</th><th>Actions</th>
+    </tr>
+  </thead>
+  <tbody id="menuBody"></tbody>
+</table>
 <p id="statusMsg"></p>
   </div>
   <script type="module" src="Admin Panel/firebase.js"></script>
