@@ -83,3 +83,56 @@ form.addEventListener("submit", async (e) => {
     statusMsg.innerText = "❌ Error: " + err.message;
   }
 });
+import {
+  onSnapshot,
+  collection,
+  doc,
+  updateDoc,
+  deleteDoc
+} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+const menuBody = document.getElementById("menuBody");
+
+onSnapshot(collection(db, "menuItems"), (snapshot) => {
+  menuBody.innerHTML = "";
+  snapshot.forEach((docSnap) => {
+    const item = docSnap.data();
+    const row = document.createElement("tr");
+
+    row.innerHTML = `
+      <td>${item.name}</td>
+      <td>${item.category}</td>
+      <td>₹${item.price}</td>
+      <td>
+        <select data-id="${docSnap.id}" class="stockToggle">
+          <option value="true" ${item.inStock ? "selected" : ""}>In Stock</option>
+          <option value="false" ${!item.inStock ? "selected" : ""}>Out of Stock</option>
+        </select>
+      </td>
+      <td>
+        <button class="deleteBtn" data-id="${docSnap.id}">Delete</button>
+      </td>
+    `;
+
+    menuBody.appendChild(row);
+  });
+
+  // Stock toggle listener
+  document.querySelectorAll(".stockToggle").forEach((dropdown) => {
+    dropdown.addEventListener("change", async (e) => {
+      const id = e.target.dataset.id;
+      const newVal = e.target.value === "true";
+      await updateDoc(doc(db, "menuItems", id), { inStock: newVal });
+    });
+  });
+
+  // Delete button listener
+  document.querySelectorAll(".deleteBtn").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const id = btn.dataset.id;
+      if (confirm("Delete this item?")) {
+        await deleteDoc(doc(db, "menuItems", id));
+      }
+    });
+  });
+});
