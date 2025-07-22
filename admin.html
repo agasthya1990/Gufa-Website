@@ -18,7 +18,16 @@
   <div id="adminContent" style="display: none;">
     <h3>Welcome, Admin!</h3>
     <button id="logoutBtn">Logout</button>
-    <!-- Menu CRUD will come next -->
+    <h3>Add New Menu Item</h3>
+<form id="menuForm">
+  <input type="text" id="itemName" placeholder="Item Name" required /><br />
+  <input type="text" id="itemDescription" placeholder="Description" required /><br />
+  <input type="number" id="itemPrice" placeholder="Price (₹)" required /><br />
+  <input type="text" id="itemCategory" placeholder="Category" required /><br />
+  <input type="file" id="itemImage" accept="image/*" required /><br />
+  <button type="submit">Add Menu Item</button>
+</form>
+<p id="statusMsg"></p>
   </div>
   <script type="module" src="Admin Panel/firebase.js"></script>
 <script type="module" src="Admin Panel/admin.js"></script>
