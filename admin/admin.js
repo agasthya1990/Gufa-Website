@@ -5,7 +5,6 @@ import {
   signOut,
   onAuthStateChanged,
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-
 import {
   collection,
   addDoc,
@@ -15,22 +14,24 @@ import {
   updateDoc,
   deleteDoc
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
-
 import {
   ref,
   uploadBytes,
   getDownloadURL
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
 
-// Login Elements
+// DOM Elements
 const email = document.getElementById("email");
 const password = document.getElementById("password");
 const loginBtn = document.getElementById("loginBtn");
 const logoutBtn = document.getElementById("logoutBtn");
 const loginBox = document.getElementById("loginBox");
 const adminContent = document.getElementById("adminContent");
+const form = document.getElementById("menuForm");
+const statusMsg = document.getElementById("statusMsg");
+const menuBody = document.getElementById("menuBody");
 
-// Login and Auth
+// Auth
 loginBtn.onclick = () => {
   signInWithEmailAndPassword(auth, email.value, password.value)
     .then(() => {})
@@ -51,15 +52,12 @@ onAuthStateChanged(auth, (user) => {
   }
 });
 
-// Form Submission for New Item
-const form = document.getElementById("menuForm");
-const statusMsg = document.getElementById("statusMsg");
-
+// Add Menu Item
 form.addEventListener("submit", async (e) => {
   e.preventDefault();
 
-  const name = document.getElementById("itemName").value;
-  const description = document.getElementById("itemDescription").value;
+  const name = document.getElementById("itemName").value.trim();
+  const description = document.getElementById("itemDescription").value.trim();
   const price = parseFloat(document.getElementById("itemPrice").value);
   const category = document.getElementById("itemCategory").value;
   const imageFile = document.getElementById("itemImage").files[0];
@@ -92,35 +90,33 @@ form.addEventListener("submit", async (e) => {
   }
 });
 
-// Table Population
-const menuBody = document.getElementById("menuBody");
-
+// Display Menu Items
 onSnapshot(collection(db, "menuItems"), (snapshot) => {
   menuBody.innerHTML = "";
   snapshot.forEach((docSnap) => {
     const item = docSnap.data();
     const row = document.createElement("tr");
 
-row.innerHTML = `
-  <td>${item.name}</td>
-  <td>${item.category}</td>
-  <td>₹${item.price}</td>
-  <td><img src="${item.imageUrl}" width="50" /></td>
-  <td>
-    <select data-id="${docSnap.id}" class="stockToggle">
-      <option value="true" ${item.inStock ? "selected" : ""}>In Stock</option>
-      <option value="false" ${!item.inStock ? "selected" : ""}>Out of Stock</option>
-    </select>
-  </td>
-  <td>
-    <button class="deleteBtn" data-id="${docSnap.id}">Delete</button>
-  </td>
-`;
+    row.innerHTML = `
+      <td>${item.name}</td>
+      <td>${item.category}</td>
+      <td>₹${item.price}</td>
+      <td><img src="${item.imageUrl}" width="50" /></td>
+      <td>
+        <select data-id="${docSnap.id}" class="stockToggle">
+          <option value="true" ${item.inStock ? "selected" : ""}>In Stock</option>
+          <option value="false" ${!item.inStock ? "selected" : ""}>Out of Stock</option>
+        </select>
+      </td>
+      <td>
+        <button class="deleteBtn" data-id="${docSnap.id}">Delete</button>
+      </td>
+    `;
 
     menuBody.appendChild(row);
   });
 
-  // Stock toggle
+  // Toggle stock status
   document.querySelectorAll(".stockToggle").forEach((dropdown) => {
     dropdown.addEventListener("change", async (e) => {
       const id = e.target.dataset.id;
@@ -129,7 +125,7 @@ row.innerHTML = `
     });
   });
 
-  // Delete button
+  // Delete item
   document.querySelectorAll(".deleteBtn").forEach((btn) => {
     btn.addEventListener("click", async () => {
       const id = btn.dataset.id;
