@@ -37,8 +37,11 @@ import {
   collection,
   addDoc,
   serverTimestamp,
+  onSnapshot,
+  doc,
+  updateDoc,
+  deleteDoc
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
-import {
   ref,
   uploadBytes,
   getDownloadURL
@@ -83,12 +86,7 @@ form.addEventListener("submit", async (e) => {
     statusMsg.innerText = "❌ Error: " + err.message;
   }
 });
-import {
-  onSnapshot,
-  doc,
-  updateDoc,
-  deleteDoc
-} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
 
 const menuBody = document.getElementById("menuBody");
 
