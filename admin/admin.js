@@ -101,22 +101,21 @@ onSnapshot(collection(db, "menuItems"), (snapshot) => {
     const item = docSnap.data();
     const row = document.createElement("tr");
 
-    row.innerHTML = `
-      <td>${item.name}</td>
-      <td>${item.description}</td>
-      <td>${item.category}</td>
-      <td>₹${item.price}</td>
-      <td><img src="${item.imageUrl}" width="50" /></td>
-      <td>
-        <select data-id="${docSnap.id}" class="stockToggle">
-          <option value="true" ${item.inStock ? "selected" : ""}>In Stock</option>
-          <option value="false" ${!item.inStock ? "selected" : ""}>Out of Stock</option>
-        </select>
-      </td>
-      <td>
-        <button class="deleteBtn" data-id="${docSnap.id}">Delete</button>
-      </td>
-    `;
+row.innerHTML = `
+  <td>${item.name}</td>
+  <td>${item.category}</td>
+  <td>₹${item.price}</td>
+  <td><img src="${item.imageUrl}" width="50" /></td>
+  <td>
+    <select data-id="${docSnap.id}" class="stockToggle">
+      <option value="true" ${item.inStock ? "selected" : ""}>In Stock</option>
+      <option value="false" ${!item.inStock ? "selected" : ""}>Out of Stock</option>
+    </select>
+  </td>
+  <td>
+    <button class="deleteBtn" data-id="${docSnap.id}">Delete</button>
+  </td>
+`;
 
     menuBody.appendChild(row);
   });
