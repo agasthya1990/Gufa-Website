@@ -85,7 +85,6 @@ form.addEventListener("submit", async (e) => {
 });
 import {
   onSnapshot,
-  collection,
   doc,
   updateDoc,
   deleteDoc
