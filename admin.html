@@ -29,14 +29,15 @@
   <input type="file" id="itemImage" accept="image/*" required /><br />
   <button type="submit">Add Menu Item</button>
 </form>
-  <h3>Menu Items</h3>
+  <h3>Menu Management</h3>
 <table border="1" id="menuTable">
   <thead>
     <tr>
-      <th>Name</th><th>Category</th><th>Price</th><th>In Stock</th><th>Actions</th>
+      <th>Name</th><th>Deescription</th><th>Price</th><th>Category</th><th>In Stock</th><th>Actions</th>
     </tr>
   </thead>
   <tbody id="menuBody"></tbody>
+  <td><img src="${item.imageUrl}" alt="preview" width="50"/></td>
 </table>
 <p id="statusMsg"></p>
   </div>
