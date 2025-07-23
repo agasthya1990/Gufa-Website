@@ -135,3 +135,13 @@ onSnapshot(collection(db, "menuItems"), (snapshot) => {
     });
   });
 });
+row.innerHTML = `
+  <td>${item.name}</td>
+  <td>${item.description}</td>
+  <td>₹${item.price}</td>
+  <td>${item.cataegory}</td>
+  <td><img src="${item.imageUrl}" width="50" /></td>
+  <td>${item.in stock}</td>
+  <td>${item.actions}</td>
+`;
+
