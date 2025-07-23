@@ -1,11 +1,28 @@
 // admin.js
-import { auth } from "./firebase.js";
+import { auth, db, storage } from "./firebase.js";
 import {
   signInWithEmailAndPassword,
   signOut,
   onAuthStateChanged,
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
+import {
+  collection,
+  addDoc,
+  serverTimestamp,
+  onSnapshot,
+  doc,
+  updateDoc,
+  deleteDoc
+} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+import {
+  ref,
+  uploadBytes,
+  getDownloadURL
+} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
+
+// Login Elements
 const email = document.getElementById("email");
 const password = document.getElementById("password");
 const loginBtn = document.getElementById("loginBtn");
@@ -13,6 +30,7 @@ const logoutBtn = document.getElementById("logoutBtn");
 const loginBox = document.getElementById("loginBox");
 const adminContent = document.getElementById("adminContent");
 
+// Login and Auth
 loginBtn.onclick = () => {
   signInWithEmailAndPassword(auth, email.value, password.value)
     .then(() => {})
@@ -32,21 +50,8 @@ onAuthStateChanged(auth, (user) => {
     adminContent.style.display = "none";
   }
 });
-import { db, storage } from "./firebase.js";
-import {
-  collection,
-  addDoc,
-  serverTimestamp,
-  onSnapshot,
-  doc,
-  updateDoc,
-  deleteDoc
-} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
-  ref,
-  uploadBytes,
-  getDownloadURL
-} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
 
+// Form Submission for New Item
 const form = document.getElementById("menuForm");
 const statusMsg = document.getElementById("statusMsg");
 
@@ -87,7 +92,7 @@ form.addEventListener("submit", async (e) => {
   }
 });
 
-
+// Table Population
 const menuBody = document.getElementById("menuBody");
 
 onSnapshot(collection(db, "menuItems"), (snapshot) => {
@@ -98,8 +103,10 @@ onSnapshot(collection(db, "menuItems"), (snapshot) => {
 
     row.innerHTML = `
       <td>${item.name}</td>
+      <td>${item.description}</td>
       <td>${item.category}</td>
       <td>₹${item.price}</td>
+      <td><img src="${item.imageUrl}" width="50" /></td>
       <td>
         <select data-id="${docSnap.id}" class="stockToggle">
           <option value="true" ${item.inStock ? "selected" : ""}>In Stock</option>
@@ -114,7 +121,7 @@ onSnapshot(collection(db, "menuItems"), (snapshot) => {
     menuBody.appendChild(row);
   });
 
-  // Stock toggle listener
+  // Stock toggle
   document.querySelectorAll(".stockToggle").forEach((dropdown) => {
     dropdown.addEventListener("change", async (e) => {
       const id = e.target.dataset.id;
@@ -123,7 +130,7 @@ onSnapshot(collection(db, "menuItems"), (snapshot) => {
     });
   });
 
-  // Delete button listener
+  // Delete button
   document.querySelectorAll(".deleteBtn").forEach((btn) => {
     btn.addEventListener("click", async () => {
       const id = btn.dataset.id;
@@ -133,13 +140,3 @@ onSnapshot(collection(db, "menuItems"), (snapshot) => {
     });
   });
 });
-row.innerHTML = `
-  <td>${item.name}</td>
-  <td>${item.description}</td>
-  <td>₹${item.price}</td>
-  <td>${item.cataegory}</td>
-  <td><img src="${item.imageUrl}" width="50" /></td>
-  <td>${item.in stock}</td>
-  <td>${item.actions}</td>
-`;
-
