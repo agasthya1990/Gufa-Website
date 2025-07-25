@@ -153,7 +153,13 @@ onSnapshot(collection(db, "menuItems"), (snapshot) => {
       <td>${item.name}</td>
       <td>${item.category}</td>
       <td>${item.qtyType === "half_full" ? "Half & Full" : "Not Applicable"}</td>
-      <td>${priceDisplay}</td>
+      <td>
+  ${
+    item.qtyType.type === "half_full"
+      ? `Half: ₹${item.qtyType.halfPrice} / Full: ₹${item.qtyType.fullPrice}`
+      : `₹${item.qtyType.itemPrice}`
+  }
+</td>
       <td><img src="${item.imageUrl}" width="50" /></td>
       <td>
         <select data-id="${docSnap.id}" class="stockToggle">
