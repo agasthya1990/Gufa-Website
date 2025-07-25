@@ -21,6 +21,7 @@
     <form id="menuForm">
       <input type="text" id="itemName" placeholder="Item Name" required /><br />
       <input type="text" id="itemDescription" placeholder="Description" required /><br />
+
       <select id="itemCategory" required>
         <option value="">-- Select Category --</option>
         <option value="Veg">Veg</option>
@@ -30,12 +31,12 @@
       <select id="qtyType" required>
         <option value="">-- Select Qty Type --</option>
         <option value="half_full">Half and Full</option>
-        <option value="na">Not Applicable</option>
+        <option value="na">Only One</option>
       </select><br />
 
-      <input type="number" id="itemPrice" placeholder="Price" style="display:none" /><br />
-      <input type="number" id="halfPrice" placeholder="Half Price" style="display:none" /><br />
-      <input type="number" id="fullPrice" placeholder="Full Price" style="display:none" /><br />
+      <input type="number" id="itemPrice" placeholder="Price" style="display:none;" /><br />
+      <input type="number" id="halfPrice" placeholder="Half Price" style="display:none;" /><br />
+      <input type="number" id="fullPrice" placeholder="Full Price" style="display:none;" /><br />
 
       <input type="file" id="itemImage" accept="image/*" required /><br />
       <button type="submit">Add Menu Item</button>
