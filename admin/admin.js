@@ -1,10 +1,11 @@
-// admin.js
-import { auth, db, storage } from "./firebase.js";
+import { auth } from "./firebase.js";
 import {
   signInWithEmailAndPassword,
   signOut,
   onAuthStateChanged,
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+
+import { db, storage } from "./firebase.js";
 import {
   collection,
   addDoc,
@@ -12,26 +13,22 @@ import {
   onSnapshot,
   doc,
   updateDoc,
-  deleteDoc
+  deleteDoc,
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 import {
   ref,
   uploadBytes,
-  getDownloadURL
+  getDownloadURL,
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
 
-// DOM Elements
+// Auth logic
 const email = document.getElementById("email");
 const password = document.getElementById("password");
 const loginBtn = document.getElementById("loginBtn");
 const logoutBtn = document.getElementById("logoutBtn");
 const loginBox = document.getElementById("loginBox");
 const adminContent = document.getElementById("adminContent");
-const form = document.getElementById("menuForm");
-const statusMsg = document.getElementById("statusMsg");
-const menuBody = document.getElementById("menuBody");
 
-// Auth
 loginBtn.onclick = () => {
   signInWithEmailAndPassword(auth, email.value, password.value)
     .then(() => {})
@@ -52,19 +49,47 @@ onAuthStateChanged(auth, (user) => {
   }
 });
 
-// Add Menu Item
+// Dynamic Qty Type Handling
+const qtyType = document.getElementById("qtyType");
+const onePriceField = document.getElementById("onePriceField");
+const halfFullPriceFields = document.getElementById("halfFullPriceFields");
+
+qtyType.addEventListener("change", () => {
+  const type = qtyType.value;
+  onePriceField.style.display = type === "onlyOne" ? "block" : "none";
+  halfFullPriceFields.style.display = type === "halfFull" ? "block" : "none";
+});
+
+// Form submission
+const form = document.getElementById("menuForm");
+const statusMsg = document.getElementById("statusMsg");
+
 form.addEventListener("submit", async (e) => {
   e.preventDefault();
 
-  const name = document.getElementById("itemName").value.trim();
-  const description = document.getElementById("itemDescription").value.trim();
-  const price = parseFloat(document.getElementById("itemPrice").value);
+  const name = document.getElementById("itemName").value;
+  const description = document.getElementById("itemDescription").value;
   const category = document.getElementById("itemCategory").value;
+  const qtyTypeValue = qtyType.value;
   const imageFile = document.getElementById("itemImage").files[0];
 
   if (!imageFile) {
     statusMsg.innerText = "Please upload an image.";
     return;
+  }
+
+  let price;
+  if (qtyTypeValue === "onlyOne") {
+    price = {
+      only: parseFloat(document.getElementById("onlyPrice").value),
+    };
+  } else if (qtyTypeValue === "halfFull") {
+    price = {
+      half: parseFloat(document.getElementById("halfPrice").value),
+      full: parseFloat(document.getElementById("fullPrice").value),
+    };
+  } else {
+    price = "N/A";
   }
 
   const imageRef = ref(storage, `menuImages/${Date.now()}_${imageFile.name}`);
@@ -76,32 +101,48 @@ form.addEventListener("submit", async (e) => {
     await addDoc(collection(db, "menuItems"), {
       name,
       description,
-      price,
       category,
+      qtyType: qtyTypeValue,
+      price,
       imageUrl,
       createdAt: serverTimestamp(),
-      inStock: true
+      inStock: true,
     });
 
     statusMsg.innerText = "✅ Menu item added!";
     form.reset();
+    onePriceField.style.display = "none";
+    halfFullPriceFields.style.display = "none";
   } catch (err) {
     statusMsg.innerText = "❌ Error: " + err.message;
   }
 });
 
-// Display Menu Items
+// Load and display menu items
+const menuBody = document.getElementById("menuBody");
+
 onSnapshot(collection(db, "menuItems"), (snapshot) => {
   menuBody.innerHTML = "";
   snapshot.forEach((docSnap) => {
     const item = docSnap.data();
     const row = document.createElement("tr");
 
+    let priceDisplay = "";
+    if (typeof item.price === "object") {
+      if (item.price.half !== undefined && item.price.full !== undefined) {
+        priceDisplay = `Half: ₹${item.price.half}<br>Full: ₹${item.price.full}`;
+      } else if (item.price.only !== undefined) {
+        priceDisplay = `₹${item.price.only}`;
+      }
+    } else {
+      priceDisplay = "N/A";
+    }
+
     row.innerHTML = `
       <td>${item.name}</td>
       <td>${item.category}</td>
-      <td>₹${item.price}</td>
-      <td><img src="${item.imageUrl}" width="50" /></td>
+      <td>${item.qtyType}</td>
+      <td>${priceDisplay}</td>
       <td>
         <select data-id="${docSnap.id}" class="stockToggle">
           <option value="true" ${item.inStock ? "selected" : ""}>In Stock</option>
@@ -116,7 +157,6 @@ onSnapshot(collection(db, "menuItems"), (snapshot) => {
     menuBody.appendChild(row);
   });
 
-  // Toggle stock status
   document.querySelectorAll(".stockToggle").forEach((dropdown) => {
     dropdown.addEventListener("change", async (e) => {
       const id = e.target.dataset.id;
@@ -125,7 +165,6 @@ onSnapshot(collection(db, "menuItems"), (snapshot) => {
     });
   });
 
-  // Delete item
   document.querySelectorAll(".deleteBtn").forEach((btn) => {
     btn.addEventListener("click", async () => {
       const id = btn.dataset.id;
