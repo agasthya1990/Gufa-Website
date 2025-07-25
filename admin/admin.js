@@ -37,11 +37,11 @@ const qtyType = document.getElementById("qtyType");
 
 // Quantity logic display
 qtyType.addEventListener("change", () => {
-  const type = qtyType.value;
   itemPrice.style.display = "none";
   halfPrice.style.display = "none";
   fullPrice.style.display = "none";
 
+  const type = qtyType.value;
   if (type === "na") {
     itemPrice.style.display = "block";
   } else if (type === "half_full") {
@@ -88,11 +88,11 @@ form.addEventListener("submit", async (e) => {
   const imageFile = document.getElementById("itemImage").files[0];
   const qty = qtyType.value;
 
-  // Validation
   if (!name || !description || !category) {
     statusMsg.innerText = "❌ Please fill all fields.";
     return;
   }
+
   if (!imageFile) {
     statusMsg.innerText = "❌ Please upload an image.";
     return;
@@ -105,7 +105,10 @@ form.addEventListener("submit", async (e) => {
       statusMsg.innerText = "❌ Invalid price.";
       return;
     }
-    qtyData = { type: "na", price };
+    qtyData = {
+      type: "na",
+      itemPrice: price
+    };
   } else if (qty === "half_full") {
     const half = parseFloat(halfPrice.value);
     const full = parseFloat(fullPrice.value);
@@ -113,7 +116,11 @@ form.addEventListener("submit", async (e) => {
       statusMsg.innerText = "❌ Invalid half/full price.";
       return;
     }
-    qtyData = { type: "half_full", half, full };
+    qtyData = {
+      type: "half_full",
+      halfPrice: half,
+      fullPrice: full
+    };
   } else {
     statusMsg.innerText = "❌ Invalid quantity type.";
     return;
@@ -129,7 +136,7 @@ form.addEventListener("submit", async (e) => {
       name,
       description,
       category,
-      qty: qtyData,
+      qtyType: qtyData, // <-- store in qtyType to match DB
       imageUrl,
       inStock: true,
       createdAt: serverTimestamp()
@@ -152,20 +159,21 @@ onSnapshot(collection(db, "menuItems"), (snapshot) => {
   snapshot.forEach((docSnap) => {
     const item = docSnap.data();
     const docId = docSnap.id;
-    const row = document.createElement("tr");
 
-    // Format price display
+    const qty = item.qtyType || {};
     let priceText = "";
-    if (item.qty.type === "na") {
-      priceText = `₹${item.qty.price}`;
-    } else if (item.qty.type === "half_full") {
-      priceText = `Half: ₹${item.qty.half} / Full: ₹${item.qty.full}`;
+
+    if (qty.type === "na") {
+      priceText = `₹${qty.itemPrice}`;
+    } else if (qty.type === "half_full") {
+      priceText = `Half: ₹${qty.halfPrice} / Full: ₹${qty.fullPrice}`;
     }
 
+    const row = document.createElement("tr");
     row.innerHTML = `
       <td>${item.name}</td>
       <td>${item.category}</td>
-      <td>${item.qty.type}</td>
+      <td>${qty.type || ''}</td>
       <td>${priceText}</td>
       <td><img src="${item.imageUrl}" width="50"/></td>
       <td>
@@ -176,20 +184,19 @@ onSnapshot(collection(db, "menuItems"), (snapshot) => {
       </td>
       <td><button class="deleteBtn" data-id="${docId}">Delete</button></td>
     `;
-
     menuBody.appendChild(row);
   });
 
-  // Stock toggle logic
+  // Stock toggle
   document.querySelectorAll(".stockToggle").forEach((dropdown) => {
     dropdown.addEventListener("change", async (e) => {
       const docId = e.target.dataset.id;
-      const newStock = e.target.value === "true";
-      await updateDoc(doc(db, "menuItems", docId), { inStock: newStock });
+      const newVal = e.target.value === "true";
+      await updateDoc(doc(db, "menuItems", docId), { inStock: newVal });
     });
   });
 
-  // Delete logic
+  // Delete buttons
   document.querySelectorAll(".deleteBtn").forEach((btn) => {
     btn.addEventListener("click", async () => {
       const docId = btn.dataset.id;
