@@ -19,7 +19,7 @@ import {
   getDownloadURL
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
 
-// Elements
+// DOM Elements
 const email = document.getElementById("email");
 const password = document.getElementById("password");
 const loginBtn = document.getElementById("loginBtn");
@@ -35,13 +35,13 @@ const halfPrice = document.getElementById("halfPrice");
 const fullPrice = document.getElementById("fullPrice");
 const qtyType = document.getElementById("qtyType");
 
-// Quantity logic display
+// Quantity dropdown display logic
 qtyType.addEventListener("change", () => {
+  const type = qtyType.value;
   itemPrice.style.display = "none";
   halfPrice.style.display = "none";
   fullPrice.style.display = "none";
 
-  const type = qtyType.value;
   if (type === "na") {
     itemPrice.style.display = "block";
   } else if (type === "half_full") {
@@ -67,8 +67,8 @@ logoutBtn.onclick = () => {
   signOut(auth);
 };
 
-// Auth state
-onAuthStateChanged(auth, user => {
+// Auth state tracking
+onAuthStateChanged(auth, (user) => {
   if (user) {
     loginBox.style.display = "none";
     adminContent.style.display = "block";
@@ -81,6 +81,7 @@ onAuthStateChanged(auth, user => {
 // Add menu item
 form.addEventListener("submit", async (e) => {
   e.preventDefault();
+  statusMsg.innerText = "⏳ Adding menu item...";
 
   const name = document.getElementById("itemName").value.trim();
   const description = document.getElementById("itemDescription").value.trim();
@@ -105,10 +106,7 @@ form.addEventListener("submit", async (e) => {
       statusMsg.innerText = "❌ Invalid price.";
       return;
     }
-    qtyData = {
-      type: "na",
-      itemPrice: price
-    };
+    qtyData = { type: "na", itemPrice: price };
   } else if (qty === "half_full") {
     const half = parseFloat(halfPrice.value);
     const full = parseFloat(fullPrice.value);
@@ -116,11 +114,7 @@ form.addEventListener("submit", async (e) => {
       statusMsg.innerText = "❌ Invalid half/full price.";
       return;
     }
-    qtyData = {
-      type: "half_full",
-      halfPrice: half,
-      fullPrice: full
-    };
+    qtyData = { type: "half_full", halfPrice: half, fullPrice: full };
   } else {
     statusMsg.innerText = "❌ Invalid quantity type.";
     return;
@@ -136,7 +130,7 @@ form.addEventListener("submit", async (e) => {
       name,
       description,
       category,
-      qtyType: qtyData, // <-- store in qtyType to match DB
+      qtyType: qtyData,
       imageUrl,
       inStock: true,
       createdAt: serverTimestamp()
@@ -148,34 +142,44 @@ form.addEventListener("submit", async (e) => {
     halfPrice.style.display = "none";
     fullPrice.style.display = "none";
   } catch (err) {
-    console.error(err);
+    console.error("🔥 Error adding item:", err);
     statusMsg.innerText = "❌ Error: " + err.message;
   }
 });
 
-// Display menu items
+// Load and display menu items
 onSnapshot(collection(db, "menuItems"), (snapshot) => {
   menuBody.innerHTML = "";
   snapshot.forEach((docSnap) => {
     const item = docSnap.data();
     const docId = docSnap.id;
 
-    const qty = item.qtyType || {};
-    let priceText = "";
+    console.log("📦 Item fetched from Firestore:", item);
 
-if (qty.type === "na" && qty.itemPrice !== undefined) {
-  priceText = `₹${qty.itemPrice}`;
-} else if (qty.type === "half_full" && qty.halfPrice !== undefined && qty.fullPrice !== undefined) {
-  priceText = `Half: ₹${qty.halfPrice} / Full: ₹${qty.fullPrice}`;
-} else {
-  priceText = "—"; // fallback if data is malformed
-}
+    let qty = {};
+    try {
+      qty = typeof item.qtyType === "object" ? item.qtyType : JSON.parse(item.qtyType);
+    } catch (err) {
+      console.warn("❌ Invalid qtyType structure:", item.qtyType);
+    }
+
+    // Format price display
+    let priceText = "—";
+    if (qty.type === "na" && qty.itemPrice !== undefined) {
+      priceText = `₹${qty.itemPrice}`;
+    } else if (
+      qty.type === "half_full" &&
+      qty.halfPrice !== undefined &&
+      qty.fullPrice !== undefined
+    ) {
+      priceText = `Half: ₹${qty.halfPrice} / Full: ₹${qty.fullPrice}`;
+    }
 
     const row = document.createElement("tr");
     row.innerHTML = `
       <td>${item.name}</td>
       <td>${item.category}</td>
-      <td>${qty.type || ''}</td>
+      <td>${qty.type || "—"}</td>
       <td>${priceText}</td>
       <td><img src="${item.imageUrl}" width="50"/></td>
       <td>
@@ -189,7 +193,7 @@ if (qty.type === "na" && qty.itemPrice !== undefined) {
     menuBody.appendChild(row);
   });
 
-  // Stock toggle
+  // Toggle inStock dropdown
   document.querySelectorAll(".stockToggle").forEach((dropdown) => {
     dropdown.addEventListener("change", async (e) => {
       const docId = e.target.dataset.id;
@@ -198,7 +202,7 @@ if (qty.type === "na" && qty.itemPrice !== undefined) {
     });
   });
 
-  // Delete buttons
+  // Delete button logic
   document.querySelectorAll(".deleteBtn").forEach((btn) => {
     btn.addEventListener("click", async () => {
       const docId = btn.dataset.id;
