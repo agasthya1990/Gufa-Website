@@ -1,4 +1,3 @@
-// admin.js
 import { auth, db, storage } from "./firebase.js";
 import {
   signInWithEmailAndPassword,
@@ -20,6 +19,7 @@ import {
   getDownloadURL
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
 
+// Elements
 const email = document.getElementById("email");
 const password = document.getElementById("password");
 const loginBtn = document.getElementById("loginBtn");
@@ -35,30 +35,40 @@ const halfPrice = document.getElementById("halfPrice");
 const fullPrice = document.getElementById("fullPrice");
 const qtyType = document.getElementById("qtyType");
 
+// Quantity logic display
 qtyType.addEventListener("change", () => {
+  const type = qtyType.value;
   itemPrice.style.display = "none";
   halfPrice.style.display = "none";
   fullPrice.style.display = "none";
 
-  if (qtyType.value === "na") {
+  if (type === "na") {
     itemPrice.style.display = "block";
-  } else if (qtyType.value === "half_full") {
+  } else if (type === "half_full") {
     halfPrice.style.display = "block";
     fullPrice.style.display = "block";
   }
 });
 
+// Login
 loginBtn.onclick = () => {
   signInWithEmailAndPassword(auth, email.value, password.value)
-    .then(() => {})
-    .catch((err) => alert("Login failed: " + err.message));
+    .then(() => {
+      email.value = "";
+      password.value = "";
+    })
+    .catch(err => {
+      alert("Login failed: " + err.message);
+    });
 };
 
+// Logout
 logoutBtn.onclick = () => {
   signOut(auth);
 };
 
-onAuthStateChanged(auth, (user) => {
+// Auth state
+onAuthStateChanged(auth, user => {
   if (user) {
     loginBox.style.display = "none";
     adminContent.style.display = "block";
@@ -68,35 +78,44 @@ onAuthStateChanged(auth, (user) => {
   }
 });
 
+// Add menu item
 form.addEventListener("submit", async (e) => {
   e.preventDefault();
 
-  const name = document.getElementById("itemName").value;
-  const description = document.getElementById("itemDescription").value;
+  const name = document.getElementById("itemName").value.trim();
+  const description = document.getElementById("itemDescription").value.trim();
   const category = document.getElementById("itemCategory").value;
   const imageFile = document.getElementById("itemImage").files[0];
   const qty = qtyType.value;
 
-  let qtyData = {};
-
-  if (qty === "na") {
-    qtyData = {
-      type: "na",
-      price: parseFloat(itemPrice.value),
-    };
-  } else if (qty === "half_full") {
-    qtyData = {
-      type: "half_full",
-      half: parseFloat(halfPrice.value),
-      full: parseFloat(fullPrice.value),
-    };
-  } else {
-    statusMsg.innerText = "❌ Invalid quantity type.";
+  // Validation
+  if (!name || !description || !category) {
+    statusMsg.innerText = "❌ Please fill all fields.";
+    return;
+  }
+  if (!imageFile) {
+    statusMsg.innerText = "❌ Please upload an image.";
     return;
   }
 
-  if (!imageFile) {
-    statusMsg.innerText = "❌ Please upload an image.";
+  let qtyData = {};
+  if (qty === "na") {
+    const price = parseFloat(itemPrice.value);
+    if (isNaN(price)) {
+      statusMsg.innerText = "❌ Invalid price.";
+      return;
+    }
+    qtyData = { type: "na", price };
+  } else if (qty === "half_full") {
+    const half = parseFloat(halfPrice.value);
+    const full = parseFloat(fullPrice.value);
+    if (isNaN(half) || isNaN(full)) {
+      statusMsg.innerText = "❌ Invalid half/full price.";
+      return;
+    }
+    qtyData = { type: "half_full", half, full };
+  } else {
+    statusMsg.innerText = "❌ Invalid quantity type.";
     return;
   }
 
@@ -122,54 +141,60 @@ form.addEventListener("submit", async (e) => {
     halfPrice.style.display = "none";
     fullPrice.style.display = "none";
   } catch (err) {
+    console.error(err);
     statusMsg.innerText = "❌ Error: " + err.message;
   }
 });
 
+// Display menu items
 onSnapshot(collection(db, "menuItems"), (snapshot) => {
   menuBody.innerHTML = "";
   snapshot.forEach((docSnap) => {
     const item = docSnap.data();
+    const docId = docSnap.id;
     const row = document.createElement("tr");
 
-    let priceDisplay = "";
-    if (item.qty.type === "half_full") {
-      priceDisplay = `Half: ₹${item.qty.half} / Full: ₹${item.qty.full}`;
-    } else if (item.qty.type === "na") {
-      priceDisplay = `₹${item.qty.price}`;
+    // Format price display
+    let priceText = "";
+    if (item.qty.type === "na") {
+      priceText = `₹${item.qty.price}`;
+    } else if (item.qty.type === "half_full") {
+      priceText = `Half: ₹${item.qty.half} / Full: ₹${item.qty.full}`;
     }
 
     row.innerHTML = `
       <td>${item.name}</td>
       <td>${item.category}</td>
       <td>${item.qty.type}</td>
-      <td>${priceDisplay}</td>
-      <td><img src="${item.imageUrl}" width="50" /></td>
+      <td>${priceText}</td>
+      <td><img src="${item.imageUrl}" width="50"/></td>
       <td>
-        <select data-id="${docSnap.id}" class="stockToggle">
+        <select class="stockToggle" data-id="${docId}">
           <option value="true" ${item.inStock ? "selected" : ""}>In Stock</option>
           <option value="false" ${!item.inStock ? "selected" : ""}>Out of Stock</option>
         </select>
       </td>
-      <td><button class="deleteBtn" data-id="${docSnap.id}">Delete</button></td>
+      <td><button class="deleteBtn" data-id="${docId}">Delete</button></td>
     `;
 
     menuBody.appendChild(row);
   });
 
+  // Stock toggle logic
   document.querySelectorAll(".stockToggle").forEach((dropdown) => {
     dropdown.addEventListener("change", async (e) => {
-      const id = e.target.dataset.id;
-      const newVal = e.target.value === "true";
-      await updateDoc(doc(db, "menuItems", id), { inStock: newVal });
+      const docId = e.target.dataset.id;
+      const newStock = e.target.value === "true";
+      await updateDoc(doc(db, "menuItems", docId), { inStock: newStock });
     });
   });
 
+  // Delete logic
   document.querySelectorAll(".deleteBtn").forEach((btn) => {
     btn.addEventListener("click", async () => {
-      const id = btn.dataset.id;
-      if (confirm("Delete this item?")) {
-        await deleteDoc(doc(db, "menuItems", id));
+      const docId = btn.dataset.id;
+      if (confirm("Are you sure you want to delete this item?")) {
+        await deleteDoc(doc(db, "menuItems", docId));
       }
     });
   });
