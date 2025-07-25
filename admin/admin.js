@@ -1,3 +1,7 @@
+// ✅ Fully revised admin.js based on your request
+// Updated labels: "Not Applicable" and "Half & Full"
+// Logic preserved, restructuring done to avoid errors
+
 import { auth, db, storage } from "./firebase.js";
 import {
   signInWithEmailAndPassword,
@@ -101,13 +105,12 @@ form.addEventListener("submit", async (e) => {
 
   let qtyType = {};
 
- if (type === "Not Applicable") {
-  itemPrice.style.display = "block";
-} else if (type === "Half & Full") {
-  halfPrice.style.display = "block";
-  fullPrice.style.display = "block";
-}
-
+  if (qtyTypeValue === "Not Applicable") {
+    const price = parseFloat(itemPrice.value);
+    if (isNaN(price)) {
+      statusMsg.innerText = "❌ Invalid price.";
+      return;
+    }
     qtyType = { type: "Not Applicable", itemPrice: price };
   } else if (qtyTypeValue === "Half & Full") {
     const half = parseFloat(halfPrice.value);
@@ -116,7 +119,7 @@ form.addEventListener("submit", async (e) => {
       statusMsg.innerText = "❌ Invalid half/full price.";
       return;
     }
-    qtyType = { type: "half ", halfPrice: half, fullPrice: full };
+    qtyType = { type: "Half & Full", halfPrice: half, fullPrice: full };
   } else {
     statusMsg.innerText = "❌ Invalid quantity type.";
     return;
@@ -160,10 +163,8 @@ onSnapshot(collection(db, "menuItems"), (snapshot) => {
     let priceText = "—";
     if (qty.type === "Not Applicable" && qty.itemPrice !== undefined) {
       priceText = `₹${qty.itemPrice}`;
-    } else if (qty.type === "Half & Full") {
-      if (qty.halfPrice !== undefined && qty.fullPrice !== undefined) {
-        priceText = `Half: ₹${qty.halfPrice} / Full: ₹${qty.fullPrice}`;
-      }
+    } else if (qty.type === "Half & Full" && qty.halfPrice !== undefined && qty.fullPrice !== undefined) {
+      priceText = `Half: ₹${qty.halfPrice} / Full: ₹${qty.fullPrice}`;
     }
 
     const row = document.createElement("tr");
