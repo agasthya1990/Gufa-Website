@@ -100,14 +100,14 @@ form.addEventListener("submit", async (e) => {
   }
 
   let qtyData = {};
-  if (qty === "na") {
+  if (type === "na") {
     const price = parseFloat(itemPrice.value);
     if (isNaN(price)) {
       statusMsg.innerText = "❌ Invalid price.";
       return;
     }
     qtyData = { type: "na", itemPrice: price };
-  } else if (qty === "half_full") {
+  } else if (type === "half_full") {
     const half = parseFloat(halfPrice.value);
     const full = parseFloat(fullPrice.value);
     if (isNaN(half) || isNaN(full)) {
