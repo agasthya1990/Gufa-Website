@@ -80,6 +80,10 @@ qtyType.addEventListener("change", () => {
 // Handle form submit
 form.addEventListener("submit", async (e) => {
   e.preventDefault();
+  console.log("🟢 Submit handler triggered");
+ form.addEventListener("submit", async (e) => {
+  e.preventDefault();
+});
 
   const name = document.getElementById("itemName").value;
   const description = document.getElementById("itemDescription").value;
