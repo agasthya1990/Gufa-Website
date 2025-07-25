@@ -1,11 +1,10 @@
-import { auth } from "./firebase.js";
+import { auth, db, storage } from "./firebase.js";
 import {
   signInWithEmailAndPassword,
   signOut,
   onAuthStateChanged,
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
-import { db, storage } from "./firebase.js";
 import {
   collection,
   addDoc,
@@ -13,15 +12,16 @@ import {
   onSnapshot,
   doc,
   updateDoc,
-  deleteDoc,
+  deleteDoc
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
 import {
   ref,
   uploadBytes,
-  getDownloadURL,
+  getDownloadURL
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
 
-// Auth logic
+// Auth Elements
 const email = document.getElementById("email");
 const password = document.getElementById("password");
 const loginBtn = document.getElementById("loginBtn");
@@ -29,6 +29,7 @@ const logoutBtn = document.getElementById("logoutBtn");
 const loginBox = document.getElementById("loginBox");
 const adminContent = document.getElementById("adminContent");
 
+// Auth Events
 loginBtn.onclick = () => {
   signInWithEmailAndPassword(auth, email.value, password.value)
     .then(() => {})
@@ -49,47 +50,58 @@ onAuthStateChanged(auth, (user) => {
   }
 });
 
-// Dynamic Qty Type Handling
-const qtyType = document.getElementById("qtyType");
-const onePriceField = document.getElementById("onePriceField");
-const halfFullPriceFields = document.getElementById("halfFullPriceFields");
-
-qtyType.addEventListener("change", () => {
-  const type = qtyType.value;
-  onePriceField.style.display = type === "onlyOne" ? "block" : "none";
-  halfFullPriceFields.style.display = type === "halfFull" ? "block" : "none";
-});
-
-// Form submission
+// Menu Form Logic
 const form = document.getElementById("menuForm");
 const statusMsg = document.getElementById("statusMsg");
 
+const qtyType = document.getElementById("qtyType");
+const itemPrice = document.getElementById("itemPrice");
+const halfPrice = document.getElementById("halfPrice");
+const fullPrice = document.getElementById("fullPrice");
+
+// Show/hide price fields based on qtyType selection
+qtyType.addEventListener("change", () => {
+  const type = qtyType.value;
+  if (type === "half_full") {
+    itemPrice.style.display = "none";
+    halfPrice.style.display = "inline-block";
+    fullPrice.style.display = "inline-block";
+  } else if (type === "na") {
+    itemPrice.style.display = "inline-block";
+    halfPrice.style.display = "none";
+    fullPrice.style.display = "none";
+  } else {
+    itemPrice.style.display = "none";
+    halfPrice.style.display = "none";
+    fullPrice.style.display = "none";
+  }
+});
+
+// Handle form submit
 form.addEventListener("submit", async (e) => {
   e.preventDefault();
 
   const name = document.getElementById("itemName").value;
   const description = document.getElementById("itemDescription").value;
   const category = document.getElementById("itemCategory").value;
-  const qtyTypeValue = qtyType.value;
+  const qty = qtyType.value;
   const imageFile = document.getElementById("itemImage").files[0];
+
+  let priceData = {};
+  if (qty === "half_full") {
+    priceData = {
+      half: parseFloat(halfPrice.value),
+      full: parseFloat(fullPrice.value)
+    };
+  } else if (qty === "na") {
+    priceData = {
+      standard: parseFloat(itemPrice.value)
+    };
+  }
 
   if (!imageFile) {
     statusMsg.innerText = "Please upload an image.";
     return;
-  }
-
-  let price;
-  if (qtyTypeValue === "onlyOne") {
-    price = {
-      only: parseFloat(document.getElementById("onlyPrice").value),
-    };
-  } else if (qtyTypeValue === "halfFull") {
-    price = {
-      half: parseFloat(document.getElementById("halfPrice").value),
-      full: parseFloat(document.getElementById("fullPrice").value),
-    };
-  } else {
-    price = "N/A";
   }
 
   const imageRef = ref(storage, `menuImages/${Date.now()}_${imageFile.name}`);
@@ -102,23 +114,24 @@ form.addEventListener("submit", async (e) => {
       name,
       description,
       category,
-      qtyType: qtyTypeValue,
-      price,
+      qtyType: qty,
+      price: priceData,
       imageUrl,
       createdAt: serverTimestamp(),
-      inStock: true,
+      inStock: true
     });
 
     statusMsg.innerText = "✅ Menu item added!";
     form.reset();
-    onePriceField.style.display = "none";
-    halfFullPriceFields.style.display = "none";
+    itemPrice.style.display = "none";
+    halfPrice.style.display = "none";
+    fullPrice.style.display = "none";
   } catch (err) {
     statusMsg.innerText = "❌ Error: " + err.message;
   }
 });
 
-// Load and display menu items
+// Load menu items into table
 const menuBody = document.getElementById("menuBody");
 
 onSnapshot(collection(db, "menuItems"), (snapshot) => {
@@ -128,12 +141,10 @@ onSnapshot(collection(db, "menuItems"), (snapshot) => {
     const row = document.createElement("tr");
 
     let priceDisplay = "";
-    if (typeof item.price === "object") {
-      if (item.price.half !== undefined && item.price.full !== undefined) {
-        priceDisplay = `Half: ₹${item.price.half}<br>Full: ₹${item.price.full}`;
-      } else if (item.price.only !== undefined) {
-        priceDisplay = `₹${item.price.only}`;
-      }
+    if (item.qtyType === "half_full") {
+      priceDisplay = `Half: ₹${item.price?.half || "-"}<br>Full: ₹${item.price?.full || "-"}`;
+    } else if (item.qtyType === "na") {
+      priceDisplay = `₹${item.price?.standard || "-"}`;
     } else {
       priceDisplay = "N/A";
     }
@@ -141,22 +152,22 @@ onSnapshot(collection(db, "menuItems"), (snapshot) => {
     row.innerHTML = `
       <td>${item.name}</td>
       <td>${item.category}</td>
-      <td>${item.qtyType}</td>
+      <td>${item.qtyType === "half_full" ? "Half & Full" : "Not Applicable"}</td>
       <td>${priceDisplay}</td>
+      <td><img src="${item.imageUrl}" width="50" /></td>
       <td>
         <select data-id="${docSnap.id}" class="stockToggle">
           <option value="true" ${item.inStock ? "selected" : ""}>In Stock</option>
           <option value="false" ${!item.inStock ? "selected" : ""}>Out of Stock</option>
         </select>
       </td>
-      <td>
-        <button class="deleteBtn" data-id="${docSnap.id}">Delete</button>
-      </td>
+      <td><button class="deleteBtn" data-id="${docSnap.id}">Delete</button></td>
     `;
 
     menuBody.appendChild(row);
   });
 
+  // Toggle stock
   document.querySelectorAll(".stockToggle").forEach((dropdown) => {
     dropdown.addEventListener("change", async (e) => {
       const id = e.target.dataset.id;
@@ -165,6 +176,7 @@ onSnapshot(collection(db, "menuItems"), (snapshot) => {
     });
   });
 
+  // Delete button
   document.querySelectorAll(".deleteBtn").forEach((btn) => {
     btn.addEventListener("click", async () => {
       const id = btn.dataset.id;
