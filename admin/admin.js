@@ -163,11 +163,13 @@ onSnapshot(collection(db, "menuItems"), (snapshot) => {
     const qty = item.qtyType || {};
     let priceText = "";
 
-    if (qty.type === "na") {
-      priceText = `₹${qty.itemPrice}`;
-    } else if (qty.type === "half_full") {
-      priceText = `Half: ₹${qty.halfPrice} / Full: ₹${qty.fullPrice}`;
-    }
+if (qty.type === "na" && qty.itemPrice !== undefined) {
+  priceText = `₹${qty.itemPrice}`;
+} else if (qty.type === "half_full" && qty.halfPrice !== undefined && qty.fullPrice !== undefined) {
+  priceText = `Half: ₹${qty.halfPrice} / Full: ₹${qty.fullPrice}`;
+} else {
+  priceText = "—"; // fallback if data is malformed
+}
 
     const row = document.createElement("tr");
     row.innerHTML = `
