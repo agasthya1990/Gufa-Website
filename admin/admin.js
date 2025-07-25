@@ -42,9 +42,9 @@ qtyTypeSelect.addEventListener("change", () => {
   halfPrice.style.display = "none";
   fullPrice.style.display = "none";
 
-  if (type === "na") {
+  if (type === "Not Applicable") {
     itemPrice.style.display = "block";
-  } else if (type === "half_full") {
+  } else if (type === "Half & Full") {
     halfPrice.style.display = "block";
     fullPrice.style.display = "block";
   }
@@ -101,21 +101,22 @@ form.addEventListener("submit", async (e) => {
 
   let qtyType = {};
 
-  if (qtyTypeValue === "na") {
-    const price = parseFloat(itemPrice.value);
-    if (isNaN(price)) {
-      statusMsg.innerText = "❌ Invalid price.";
-      return;
-    }
-    qtyType = { type: "na", itemPrice: price };
-  } else if (qtyTypeValue === "half_full") {
+ if (type === "Not Applicable") {
+  itemPrice.style.display = "block";
+} else if (type === "Half & Full") {
+  halfPrice.style.display = "block";
+  fullPrice.style.display = "block";
+}
+
+    qtyType = { type: "Not Applicable", itemPrice: price };
+  } else if (qtyTypeValue === "Half & Full") {
     const half = parseFloat(halfPrice.value);
     const full = parseFloat(fullPrice.value);
     if (isNaN(half) || isNaN(full)) {
       statusMsg.innerText = "❌ Invalid half/full price.";
       return;
     }
-    qtyType = { type: "half_full", halfPrice: half, fullPrice: full };
+    qtyType = { type: "half ", halfPrice: half, fullPrice: full };
   } else {
     statusMsg.innerText = "❌ Invalid quantity type.";
     return;
@@ -157,9 +158,9 @@ onSnapshot(collection(db, "menuItems"), (snapshot) => {
     const qty = item.qtyType || {};
 
     let priceText = "—";
-    if (qty.type === "na" && qty.itemPrice !== undefined) {
+    if (qty.type === "Not Applicable" && qty.itemPrice !== undefined) {
       priceText = `₹${qty.itemPrice}`;
-    } else if (qty.type === "half_full") {
+    } else if (qty.type === "Half & Full") {
       if (qty.halfPrice !== undefined && qty.fullPrice !== undefined) {
         priceText = `Half: ₹${qty.halfPrice} / Full: ₹${qty.fullPrice}`;
       }
