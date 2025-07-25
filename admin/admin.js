@@ -3,9 +3,8 @@ import { auth, db, storage } from "./firebase.js";
 import {
   signInWithEmailAndPassword,
   signOut,
-  onAuthStateChanged
+  onAuthStateChanged,
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-
 import {
   collection,
   addDoc,
@@ -15,14 +14,12 @@ import {
   updateDoc,
   deleteDoc
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
-
 import {
   ref,
   uploadBytes,
   getDownloadURL
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
 
-// Elements
 const email = document.getElementById("email");
 const password = document.getElementById("password");
 const loginBtn = document.getElementById("loginBtn");
@@ -33,17 +30,34 @@ const form = document.getElementById("menuForm");
 const statusMsg = document.getElementById("statusMsg");
 const menuBody = document.getElementById("menuBody");
 
-// Login
+const itemPrice = document.getElementById("itemPrice");
+const halfPrice = document.getElementById("halfPrice");
+const fullPrice = document.getElementById("fullPrice");
+const qtyType = document.getElementById("qtyType");
+
+qtyType.addEventListener("change", () => {
+  itemPrice.style.display = "none";
+  halfPrice.style.display = "none";
+  fullPrice.style.display = "none";
+
+  if (qtyType.value === "na") {
+    itemPrice.style.display = "block";
+  } else if (qtyType.value === "half_full") {
+    halfPrice.style.display = "block";
+    fullPrice.style.display = "block";
+  }
+});
+
 loginBtn.onclick = () => {
   signInWithEmailAndPassword(auth, email.value, password.value)
     .then(() => {})
     .catch((err) => alert("Login failed: " + err.message));
 };
 
-// Logout
-logoutBtn.onclick = () => signOut(auth);
+logoutBtn.onclick = () => {
+  signOut(auth);
+};
 
-// Auth state change
 onAuthStateChanged(auth, (user) => {
   if (user) {
     loginBox.style.display = "none";
@@ -54,45 +68,41 @@ onAuthStateChanged(auth, (user) => {
   }
 });
 
-// Form submission
 form.addEventListener("submit", async (e) => {
   e.preventDefault();
-  statusMsg.innerText = "Adding item...";
 
-  const name = document.getElementById("itemName").value.trim();
-  const description = document.getElementById("itemDescription").value.trim();
+  const name = document.getElementById("itemName").value;
+  const description = document.getElementById("itemDescription").value;
   const category = document.getElementById("itemCategory").value;
-  const qtyType = document.getElementById("qtyType").value;
   const imageFile = document.getElementById("itemImage").files[0];
+  const qty = qtyType.value;
 
-  if (!name || !description || !category || !qtyType || !imageFile) {
-    statusMsg.innerText = "❌ All fields are required!";
-    return;
-  }
+  let qtyData = {};
 
-  let qty = {};
-  if (qtyType === "half_full") {
-    const half = parseFloat(document.getElementById("halfPrice").value);
-    const full = parseFloat(document.getElementById("fullPrice").value);
-    if (isNaN(half) || isNaN(full)) {
-      statusMsg.innerText = "❌ Please provide both half and full prices.";
-      return;
-    }
-    qty = { type: "half_full", half, full };
-  } else if (qtyType === "na") {
-    const price = parseFloat(document.getElementById("itemPrice").value);
-    if (isNaN(price)) {
-      statusMsg.innerText = "❌ Please provide a valid price.";
-      return;
-    }
-    qty = { type: "na", price };
+  if (qty === "na") {
+    qtyData = {
+      type: "na",
+      price: parseFloat(itemPrice.value),
+    };
+  } else if (qty === "half_full") {
+    qtyData = {
+      type: "half_full",
+      half: parseFloat(halfPrice.value),
+      full: parseFloat(fullPrice.value),
+    };
   } else {
-    statusMsg.innerText = "❌ Invalid Qty Type.";
+    statusMsg.innerText = "❌ Invalid quantity type.";
     return;
   }
+
+  if (!imageFile) {
+    statusMsg.innerText = "❌ Please upload an image.";
+    return;
+  }
+
+  const imageRef = ref(storage, `menuImages/${Date.now()}_${imageFile.name}`);
 
   try {
-    const imageRef = ref(storage, `menuImages/${Date.now()}_${imageFile.name}`);
     await uploadBytes(imageRef, imageFile);
     const imageUrl = await getDownloadURL(imageRef);
 
@@ -100,42 +110,40 @@ form.addEventListener("submit", async (e) => {
       name,
       description,
       category,
-      qtyType: qty,
+      qty: qtyData,
       imageUrl,
-      createdAt: serverTimestamp(),
-      inStock: true
+      inStock: true,
+      createdAt: serverTimestamp()
     });
 
     statusMsg.innerText = "✅ Menu item added!";
     form.reset();
-    document.getElementById("itemPrice").style.display = "none";
-    document.getElementById("halfPrice").style.display = "none";
-    document.getElementById("fullPrice").style.display = "none";
+    itemPrice.style.display = "none";
+    halfPrice.style.display = "none";
+    fullPrice.style.display = "none";
   } catch (err) {
-    console.error("🔥 Add Menu Error:", err);
-    statusMsg.innerText = "❌ Failed to add item: " + err.message;
+    statusMsg.innerText = "❌ Error: " + err.message;
   }
 });
 
-// Load menu items
 onSnapshot(collection(db, "menuItems"), (snapshot) => {
   menuBody.innerHTML = "";
   snapshot.forEach((docSnap) => {
     const item = docSnap.data();
     const row = document.createElement("tr");
 
-    let priceHTML = "";
-    if (item.qtyType.type === "half_full") {
-      priceHTML = `Half: ₹${item.qtyType.half}<br/>Full: ₹${item.qtyType.full}`;
-    } else if (item.qtyType.type === "na") {
-      priceHTML = `₹${item.qtyType.price}`;
+    let priceDisplay = "";
+    if (item.qty.type === "half_full") {
+      priceDisplay = `Half: ₹${item.qty.half} / Full: ₹${item.qty.full}`;
+    } else if (item.qty.type === "na") {
+      priceDisplay = `₹${item.qty.price}`;
     }
 
     row.innerHTML = `
       <td>${item.name}</td>
       <td>${item.category}</td>
-      <td>${item.qtyType.type}</td>
-      <td>${priceHTML}</td>
+      <td>${item.qty.type}</td>
+      <td>${priceDisplay}</td>
       <td><img src="${item.imageUrl}" width="50" /></td>
       <td>
         <select data-id="${docSnap.id}" class="stockToggle">
@@ -149,7 +157,6 @@ onSnapshot(collection(db, "menuItems"), (snapshot) => {
     menuBody.appendChild(row);
   });
 
-  // Stock toggle
   document.querySelectorAll(".stockToggle").forEach((dropdown) => {
     dropdown.addEventListener("change", async (e) => {
       const id = e.target.dataset.id;
@@ -158,7 +165,6 @@ onSnapshot(collection(db, "menuItems"), (snapshot) => {
     });
   });
 
-  // Delete item
   document.querySelectorAll(".deleteBtn").forEach((btn) => {
     btn.addEventListener("click", async () => {
       const id = btn.dataset.id;
