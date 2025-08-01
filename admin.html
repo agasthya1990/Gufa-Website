@@ -22,44 +22,57 @@
       <input type="text" id="itemName" placeholder="Item Name" required /><br />
       <input type="text" id="itemDescription" placeholder="Description" required /><br />
 
-      <!-- ✅ Category Dropdown -->
+      <!-- Category Dropdown -->
       <select id="itemCategory" required>
         <option value="">-- Select Category --</option>
-        <!-- Categories populated by JS -->
       </select>
       <input type="text" id="newCategoryInput" placeholder="Add New Category" />
       <button type="button" id="addCategoryBtn">Add Category</button><br />
 
-      <!-- ✅ Food Type -->
+      <!-- Food Course Dropdown -->
+      <select id="foodCourse" required>
+        <option value="">-- Select Food Course --</option>
+      </select>
+      <input type="text" id="newCourseInput" placeholder="Add New Course" />
+      <button type="button" id="addCourseBtn">Add Course</button><br />
+
+      <!-- Food Type -->
       <select id="foodType" required>
         <option value="">-- Select Food Type --</option>
         <option value="Veg">Veg</option>
         <option value="Non-Veg">Non-Veg</option>
       </select><br />
 
-      <!-- ✅ Quantity Type -->
+      <!-- Quantity Type -->
       <select id="qtyType" required>
         <option value="">-- Select Qty Type --</option>
         <option value="Not Applicable">Not Applicable</option>
         <option value="Half & Full">Half & Full</option>
       </select><br />
 
-      <!-- ✅ Pricing (dynamic visibility) -->
       <input type="number" id="itemPrice" placeholder="Price" style="display:none;" /><br />
       <input type="number" id="halfPrice" placeholder="Half Price" style="display:none;" /><br />
       <input type="number" id="fullPrice" placeholder="Full Price" style="display:none;" /><br />
 
-      <!-- ✅ Image Upload -->
+      <!-- Image Upload -->
       <input type="file" id="itemImage" accept="image/*" required /><br />
       <button type="submit">Add Menu Item</button>
     </form>
+
+    <h3>Search & Filters</h3>
+    <input type="text" id="searchInput" placeholder="Search by name, description, category..." />
+    <select id="filterCategory"><option value="">All Categories</option></select>
+    <select id="filterCourse"><option value="">All Courses</option></select>
+    <select id="filterType"><option value="">All Types</option><option value="Veg">Veg</option><option value="Non-Veg">Non-Veg</option></select>
 
     <h3>Menu Items</h3>
     <table border="1" id="menuTable">
       <thead>
         <tr>
           <th>Name</th>
+          <th>Description</th>
           <th>Category</th>
+          <th>Food Course</th>
           <th>Food Type</th>
           <th>Qty Type</th>
           <th>Price(s)</th>
@@ -72,6 +85,32 @@
     </table>
 
     <p id="statusMsg"></p>
+  </div>
+
+  <!-- Modal for Editing -->
+  <div id="editModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background-color:rgba(0,0,0,0.6);">
+    <div style="background:#fff; padding:20px; max-width:500px; margin:5% auto; position:relative;">
+      <h3>Edit Menu Item</h3>
+      <form id="editForm">
+        <input type="text" id="editName" required><br />
+        <input type="text" id="editDescription" required><br />
+        <select id="editCategory"></select><br />
+        <select id="editCourse"></select><br />
+        <select id="editType">
+          <option value="Veg">Veg</option>
+          <option value="Non-Veg">Non-Veg</option>
+        </select><br />
+        <select id="editQtyType">
+          <option value="Not Applicable">Not Applicable</option>
+          <option value="Half & Full">Half & Full</option>
+        </select><br />
+        <input type="number" id="editItemPrice" style="display:none;" /><br />
+        <input type="number" id="editHalfPrice" style="display:none;" /><br />
+        <input type="number" id="editFullPrice" style="display:none;" /><br />
+        <button type="submit">Save Changes</button>
+        <button type="button" id="closeEditModal">Cancel</button>
+      </form>
+    </div>
   </div>
 
   <script type="module" src="admin/firebase.js"></script>
