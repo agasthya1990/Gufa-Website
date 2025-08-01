@@ -22,22 +22,34 @@
       <input type="text" id="itemName" placeholder="Item Name" required /><br />
       <input type="text" id="itemDescription" placeholder="Description" required /><br />
 
+      <!-- ✅ Category Dropdown -->
       <select id="itemCategory" required>
         <option value="">-- Select Category --</option>
+        <!-- Categories populated by JS -->
+      </select>
+      <input type="text" id="newCategoryInput" placeholder="Add New Category" />
+      <button type="button" id="addCategoryBtn">Add Category</button><br />
+
+      <!-- ✅ Food Type -->
+      <select id="foodType" required>
+        <option value="">-- Select Food Type --</option>
         <option value="Veg">Veg</option>
         <option value="Non-Veg">Non-Veg</option>
       </select><br />
 
-    <select id="qtyType" required>
-  <option value="">-- Select Qty Type --</option>
-  <option value="Not Applicable">Not Applicable</option>
-  <option value="Half & Full">Half & Full</option>
-</select>
+      <!-- ✅ Quantity Type -->
+      <select id="qtyType" required>
+        <option value="">-- Select Qty Type --</option>
+        <option value="Not Applicable">Not Applicable</option>
+        <option value="Half & Full">Half & Full</option>
+      </select><br />
 
+      <!-- ✅ Pricing (dynamic visibility) -->
       <input type="number" id="itemPrice" placeholder="Price" style="display:none;" /><br />
       <input type="number" id="halfPrice" placeholder="Half Price" style="display:none;" /><br />
       <input type="number" id="fullPrice" placeholder="Full Price" style="display:none;" /><br />
 
+      <!-- ✅ Image Upload -->
       <input type="file" id="itemImage" accept="image/*" required /><br />
       <button type="submit">Add Menu Item</button>
     </form>
@@ -48,6 +60,7 @@
         <tr>
           <th>Name</th>
           <th>Category</th>
+          <th>Food Type</th>
           <th>Qty Type</th>
           <th>Price(s)</th>
           <th>Image</th>
@@ -57,6 +70,7 @@
       </thead>
       <tbody id="menuBody"></tbody>
     </table>
+
     <p id="statusMsg"></p>
   </div>
 
