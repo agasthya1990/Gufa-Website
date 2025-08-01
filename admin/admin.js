@@ -1,5 +1,8 @@
-// ✅ Fully revised admin.js with explicit Firebase bucket fix
-// Logic untouched — only corrected the getStorage() reference
+// ✅ Fully enhanced admin.js with:
+// 1. Firebase storage fix
+// 2. Dynamic category management
+// 3. Food type support
+// 4. Image resizing before upload
 
 import { auth, db } from "./firebase.js";
 import {
@@ -14,7 +17,9 @@ import {
   onSnapshot,
   doc,
   updateDoc,
-  deleteDoc
+  deleteDoc,
+  getDocs,
+  setDoc
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 import {
   getStorage,
@@ -23,10 +28,9 @@ import {
   getDownloadURL
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
 
-// ✅ FIX: Use your actual bucket explicitly
 const storage = getStorage(undefined, "gs://gufa-restaurant.firebasestorage.app");
 
-// DOM elements
+// DOM Elements
 const email = document.getElementById("email");
 const password = document.getElementById("password");
 const loginBtn = document.getElementById("loginBtn");
@@ -41,17 +45,20 @@ const itemPrice = document.getElementById("itemPrice");
 const halfPrice = document.getElementById("halfPrice");
 const fullPrice = document.getElementById("fullPrice");
 const qtyTypeSelect = document.getElementById("qtyType");
+const categoryDropdown = document.getElementById("itemCategory");
+const newCategoryInput = document.getElementById("newCategoryInput");
+const addCategoryBtn = document.getElementById("addCategoryBtn");
+const foodTypeSelect = document.getElementById("foodType");
 
-// Show/Hide pricing fields based on qtyType
+// Show/hide price fields
 qtyTypeSelect.addEventListener("change", () => {
   const type = qtyTypeSelect.value;
   itemPrice.style.display = "none";
   halfPrice.style.display = "none";
   fullPrice.style.display = "none";
 
-  if (type === "Not Applicable") {
-    itemPrice.style.display = "block";
-  } else if (type === "Half & Full") {
+  if (type === "Not Applicable") itemPrice.style.display = "block";
+  else if (type === "Half & Full") {
     halfPrice.style.display = "block";
     fullPrice.style.display = "block";
   }
@@ -64,80 +71,109 @@ loginBtn.onclick = () => {
       email.value = "";
       password.value = "";
     })
-    .catch(err => {
-      alert("Login failed: " + err.message);
-    });
+    .catch(err => alert("Login failed: " + err.message));
 };
 
 // Logout
-logoutBtn.onclick = () => {
-  signOut(auth);
-};
+logoutBtn.onclick = () => signOut(auth);
 
-// Auth tracking
+// Auth listener
 onAuthStateChanged(auth, user => {
   if (user) {
     loginBox.style.display = "none";
     adminContent.style.display = "block";
+    loadCategories();
   } else {
     loginBox.style.display = "block";
     adminContent.style.display = "none";
   }
 });
 
-// Add Menu Item
+// Add new category
+addCategoryBtn.onclick = async () => {
+  const newCat = newCategoryInput.value.trim();
+  if (!newCat) return alert("Enter a category name");
+
+  const categoryRef = doc(db, "menuCategories", newCat);
+  await setDoc(categoryRef, { name: newCat });
+  newCategoryInput.value = "";
+  await loadCategories();
+};
+
+// Load category dropdown
+async function loadCategories() {
+  categoryDropdown.innerHTML = '<option value="">-- Select Category --</option>';
+  const snapshot = await getDocs(collection(db, "menuCategories"));
+  snapshot.forEach(doc => {
+    const opt = document.createElement("option");
+    opt.value = doc.id;
+    opt.textContent = doc.id;
+    categoryDropdown.appendChild(opt);
+  });
+}
+
+// Resize image to 200x200 via canvas
+function resizeImage(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = 200;
+        canvas.height = 200;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, 200, 200);
+        canvas.toBlob(resolve, "image/jpeg", 0.8);
+      };
+      img.onerror = reject;
+      img.src = e.target.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+// Add menu item
 form.addEventListener("submit", async (e) => {
   e.preventDefault();
   statusMsg.innerText = "⏳ Adding item...";
 
   const name = document.getElementById("itemName").value.trim();
   const description = document.getElementById("itemDescription").value.trim();
-  const category = document.getElementById("itemCategory").value;
+  const category = categoryDropdown.value;
   const qtyTypeValue = qtyTypeSelect.value;
+  const foodType = foodTypeSelect.value;
   const imageFile = document.getElementById("itemImage").files[0];
 
-  if (!name || !description || !category || !qtyTypeValue) {
+  if (!name || !description || !category || !qtyTypeValue || !foodType || !imageFile) {
     statusMsg.innerText = "❌ Please fill all fields.";
     return;
   }
 
-  if (!imageFile) {
-    statusMsg.innerText = "❌ Please upload an image.";
-    return;
-  }
-
   let qtyType = {};
-
   if (qtyTypeValue === "Not Applicable") {
     const price = parseFloat(itemPrice.value);
-    if (isNaN(price)) {
-      statusMsg.innerText = "❌ Invalid price.";
-      return;
-    }
-    qtyType = { type: "Not Applicable", itemPrice: price };
+    if (isNaN(price)) return statusMsg.innerText = "❌ Invalid price.";
+    qtyType = { type: qtyTypeValue, itemPrice: price };
   } else if (qtyTypeValue === "Half & Full") {
     const half = parseFloat(halfPrice.value);
     const full = parseFloat(fullPrice.value);
-    if (isNaN(half) || isNaN(full)) {
-      statusMsg.innerText = "❌ Invalid half/full price.";
-      return;
-    }
-    qtyType = { type: "Half & Full", halfPrice: half, fullPrice: full };
-  } else {
-    statusMsg.innerText = "❌ Invalid quantity type.";
-    return;
+    if (isNaN(half) || isNaN(full)) return statusMsg.innerText = "❌ Invalid half/full price.";
+    qtyType = { type: qtyTypeValue, halfPrice: half, fullPrice: full };
   }
 
-  const imageRef = ref(storage, `menuImages/${Date.now()}_${imageFile.name}`);
-
   try {
-    await uploadBytes(imageRef, imageFile);
+    const resizedBlob = await resizeImage(imageFile);
+    const imageRef = ref(storage, `menuImages/${Date.now()}_${imageFile.name}`);
+    await uploadBytes(imageRef, resizedBlob);
     const imageUrl = await getDownloadURL(imageRef);
 
     await addDoc(collection(db, "menuItems"), {
       name,
       description,
       category,
+      foodType,
       qtyType,
       imageUrl,
       inStock: true,
@@ -149,13 +185,14 @@ form.addEventListener("submit", async (e) => {
     itemPrice.style.display = "none";
     halfPrice.style.display = "none";
     fullPrice.style.display = "none";
+    await loadCategories();
   } catch (err) {
     console.error("🔥 Error adding item:", err);
     statusMsg.innerText = "❌ Error: " + err.message;
   }
 });
 
-// Load & Render Table
+// Render Table
 onSnapshot(collection(db, "menuItems"), (snapshot) => {
   menuBody.innerHTML = "";
   snapshot.forEach((docSnap) => {
@@ -166,7 +203,7 @@ onSnapshot(collection(db, "menuItems"), (snapshot) => {
     let priceText = "—";
     if (qty.type === "Not Applicable" && qty.itemPrice !== undefined) {
       priceText = `₹${qty.itemPrice}`;
-    } else if (qty.type === "Half & Full" && qty.halfPrice !== undefined && qty.fullPrice !== undefined) {
+    } else if (qty.type === "Half & Full" && qty.halfPrice && qty.fullPrice) {
       priceText = `Half: ₹${qty.halfPrice} / Full: ₹${qty.fullPrice}`;
     }
 
@@ -174,9 +211,10 @@ onSnapshot(collection(db, "menuItems"), (snapshot) => {
     row.innerHTML = `
       <td>${item.name}</td>
       <td>${item.category}</td>
+      <td>${item.foodType || "—"}</td>
       <td>${qty.type || "—"}</td>
       <td>${priceText}</td>
-      <td><img src="${item.imageUrl}" width="50"/></td>
+      <td><img src="${item.imageUrl}" width="50" /></td>
       <td>
         <select class="stockToggle" data-id="${docId}">
           <option value="true" ${item.inStock ? "selected" : ""}>In Stock</option>
@@ -188,8 +226,8 @@ onSnapshot(collection(db, "menuItems"), (snapshot) => {
     menuBody.appendChild(row);
   });
 
-  // Stock Toggle
-  document.querySelectorAll(".stockToggle").forEach((dropdown) => {
+  // In-stock toggle
+  document.querySelectorAll(".stockToggle").forEach(dropdown => {
     dropdown.addEventListener("change", async (e) => {
       const docId = e.target.dataset.id;
       const newVal = e.target.value === "true";
@@ -197,8 +235,8 @@ onSnapshot(collection(db, "menuItems"), (snapshot) => {
     });
   });
 
-  // Delete Item
-  document.querySelectorAll(".deleteBtn").forEach((btn) => {
+  // Delete item
+  document.querySelectorAll(".deleteBtn").forEach(btn => {
     btn.addEventListener("click", async () => {
       const docId = btn.dataset.id;
       if (confirm("Are you sure you want to delete this item?")) {
