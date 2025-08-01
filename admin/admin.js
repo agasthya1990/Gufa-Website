@@ -1,8 +1,7 @@
-// ✅ Fully revised admin.js based on your request
-// Updated labels: "Not Applicable" and "Half & Full"
-// Logic preserved, restructuring done to avoid errors
+// ✅ Fully revised admin.js with explicit Firebase bucket fix
+// Logic untouched — only corrected the getStorage() reference
 
-import { auth, db, storage } from "./firebase.js";
+import { auth, db } from "./firebase.js";
 import {
   signInWithEmailAndPassword,
   signOut,
@@ -18,10 +17,14 @@ import {
   deleteDoc
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 import {
+  getStorage,
   ref,
   uploadBytes,
   getDownloadURL
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
+
+// ✅ FIX: Use your actual bucket explicitly
+const storage = getStorage(undefined, "gs://gufa-restaurant.firebasestorage.app");
 
 // DOM elements
 const email = document.getElementById("email");
