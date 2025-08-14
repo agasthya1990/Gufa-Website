@@ -1,12 +1,4 @@
-// ✅ Fully upgraded admin.js with:
-// - Firebase image upload fix
-// - Category & Food Course dynamic management
-// - Image resize to 200x200
-// - Full Table Rendering
-// - Edit Modal logic
-// - Delete logic
-// - Stock toggle
-// - Search + Filter
+// admin.js (with full foodCourse dropdown support, edit placeholder, and table rendering)
 
 import { auth, db } from "./firebase.js";
 import {
@@ -35,7 +27,7 @@ import {
 
 const storage = getStorage(undefined, "gs://gufa-restaurant.firebasestorage.app");
 
-// DOM elements
+// DOM elements (shortened for clarity)
 const email = document.getElementById("email");
 const password = document.getElementById("password");
 const loginBtn = document.getElementById("loginBtn");
@@ -66,7 +58,6 @@ const editForm = document.getElementById("editForm");
 
 let currentEditId = null;
 
-// Toggle pricing inputs
 qtyTypeSelect.addEventListener("change", () => togglePriceInputs(qtyTypeSelect.value));
 function togglePriceInputs(type) {
   itemPrice.style.display = "none";
@@ -79,17 +70,13 @@ function togglePriceInputs(type) {
   }
 }
 
-// Login
 loginBtn.onclick = () => {
   signInWithEmailAndPassword(auth, email.value, password.value)
     .then(() => { email.value = ""; password.value = ""; })
     .catch(err => alert("Login failed: " + err.message));
 };
-
-// Logout
 logoutBtn.onclick = () => signOut(auth);
 
-// Auth listener
 onAuthStateChanged(auth, user => {
   if (user) {
     loginBox.style.display = "none";
@@ -103,7 +90,6 @@ onAuthStateChanged(auth, user => {
   }
 });
 
-// Load dropdowns
 async function loadCategories() {
   categoryDropdown.innerHTML = '<option value="">-- Select Category --</option>';
   const snapshot = await getDocs(collection(db, "menuCategories"));
@@ -126,7 +112,6 @@ async function loadCourses() {
   });
 }
 
-// Add new category
 addCategoryBtn.onclick = async () => {
   const cat = newCategoryInput.value.trim();
   if (!cat) return alert("Enter category");
@@ -135,7 +120,6 @@ addCategoryBtn.onclick = async () => {
   loadCategories();
 };
 
-// Add new course
 addCourseBtn.onclick = async () => {
   const course = newCourseInput.value.trim();
   if (!course) return alert("Enter course");
@@ -228,7 +212,9 @@ function renderMenuItems() {
       const id = docSnap.id;
       const qty = d.qtyType || {};
 
-      const priceText = qty.type === "Half & Full" ? `Half: ₹${qty.halfPrice} / Full: ₹${qty.fullPrice}` : `₹${qty.itemPrice}`;
+      const priceText = qty.type === "Half & Full"
+        ? `Half: ₹${qty.halfPrice} / Full: ₹${qty.fullPrice}`
+        : `₹${qty.itemPrice}`;
 
       const row = document.createElement("tr");
       row.innerHTML = `
@@ -254,7 +240,6 @@ function renderMenuItems() {
       menuBody.appendChild(row);
     });
 
-    // Stock toggle
     document.querySelectorAll(".stockToggle").forEach(drop => {
       drop.onchange = async (e) => {
         const id = e.target.dataset.id;
@@ -263,7 +248,6 @@ function renderMenuItems() {
       };
     });
 
-    // Delete
     document.querySelectorAll(".deleteBtn").forEach(btn => {
       btn.onclick = async () => {
         const id = btn.dataset.id;
@@ -273,7 +257,6 @@ function renderMenuItems() {
       };
     });
 
-    // Edit (opens modal, to be implemented)
     document.querySelectorAll(".editBtn").forEach(btn => {
       btn.onclick = async () => {
         const id = btn.dataset.id;
@@ -286,7 +269,6 @@ function renderMenuItems() {
   });
 }
 
-// Edit modal placeholder (WIP)
 if (closeEditModalBtn) {
   closeEditModalBtn.onclick = () => {
     editModal.style.display = "none";
