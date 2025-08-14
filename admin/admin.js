@@ -1,5 +1,3 @@
-// admin.js (with full foodCourse dropdown support, edit placeholder, and table rendering)
-
 import { auth, db } from "./firebase.js";
 import {
   signInWithEmailAndPassword,
@@ -25,15 +23,17 @@ import {
   getDownloadURL
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
 
+// Storage ref
 const storage = getStorage(undefined, "gs://gufa-restaurant.firebasestorage.app");
 
-// DOM elements (shortened for clarity)
+// DOM elements
+const loginBox = document.getElementById("loginBox");
+const adminContent = document.getElementById("adminContent");
 const email = document.getElementById("email");
 const password = document.getElementById("password");
 const loginBtn = document.getElementById("loginBtn");
 const logoutBtn = document.getElementById("logoutBtn");
-const loginBox = document.getElementById("loginBox");
-const adminContent = document.getElementById("adminContent");
+
 const form = document.getElementById("menuForm");
 const statusMsg = document.getElementById("statusMsg");
 const menuBody = document.getElementById("menuBody");
@@ -41,42 +41,34 @@ const menuBody = document.getElementById("menuBody");
 const itemName = document.getElementById("itemName");
 const itemDescription = document.getElementById("itemDescription");
 const itemImage = document.getElementById("itemImage");
+
 const itemPrice = document.getElementById("itemPrice");
 const halfPrice = document.getElementById("halfPrice");
 const fullPrice = document.getElementById("fullPrice");
 const qtyTypeSelect = document.getElementById("qtyType");
+
 const categoryDropdown = document.getElementById("itemCategory");
 const newCategoryInput = document.getElementById("newCategoryInput");
 const addCategoryBtn = document.getElementById("addCategoryBtn");
-const foodTypeSelect = document.getElementById("foodType");
+
 const foodCourseDropdown = document.getElementById("foodCourse");
 const newCourseInput = document.getElementById("newCourseInput");
 const addCourseBtn = document.getElementById("addCourseBtn");
-const editModal = document.getElementById("editModal");
-const closeEditModalBtn = document.getElementById("closeEditModal");
-const editForm = document.getElementById("editForm");
 
-let currentEditId = null;
+const foodTypeSelect = document.getElementById("foodType");
 
-qtyTypeSelect.addEventListener("change", () => togglePriceInputs(qtyTypeSelect.value));
-function togglePriceInputs(type) {
-  itemPrice.style.display = "none";
-  halfPrice.style.display = "none";
-  fullPrice.style.display = "none";
-  if (type === "Not Applicable") itemPrice.style.display = "block";
-  if (type === "Half & Full") {
-    halfPrice.style.display = "block";
-    fullPrice.style.display = "block";
-  }
-}
-
+// Auth login/logout
 loginBtn.onclick = () => {
   signInWithEmailAndPassword(auth, email.value, password.value)
-    .then(() => { email.value = ""; password.value = ""; })
+    .then(() => {
+      email.value = "";
+      password.value = "";
+    })
     .catch(err => alert("Login failed: " + err.message));
 };
 logoutBtn.onclick = () => signOut(auth);
 
+// Auth state listener
 onAuthStateChanged(auth, user => {
   if (user) {
     loginBox.style.display = "none";
@@ -90,6 +82,21 @@ onAuthStateChanged(auth, user => {
   }
 });
 
+// Toggle pricing input logic
+qtyTypeSelect.onchange = () => {
+  const value = qtyTypeSelect.value;
+  itemPrice.style.display = value === "Not Applicable" ? "block" : "none";
+  halfPrice.style.display = fullPrice.style.display = value === "Half & Full" ? "block" : "none";
+};
+
+// Category add/load
+addCategoryBtn.onclick = async () => {
+  const newCat = newCategoryInput.value.trim();
+  if (!newCat) return alert("Enter a category");
+  await setDoc(doc(db, "menuCategories", newCat), { name: newCat });
+  newCategoryInput.value = "";
+  loadCategories();
+};
 async function loadCategories() {
   categoryDropdown.innerHTML = '<option value="">-- Select Category --</option>';
   const snapshot = await getDocs(collection(db, "menuCategories"));
@@ -101,6 +108,14 @@ async function loadCategories() {
   });
 }
 
+// Food Course add/load
+addCourseBtn.onclick = async () => {
+  const newCourse = newCourseInput.value.trim();
+  if (!newCourse) return alert("Enter a course");
+  await setDoc(doc(db, "menuCourses", newCourse), { name: newCourse });
+  newCourseInput.value = "";
+  loadCourses();
+};
 async function loadCourses() {
   foodCourseDropdown.innerHTML = '<option value="">-- Select Food Course --</option>';
   const snapshot = await getDocs(collection(db, "menuCourses"));
@@ -112,22 +127,7 @@ async function loadCourses() {
   });
 }
 
-addCategoryBtn.onclick = async () => {
-  const cat = newCategoryInput.value.trim();
-  if (!cat) return alert("Enter category");
-  await setDoc(doc(db, "menuCategories", cat), { name: cat });
-  newCategoryInput.value = "";
-  loadCategories();
-};
-
-addCourseBtn.onclick = async () => {
-  const course = newCourseInput.value.trim();
-  if (!course) return alert("Enter course");
-  await setDoc(doc(db, "menuCourses", course), { name: course });
-  newCourseInput.value = "";
-  loadCourses();
-};
-
+// Resize uploaded image to 200x200
 function resizeImage(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -149,6 +149,7 @@ function resizeImage(file) {
   });
 }
 
+// Submit form to Firestore
 form.onsubmit = async (e) => {
   e.preventDefault();
   statusMsg.innerText = "Adding...";
@@ -157,11 +158,11 @@ form.onsubmit = async (e) => {
   const description = itemDescription.value.trim();
   const category = categoryDropdown.value;
   const foodCourse = foodCourseDropdown.value;
-  const qtyTypeValue = qtyTypeSelect.value;
   const foodType = foodTypeSelect.value;
+  const qtyTypeValue = qtyTypeSelect.value;
   const imageFile = itemImage.files[0];
 
-  if (!name || !description || !category || !foodCourse || !qtyTypeValue || !foodType || !imageFile) {
+  if (!name || !description || !category || !foodCourse || !foodType || !qtyTypeValue || !imageFile) {
     return statusMsg.innerText = "❌ Fill all fields";
   }
 
@@ -178,9 +179,9 @@ form.onsubmit = async (e) => {
   }
 
   try {
-    const blob = await resizeImage(imageFile);
+    const resizedBlob = await resizeImage(imageFile);
     const imageRef = ref(storage, `menuImages/${Date.now()}_${imageFile.name}`);
-    await uploadBytes(imageRef, blob);
+    await uploadBytes(imageRef, resizedBlob);
     const imageUrl = await getDownloadURL(imageRef);
 
     await addDoc(collection(db, "menuItems"), {
@@ -196,7 +197,7 @@ form.onsubmit = async (e) => {
     });
 
     form.reset();
-    togglePriceInputs("");
+    qtyTypeSelect.dispatchEvent(new Event("change"));
     statusMsg.innerText = "✅ Added!";
   } catch (err) {
     console.error(err);
@@ -204,18 +205,16 @@ form.onsubmit = async (e) => {
   }
 };
 
+// Render items in table
 function renderMenuItems() {
   onSnapshot(collection(db, "menuItems"), (snapshot) => {
     menuBody.innerHTML = "";
-    snapshot.forEach((docSnap) => {
+    snapshot.forEach(docSnap => {
       const d = docSnap.data();
-      const id = docSnap.id;
       const qty = d.qtyType || {};
-
       const priceText = qty.type === "Half & Full"
         ? `Half: ₹${qty.halfPrice} / Full: ₹${qty.fullPrice}`
         : `₹${qty.itemPrice}`;
-
       const row = document.createElement("tr");
       row.innerHTML = `
         <td>${d.name}</td>
@@ -225,53 +224,46 @@ function renderMenuItems() {
         <td>${d.foodType}</td>
         <td>${qty.type}</td>
         <td>${priceText}</td>
-        <td><img src="${d.imageUrl}" width="50"/></td>
+        <td><img src="${d.imageUrl}" width="50" /></td>
         <td>
-          <select class="stockToggle" data-id="${id}">
+          <select class="stockToggle" data-id="${docSnap.id}">
             <option value="true" ${d.inStock ? "selected" : ""}>In Stock</option>
             <option value="false" ${!d.inStock ? "selected" : ""}>Out of Stock</option>
           </select>
         </td>
         <td>
-          <button class="editBtn" data-id="${id}">Edit</button>
-          <button class="deleteBtn" data-id="${id}">Delete</button>
+          <button class="editBtn" data-id="${docSnap.id}">Edit</button>
+          <button class="deleteBtn" data-id="${docSnap.id}">Delete</button>
         </td>
       `;
       menuBody.appendChild(row);
     });
 
-    document.querySelectorAll(".stockToggle").forEach(drop => {
-      drop.onchange = async (e) => {
+    document.querySelectorAll(".stockToggle").forEach(el => {
+      el.onchange = async (e) => {
         const id = e.target.dataset.id;
         const val = e.target.value === "true";
         await updateDoc(doc(db, "menuItems", id), { inStock: val });
       };
     });
 
-    document.querySelectorAll(".deleteBtn").forEach(btn => {
-      btn.onclick = async () => {
-        const id = btn.dataset.id;
-        if (confirm("Delete this item?")) {
+    document.querySelectorAll(".deleteBtn").forEach(el => {
+      el.onclick = async () => {
+        const id = el.dataset.id;
+        if (confirm("Are you sure?")) {
           await deleteDoc(doc(db, "menuItems", id));
         }
       };
     });
 
-    document.querySelectorAll(".editBtn").forEach(btn => {
-      btn.onclick = async () => {
-        const id = btn.dataset.id;
-        currentEditId = id;
-        const docRef = await getDoc(doc(db, "menuItems", id));
-        const d = docRef.data();
-        alert("Edit feature will be available shortly");
+    document.querySelectorAll(".editBtn").forEach(el => {
+      el.onclick = async () => {
+        const id = el.dataset.id;
+        const snap = await getDoc(doc(db, "menuItems", id));
+        if (snap.exists()) {
+          alert("Edit coming soon!");
+        }
       };
     });
   });
-}
-
-if (closeEditModalBtn) {
-  closeEditModalBtn.onclick = () => {
-    editModal.style.display = "none";
-    currentEditId = null;
-  };
 }
