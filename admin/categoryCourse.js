@@ -79,3 +79,39 @@ async function updateMenuItemsCategory(oldName, newName) {
   });
   await Promise.all(updates);
 }
+// === Add to categoryCourse.js ===
+import {
+  collection, doc, getDocs, setDoc, updateDoc, query, where, deleteDoc
+} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { db } from "./firebase.js";
+
+// Fetch all categories as array of ids
+export async function fetchCategories() {
+  const out = [];
+  const snapshot = await getDocs(collection(db, "menuCategories"));
+  snapshot.forEach(d => out.push(d.id));
+  return out;
+}
+
+// Rename a category safely: create new doc, migrate items, delete old doc
+export async function renameCategoryEverywhere(oldName, newName) {
+  const newId = newName.trim();
+  if (!newId || newId === oldName) return;
+
+  // 1) Create/overwrite new category doc
+  await setDoc(doc(db, "menuCategories", newId), { name: newId });
+
+  // 2) Migrate all menuItems (category == oldName) -> newName
+  const q = query(collection(db, "menuItems"), where("category", "==", oldName));
+  const snap = await getDocs(q);
+  const updates = [];
+  snap.forEach(s => updates.push(updateDoc(s.ref, { category: newId })));
+  await Promise.all(updates);
+
+  // 3) Delete the old category doc so it won't show as duplicate
+  if (newId !== oldName) {
+    await deleteDoc(doc(db, "menuCategories", oldName));
+  }
+}
+
+// (Existing exports like loadCategories, renderCategoryList, addCategory can remain)
