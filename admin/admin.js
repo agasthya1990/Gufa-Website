@@ -268,3 +268,137 @@ function renderMenuItems() {
     });
   });
 }
+// === Add to admin.js ===
+import { fetchCategories, renameCategoryEverywhere } from "./categoryCourse.js";
+
+const catBtn = document.getElementById("categoryDropdownBtn");
+const catPanel = document.getElementById("categoryDropdownPanel");
+
+// Renders custom category dropdown and keeps #itemCategory (hidden) in sync
+async function renderCustomCategoryDropdown() {
+  const categories = await fetchCategories();
+  const current = categoryDropdown.value || ""; // hidden <select> value
+
+  const rows = categories.map(name => {
+    const checked = name === current ? "checked" : "";
+    return `
+      <div class="cat-row" data-name="${name}">
+        <span class="cat-check ${checked}" data-role="check"></span>
+        <span class="cat-label" data-role="label" title="${name}">${name}</span>
+        <button class="cat-btn" title="Edit" data-role="edit">✏️</button>
+      </div>
+    `;
+  }).join("");
+
+  catPanel.innerHTML = rows;
+
+  // Event delegation
+  catPanel.onclick = async (e) => {
+    const row = e.target.closest(".cat-row");
+    if (!row) return;
+    const role = e.target.getAttribute("data-role");
+    const name = row.getAttribute("data-name");
+
+    // Select (single-select behavior)
+    if (role === "check" || role === "label") {
+      // Uncheck all
+      catPanel.querySelectorAll(".cat-check").forEach(c => c.classList.remove("checked"));
+      // Check this one
+      row.querySelector(".cat-check").classList.add("checked");
+      // Sync hidden select
+      setHiddenCategoryValue(name);
+      // Update button label
+      catBtn.textContent = `${name} ▾`;
+      // Close panel
+      catPanel.style.display = "none";
+      return;
+    }
+
+    // Edit inline
+    if (role === "edit") {
+      // Replace label with input + ✔/✖
+      const labelEl = row.querySelector('[data-role="label"]');
+      const oldName = name;
+      const oldHTML = row.innerHTML;
+
+      row.innerHTML = `
+        <div class="inline-controls" style="width:100%;">
+          <input class="cat-input" type="text" value="${oldName}" />
+          <button class="cat-btn" data-role="save" title="Save">✔</button>
+          <button class="cat-btn" data-role="cancel" title="Cancel">✖</button>
+        </div>
+      `;
+
+      row.onclick = async (ev) => {
+        const r = ev.target.getAttribute("data-role");
+        if (r === "cancel") {
+          // Restore original row (no change)
+          await renderCustomCategoryDropdown();
+          // Keep panel open so user can see the result
+          catPanel.style.display = "block";
+          return;
+        }
+        if (r === "save") {
+          const inputVal = row.querySelector(".cat-input").value.trim();
+          if (!inputVal) return alert("Enter a valid category name");
+
+          if (inputVal === oldName) {
+            // No change
+            await renderCustomCategoryDropdown();
+            catPanel.style.display = "block";
+            return;
+          }
+
+          // Rename across system (categories + items)
+          try {
+            // Optimistic UI: show a small busy state
+            row.querySelector(".cat-input").disabled = true;
+
+            await renameCategoryEverywhere(oldName, inputVal);
+
+            // If the renamed category was currently selected, update hidden select & button
+            if (categoryDropdown.value === oldName) {
+              setHiddenCategoryValue(inputVal);
+              catBtn.textContent = `${inputVal} ▾`;
+            }
+
+            // Re-render dropdown list (will not show oldName anymore)
+            await renderCustomCategoryDropdown();
+            catPanel.style.display = "block";
+          } catch (err) {
+            console.error(err);
+            alert("Rename failed: " + (err?.message || err));
+            // Re-render original state
+            await renderCustomCategoryDropdown();
+            catPanel.style.display = "block";
+          }
+        }
+      };
+    }
+  };
+}
+
+function setHiddenCategoryValue(val) {
+  // Ensure the hidden select has this option; if not, add it
+  let opt = [...categoryDropdown.options].find(o => o.value === val);
+  if (!opt) {
+    opt = document.createElement("option");
+    opt.value = val;
+    opt.textContent = val;
+    categoryDropdown.appendChild(opt);
+  }
+  categoryDropdown.value = val;
+}
+
+// Toggle panel visibility
+if (catBtn && catPanel) {
+  catBtn.onclick = () => {
+    catPanel.style.display = (catPanel.style.display === "none" || !catPanel.style.display) ? "block" : "none";
+  };
+  // Close when clicking outside
+  document.addEventListener("click", (e) => {
+    if (!catPanel.contains(e.target) && !catBtn.contains(e.target)) {
+      catPanel.style.display = "none";
+    }
+  });
+}
