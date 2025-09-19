@@ -4,6 +4,28 @@
   <meta charset="UTF-8" />
   <title>GUFA Admin Panel</title>
   <link rel="stylesheet" href="styles.css" />
+  <style>
+    /* Hide native selects but keep them for form value + validation */
+    #itemCategory, #foodCourse {
+      position: absolute !important;
+      left: -9999px !important;
+      width: 1px !important;
+      height: 1px !important;
+      opacity: 0 !important;
+    }
+    .cat-row, .course-row { display:flex; align-items:center; gap:8px; padding:6px 4px; border-radius:6px; }
+    .cat-row:hover, .course-row:hover { background:#f7f7f7; }
+    .cat-check, .course-check { width:16px; height:16px; border:1px solid #aaa; border-radius:3px; display:inline-block; position:relative; cursor:pointer; }
+    .cat-check.checked::after, .course-check.checked::after {
+      content:""; position:absolute; left:3px; top:1px; width:8px; height:12px; border-right:2px solid #222; border-bottom:2px solid #222; transform:rotate(45deg);
+    }
+    .cat-label, .course-label { flex:1; cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .cat-btn, .course-btn { background:none; border:none; cursor:pointer; font-size:14px; }
+    .inline-controls { display:flex; align-items:center; gap:8px; width:100%; }
+    .cat-input, .course-input { width:100%; padding:4px 6px; }
+    .dropdown-wrap { position:relative; display:inline-block; margin-left:8px; }
+    .dropdown-panel { display:none; position:absolute; z-index:10; background:#fff; border:1px solid #ddd; border-radius:6px; padding:8px; min-width:240px; max-height:240px; overflow:auto; }
+  </style>
 </head>
 <body>
   <h2>Admin Login</h2>
@@ -22,33 +44,25 @@
       <input type="text" id="itemName" placeholder="Item Name" required /><br />
       <input type="text" id="itemDescription" placeholder="Description" required /><br />
 
-      <!-- Category Dropdown -->
+      <!-- Category (hidden select + custom dropdown) -->
       <select id="itemCategory" required>
         <option value="">-- Select Category --</option>
-<!-- Category Dropdown (keep existing, we’ll use it as hidden source of truth) -->
-<select id="itemCategory" required>
-  <option value="">-- Select Category --</option>
-</select>
-
-<!-- Custom Category Dropdown UI -->
-<div id="categoryDropdownWrap" style="position:relative; display:inline-block; margin-left:8px;">
-  <button type="button" id="categoryDropdownBtn">Select Category ▾</button>
-  <div id="categoryDropdownPanel" style="display:none; position:absolute; z-index:10; background:#fff; border:1px solid #ddd; border-radius:6px; padding:8px; min-width:240px; max-height:240px; overflow:auto;">
-    <!-- items will be injected here -->
-  </div>
-</div>
       </select>
+      <div class="dropdown-wrap">
+        <button type="button" id="categoryDropdownBtn">Select Category ▾</button>
+        <div id="categoryDropdownPanel" class="dropdown-panel"><!-- injected --></div>
+      </div>
       <input type="text" id="newCategoryInput" placeholder="Add New Category" />
       <button type="button" id="addCategoryBtn">Add Category</button><br />
 
-      <!-- Category Management Section -->
-      <h4>Manage Categories</h4>
-      <div id="categoryList"></div>
-
-      <!-- Food Course Dropdown -->
+      <!-- Food Course (hidden select + custom dropdown) -->
       <select id="foodCourse" required>
         <option value="">-- Select Food Course --</option>
       </select>
+      <div class="dropdown-wrap">
+        <button type="button" id="courseDropdownBtn">Select Course ▾</button>
+        <div id="courseDropdownPanel" class="dropdown-panel"><!-- injected --></div>
+      </div>
       <input type="text" id="newCourseInput" placeholder="Add New Food Course" />
       <button type="button" id="addCourseBtn">Add Course</button><br />
       
