@@ -29,12 +29,16 @@
       <input type="text" id="newCategoryInput" placeholder="Add New Category" />
       <button type="button" id="addCategoryBtn">Add Category</button><br />
 
+      <!-- Category Management Section -->
+      <h4>Manage Categories</h4>
+      <div id="categoryList"></div>
+
       <!-- Food Course Dropdown -->
-<select id="foodCourse" required>
-  <option value="">-- Select Food Course --</option>
-</select>
-<input type="text" id="newCourseInput" placeholder="Add New Food Course" />
-<button type="button" id="addCourseBtn">Add Course</button><br />
+      <select id="foodCourse" required>
+        <option value="">-- Select Food Course --</option>
+      </select>
+      <input type="text" id="newCourseInput" placeholder="Add New Food Course" />
+      <button type="button" id="addCourseBtn">Add Course</button><br />
       
       <!-- Food Type -->
       <select id="foodType" required>
@@ -63,7 +67,11 @@
     <input type="text" id="searchInput" placeholder="Search by name, description, category..." />
     <select id="filterCategory"><option value="">All Categories</option></select>
     <select id="filterCourse"><option value="">All Courses</option></select>
-    <select id="filterType"><option value="">All Types</option><option value="Veg">Veg</option><option value="Non-Veg">Non-Veg</option></select>
+    <select id="filterType">
+      <option value="">All Types</option>
+      <option value="Veg">Veg</option>
+      <option value="Non-Veg">Non-Veg</option>
+    </select>
 
     <h3>Menu Items</h3>
     <table border="1" id="menuTable">
@@ -107,12 +115,14 @@
         <input type="number" id="editItemPrice" style="display:none;" /><br />
         <input type="number" id="editHalfPrice" style="display:none;" /><br />
         <input type="number" id="editFullPrice" style="display:none;" /><br />
+        <input type="file" id="editImage" accept="image/*" /><br />
         <button type="submit">Save Changes</button>
         <button type="button" id="closeEditModal">Cancel</button>
       </form>
     </div>
   </div>
 
+  <!-- Scripts -->
   <script type="module" src="admin/firebase.js"></script>
   <script type="module" src="admin/admin.js"></script>
 </body>
