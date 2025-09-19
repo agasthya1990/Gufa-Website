@@ -6,13 +6,14 @@
   <link rel="stylesheet" href="styles.css" />
   <style>
     /* Hide native selects but keep them for form value + validation */
-    #itemCategory, #foodCourse {
+    #itemCategory, #foodCourse, #addonsSelect {
       position: absolute !important;
       left: -9999px !important;
       width: 1px !important;
       height: 1px !important;
       opacity: 0 !important;
     }
+
     .cat-row, .course-row { display:flex; align-items:center; gap:8px; padding:6px 4px; border-radius:6px; }
     .cat-row:hover, .course-row:hover { background:#f7f7f7; }
     .cat-check, .course-check { width:16px; height:16px; border:1px solid #aaa; border-radius:3px; display:inline-block; position:relative; cursor:pointer; }
@@ -23,8 +24,17 @@
     .cat-btn, .course-btn { background:none; border:none; cursor:pointer; font-size:14px; }
     .inline-controls { display:flex; align-items:center; gap:8px; width:100%; }
     .cat-input, .course-input { width:100%; padding:4px 6px; }
+
     .dropdown-wrap { position:relative; display:inline-block; margin-left:8px; }
     .dropdown-panel { display:none; position:absolute; z-index:10; background:#fff; border:1px solid #ddd; border-radius:6px; padding:8px; min-width:240px; max-height:240px; overflow:auto; }
+
+    /* Add-ons UI */
+    .addon-row { display:flex; align-items:center; gap:8px; padding:6px 4px; border-radius:6px; }
+    .addon-row:hover { background:#f7f7f7; }
+    .addon-check { width:16px; height:16px; border:1px solid #aaa; border-radius:3px; display:inline-block; position:relative; cursor:pointer; }
+    .addon-check.checked::after { content:""; position:absolute; left:3px; top:1px; width:8px; height:12px; border-right:2px solid #222; border-bottom:2px solid #222; transform:rotate(45deg); }
+    .addon-label { flex:1; cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .addon-btn { background:none; border:none; cursor:pointer; font-size:14px; }
   </style>
 </head>
 <body>
@@ -65,7 +75,16 @@
       </div>
       <input type="text" id="newCourseInput" placeholder="Add New Food Course" />
       <button type="button" id="addCourseBtn">Add Course</button><br />
-      
+
+      <!-- Add-ons (hidden multi-select + custom dropdown + add) -->
+      <select id="addonsSelect" multiple></select>
+      <div class="dropdown-wrap">
+        <button type="button" id="addonDropdownBtn">Select Add-ons ▾</button>
+        <div id="addonDropdownPanel" class="dropdown-panel"><!-- injected --></div>
+      </div>
+      <input type="text" id="newAddonInput" placeholder="Add New Add-on" />
+      <button type="button" id="addAddonBtn">Add Add-on</button><br />
+
       <!-- Food Type -->
       <select id="foodType" required>
         <option value="">-- Select Food Type --</option>
@@ -110,6 +129,7 @@
           <th>Food Type</th>
           <th>Qty Type</th>
           <th>Price(s)</th>
+          <th>Add-ons</th> <!-- NEW -->
           <th>Image</th>
           <th>In Stock</th>
           <th>Actions</th>
@@ -148,7 +168,7 @@
     </div>
   </div>
 
-  <!-- Scripts -->
+  <!-- Scripts (ensure these paths match your folder layout) -->
   <script type="module" src="admin/firebase.js"></script>
   <script type="module" src="admin/admin.js"></script>
 </body>
