@@ -23,8 +23,12 @@ import {
   getDownloadURL
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
 
-// Import category management helpers
-import { loadCategories, renderCategoryList, addCategory } from "./categoryCourse.js";
+import {
+  loadCategories, loadCourses,
+  fetchCategories, fetchCourses,
+  addCategory, addCourse,
+  renameCategoryEverywhere, renameCourseEverywhere
+} from "./categoryCourse.js";
 
 // Storage ref
 const storage = getStorage(undefined, "gs://gufa-restaurant.firebasestorage.app");
@@ -60,33 +64,34 @@ const addCourseBtn = document.getElementById("addCourseBtn");
 
 const foodTypeSelect = document.getElementById("foodType");
 
-// Optional container for category list (if present in HTML)
-const categoryListContainer = document.getElementById("categoryList");
+// Custom dropdown DOM
+const catBtn = document.getElementById("categoryDropdownBtn");
+const catPanel = document.getElementById("categoryDropdownPanel");
+const courseBtn = document.getElementById("courseDropdownBtn");
+const coursePanel = document.getElementById("courseDropdownPanel");
 
 // Auth login/logout
 loginBtn.onclick = () => {
   signInWithEmailAndPassword(auth, email.value, password.value)
-    .then(() => {
-      email.value = "";
-      password.value = "";
-    })
+    .then(() => { email.value = ""; password.value = ""; })
     .catch(err => alert("Login failed: " + err.message));
 };
 logoutBtn.onclick = () => signOut(auth);
 
 // Auth state listener
-onAuthStateChanged(auth, user => {
+onAuthStateChanged(auth, async (user) => {
   if (user) {
     loginBox.style.display = "none";
     adminContent.style.display = "block";
 
-    // Categories via helper
-    loadCategories(categoryDropdown);
-    if (categoryListContainer) {
-      renderCategoryList(categoryListContainer);
-    }
+    // Load hidden selects once (kept for form compatibility)
+    await loadCategories(categoryDropdown);
+    await loadCourses(foodCourseDropdown);
 
-    loadCourses();
+    // Render custom dropdowns
+    await renderCustomCategoryDropdown();
+    await renderCustomCourseDropdown();
+
     renderMenuItems();
   } else {
     loginBox.style.display = "block";
@@ -101,32 +106,15 @@ qtyTypeSelect.onchange = () => {
   halfPrice.style.display = fullPrice.style.display = value === "Half & Full" ? "block" : "none";
 };
 
-// Add Category (using helper)
-addCategoryBtn.onclick = () => {
-  addCategory(newCategoryInput, () => loadCategories(categoryDropdown));
-  if (categoryListContainer) {
-    renderCategoryList(categoryListContainer);
-  }
+// Add Category / Course
+addCategoryBtn.onclick = async () => {
+  await addCategory(newCategoryInput, () => loadCategories(categoryDropdown));
+  await renderCustomCategoryDropdown();
 };
-
-// Food Course add/load
 addCourseBtn.onclick = async () => {
-  const newCourse = newCourseInput.value.trim();
-  if (!newCourse) return alert("Enter a course");
-  await setDoc(doc(db, "menuCourses", newCourse), { name: newCourse });
-  newCourseInput.value = "";
-  loadCourses();
+  await addCourse(newCourseInput, () => loadCourses(foodCourseDropdown));
+  await renderCustomCourseDropdown();
 };
-async function loadCourses() {
-  foodCourseDropdown.innerHTML = '<option value="">-- Select Food Course --</option>';
-  const snapshot = await getDocs(collection(db, "menuCourses"));
-  snapshot.forEach(doc => {
-    const opt = document.createElement("option");
-    opt.value = doc.id;
-    opt.textContent = doc.id;
-    foodCourseDropdown.appendChild(opt);
-  });
-}
 
 // Resize uploaded image to 200x200
 function resizeImage(file) {
@@ -164,18 +152,18 @@ form.onsubmit = async (e) => {
   const imageFile = itemImage.files[0];
 
   if (!name || !description || !category || !foodCourse || !foodType || !qtyTypeValue || !imageFile) {
-    return statusMsg.innerText = "❌ Fill all fields";
+    statusMsg.innerText = "❌ Fill all fields"; return;
   }
 
   let qtyType = {};
   if (qtyTypeValue === "Not Applicable") {
     const price = parseFloat(itemPrice.value);
-    if (isNaN(price)) return statusMsg.innerText = "❌ Invalid price";
+    if (isNaN(price) || price <= 0) { statusMsg.innerText = "❌ Invalid price"; return; }
     qtyType = { type: qtyTypeValue, itemPrice: price };
   } else if (qtyTypeValue === "Half & Full") {
     const half = parseFloat(halfPrice.value);
     const full = parseFloat(fullPrice.value);
-    if (isNaN(half) || isNaN(full)) return statusMsg.innerText = "❌ Invalid Half/Full price";
+    if (isNaN(half) || isNaN(full) || half <= 0 || full <= 0) { statusMsg.innerText = "❌ Invalid Half/Full price"; return; }
     qtyType = { type: qtyTypeValue, halfPrice: half, fullPrice: full };
   }
 
@@ -186,15 +174,8 @@ form.onsubmit = async (e) => {
     const imageUrl = await getDownloadURL(imageRef);
 
     await addDoc(collection(db, "menuItems"), {
-      name,
-      description,
-      category,
-      foodCourse,
-      foodType,
-      qtyType,
-      imageUrl,
-      inStock: true,
-      createdAt: serverTimestamp()
+      name, description, category, foodCourse, foodType,
+      qtyType, imageUrl, inStock: true, createdAt: serverTimestamp()
     });
 
     form.reset();
@@ -262,23 +243,20 @@ function renderMenuItems() {
         const id = el.dataset.id;
         const snap = await getDoc(doc(db, "menuItems", id));
         if (snap.exists()) {
-          alert("Edit coming soon!");
+          alert("Edit coming soon!"); // hook up later
         }
       };
     });
   });
 }
-// === Add to admin.js ===
-import { fetchCategories, renameCategoryEverywhere } from "./categoryCourse.js";
 
-const catBtn = document.getElementById("categoryDropdownBtn");
-const catPanel = document.getElementById("categoryDropdownPanel");
-
-// Renders custom category dropdown and keeps #itemCategory (hidden) in sync
+/* ============================
+   Custom Dropdowns (inline edit)
+   ============================ */
+// Category
 async function renderCustomCategoryDropdown() {
   const categories = await fetchCategories();
-  const current = categoryDropdown.value || ""; // hidden <select> value
-
+  const current = categoryDropdown.value || "";
   const rows = categories.map(name => {
     const checked = name === current ? "checked" : "";
     return `
@@ -289,88 +267,53 @@ async function renderCustomCategoryDropdown() {
       </div>
     `;
   }).join("");
-
   catPanel.innerHTML = rows;
 
-  // Event delegation
   catPanel.onclick = async (e) => {
     const row = e.target.closest(".cat-row");
     if (!row) return;
     const role = e.target.getAttribute("data-role");
     const name = row.getAttribute("data-name");
 
-    // Select (single-select behavior)
+    // select
     if (role === "check" || role === "label") {
-      // Uncheck all
       catPanel.querySelectorAll(".cat-check").forEach(c => c.classList.remove("checked"));
-      // Check this one
       row.querySelector(".cat-check").classList.add("checked");
-      // Sync hidden select
-      setHiddenCategoryValue(name);
-      // Update button label
+      setHiddenValue(categoryDropdown, name);
       catBtn.textContent = `${name} ▾`;
-      // Close panel
       catPanel.style.display = "none";
       return;
     }
 
-    // Edit inline
+    // edit inline
     if (role === "edit") {
-      // Replace label with input + ✔/✖
-      const labelEl = row.querySelector('[data-role="label"]');
-      const oldName = name;
-      const oldHTML = row.innerHTML;
-
       row.innerHTML = `
-        <div class="inline-controls" style="width:100%;">
-          <input class="cat-input" type="text" value="${oldName}" />
-          <button class="cat-btn" data-role="save" title="Save">✔</button>
-          <button class="cat-btn" data-role="cancel" title="Cancel">✖</button>
+        <div class="inline-controls">
+          <input class="cat-input" type="text" value="${name}" />
+          <button class="cat-btn" data-role="save">✔</button>
+          <button class="cat-btn" data-role="cancel">✖</button>
         </div>
       `;
-
       row.onclick = async (ev) => {
         const r = ev.target.getAttribute("data-role");
-        if (r === "cancel") {
-          // Restore original row (no change)
-          await renderCustomCategoryDropdown();
-          // Keep panel open so user can see the result
-          catPanel.style.display = "block";
-          return;
-        }
+        if (r === "cancel") { await renderCustomCategoryDropdown(); catPanel.style.display = "block"; return; }
         if (r === "save") {
-          const inputVal = row.querySelector(".cat-input").value.trim();
-          if (!inputVal) return alert("Enter a valid category name");
-
-          if (inputVal === oldName) {
-            // No change
-            await renderCustomCategoryDropdown();
-            catPanel.style.display = "block";
-            return;
-          }
-
-          // Rename across system (categories + items)
+          const newVal = row.querySelector(".cat-input").value.trim();
+          if (!newVal) return alert("Enter a valid category");
+          if (newVal === name) { await renderCustomCategoryDropdown(); catPanel.style.display = "block"; return; }
           try {
-            // Optimistic UI: show a small busy state
             row.querySelector(".cat-input").disabled = true;
-
-            await renameCategoryEverywhere(oldName, inputVal);
-
-            // If the renamed category was currently selected, update hidden select & button
-            if (categoryDropdown.value === oldName) {
-              setHiddenCategoryValue(inputVal);
-              catBtn.textContent = `${inputVal} ▾`;
+            await renameCategoryEverywhere(name, newVal);
+            if (categoryDropdown.value === name) {
+              setHiddenValue(categoryDropdown, newVal);
+              catBtn.textContent = `${newVal} ▾`;
             }
-
-            // Re-render dropdown list (will not show oldName anymore)
+            await loadCategories(categoryDropdown);
             await renderCustomCategoryDropdown();
             catPanel.style.display = "block";
           } catch (err) {
-            console.error(err);
-            alert("Rename failed: " + (err?.message || err));
-            // Re-render original state
-            await renderCustomCategoryDropdown();
-            catPanel.style.display = "block";
+            console.error(err); alert("Rename failed: " + (err?.message || err));
+            await renderCustomCategoryDropdown(); catPanel.style.display = "block";
           }
         }
       };
@@ -378,27 +321,91 @@ async function renderCustomCategoryDropdown() {
   };
 }
 
-function setHiddenCategoryValue(val) {
-  // Ensure the hidden select has this option; if not, add it
-  let opt = [...categoryDropdown.options].find(o => o.value === val);
-  if (!opt) {
-    opt = document.createElement("option");
-    opt.value = val;
-    opt.textContent = val;
-    categoryDropdown.appendChild(opt);
-  }
-  categoryDropdown.value = val;
+// Course
+async function renderCustomCourseDropdown() {
+  const courses = await fetchCourses();
+  const current = foodCourseDropdown.value || "";
+  const rows = courses.map(name => {
+    const checked = name === current ? "checked" : "";
+    return `
+      <div class="course-row" data-name="${name}">
+        <span class="course-check ${checked}" data-role="check"></span>
+        <span class="course-label" data-role="label" title="${name}">${name}</span>
+        <button class="course-btn" title="Edit" data-role="edit">✏️</button>
+      </div>
+    `;
+  }).join("");
+  coursePanel.innerHTML = rows;
+
+  coursePanel.onclick = async (e) => {
+    const row = e.target.closest(".course-row");
+    if (!row) return;
+    const role = e.target.getAttribute("data-role");
+    const name = row.getAttribute("data-name");
+
+    // select
+    if (role === "check" || role === "label") {
+      coursePanel.querySelectorAll(".course-check").forEach(c => c.classList.remove("checked"));
+      row.querySelector(".course-check").classList.add("checked");
+      setHiddenValue(foodCourseDropdown, name);
+      courseBtn.textContent = `${name} ▾`;
+      coursePanel.style.display = "none";
+      return;
+    }
+
+    // edit inline
+    if (role === "edit") {
+      row.innerHTML = `
+        <div class="inline-controls">
+          <input class="course-input" type="text" value="${name}" />
+          <button class="course-btn" data-role="save">✔</button>
+          <button class="course-btn" data-role="cancel">✖</button>
+        </div>
+      `;
+      row.onclick = async (ev) => {
+        const r = ev.target.getAttribute("data-role");
+        if (r === "cancel") { await renderCustomCourseDropdown(); coursePanel.style.display = "block"; return; }
+        if (r === "save") {
+          const newVal = row.querySelector(".course-input").value.trim();
+          if (!newVal) return alert("Enter a valid course");
+          if (newVal === name) { await renderCustomCourseDropdown(); coursePanel.style.display = "block"; return; }
+          try {
+            row.querySelector(".course-input").disabled = true;
+            await renameCourseEverywhere(name, newVal);
+            if (foodCourseDropdown.value === name) {
+              setHiddenValue(foodCourseDropdown, newVal);
+              courseBtn.textContent = `${newVal} ▾`;
+            }
+            await loadCourses(foodCourseDropdown);
+            await renderCustomCourseDropdown();
+            coursePanel.style.display = "block";
+          } catch (err) {
+            console.error(err); alert("Rename failed: " + (err?.message || err));
+            await renderCustomCourseDropdown(); coursePanel.style.display = "block";
+          }
+        }
+      };
+    }
+  };
 }
 
-// Toggle panel visibility
+// Helpers
+function setHiddenValue(selectEl, val) {
+  let opt = [...selectEl.options].find(o => o.value === val);
+  if (!opt) {
+    opt = document.createElement("option");
+    opt.value = val; opt.textContent = val;
+    selectEl.appendChild(opt);
+  }
+  selectEl.value = val;
+}
+
+// Toggle panel visibility + outside click
 if (catBtn && catPanel) {
-  catBtn.onclick = () => {
-    catPanel.style.display = (catPanel.style.display === "none" || !catPanel.style.display) ? "block" : "none";
-  };
-  // Close when clicking outside
-  document.addEventListener("click", (e) => {
-    if (!catPanel.contains(e.target) && !catBtn.contains(e.target)) {
-      catPanel.style.display = "none";
-    }
-  });
+  catBtn.onclick = () => { catPanel.style.display = (catPanel.style.display === "none" || !catPanel.style.display) ? "block" : "none"; };
+  document.addEventListener("click", (e) => { if (!catPanel.contains(e.target) && !catBtn.contains(e.target)) catPanel.style.display = "none"; });
+}
+if (courseBtn && coursePanel) {
+  courseBtn.onclick = () => { coursePanel.style.display = (coursePanel.style.display === "none" || !coursePanel.style.display) ? "block" : "none"; };
+  document.addEventListener("click", (e) => { if (!coursePanel.contains(e.target) && !courseBtn.contains(e.target)) coursePanel.style.display = "none"; });
 }
