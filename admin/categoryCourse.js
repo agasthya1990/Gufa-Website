@@ -1,4 +1,3 @@
-// categoryCourse.js
 import {
   collection,
   doc,
@@ -7,18 +6,16 @@ import {
   updateDoc,
   deleteDoc,
   query,
-  where
+  where,
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 import { db } from "./firebase.js";
 
-/** -------------------------
- *  Hidden-select loaders
- *  ------------------------- */
+/** ========== Hidden-select loaders ========== */
 export async function loadCategories(selectEl) {
   if (!selectEl) return;
   selectEl.innerHTML = '<option value="">-- Select Category --</option>';
   const snapshot = await getDocs(collection(db, "menuCategories"));
-  snapshot.forEach(d => {
+  snapshot.forEach((d) => {
     const opt = document.createElement("option");
     opt.value = d.id;
     opt.textContent = d.id;
@@ -29,7 +26,7 @@ export async function loadCourses(selectEl) {
   if (!selectEl) return;
   selectEl.innerHTML = '<option value="">-- Select Food Course --</option>';
   const snapshot = await getDocs(collection(db, "menuCourses"));
-  snapshot.forEach(d => {
+  snapshot.forEach((d) => {
     const opt = document.createElement("option");
     opt.value = d.id;
     opt.textContent = d.id;
@@ -37,25 +34,21 @@ export async function loadCourses(selectEl) {
   });
 }
 
-/** -------------------------
- *  List fetchers (arrays)
- *  ------------------------- */
+/** ========== List fetchers (arrays) ========== */
 export async function fetchCategories() {
   const out = [];
   const snapshot = await getDocs(collection(db, "menuCategories"));
-  snapshot.forEach(d => out.push(d.id));
+  snapshot.forEach((d) => out.push(d.id));
   return out;
 }
 export async function fetchCourses() {
   const out = [];
   const snapshot = await getDocs(collection(db, "menuCourses"));
-  snapshot.forEach(d => out.push(d.id));
+  snapshot.forEach((d) => out.push(d.id));
   return out;
 }
 
-/** -------------------------
- *  Add new (from text inputs)
- *  ------------------------- */
+/** ========== Add new entries ========== */
 export async function addCategory(input, after) {
   const value = (input?.value || "").trim();
   if (!value) return alert("Enter category");
@@ -71,45 +64,53 @@ export async function addCourse(input, after) {
   if (after) after();
 }
 
-/** -------------------------
- *  Rename everywhere (safe)
- *  ------------------------- */
+/** ========== Rename everywhere (safe) ========== */
 export async function renameCategoryEverywhere(oldName, newName) {
   const newId = (newName || "").trim();
   if (!newId || newId === oldName) return;
 
-  // 1) Create / overwrite new category doc
+  // 1) Upsert new category doc
   await setDoc(doc(db, "menuCategories", newId), { name: newId });
 
-  // 2) Migrate all menuItems.category = oldName -> newId
+  // 2) Migrate items
   const q = query(collection(db, "menuItems"), where("category", "==", oldName));
   const snap = await getDocs(q);
-  const updates = [];
-  snap.forEach(s => updates.push(updateDoc(s.ref, { category: newId })));
-  await Promise.all(updates);
+  const ops = [];
+  snap.forEach((s) => ops.push(updateDoc(s.ref, { category: newId })));
+  await Promise.all(ops);
 
-  // 3) Delete old category doc so it doesn't show again
-  if (newId !== oldName) {
-    await deleteDoc(doc(db, "menuCategories", oldName));
-  }
+  // 3) Delete old doc
+  if (newId !== oldName) await deleteDoc(doc(db, "menuCategories", oldName));
 }
-// DELETE category: remove doc + blank out category on linked menuItems (do NOT delete items)
+export async function renameCourseEverywhere(oldName, newName) {
+  const newId = (newName || "").trim();
+  if (!newId || newId === oldName) return;
+
+  await setDoc(doc(db, "menuCourses", newId), { name: newId });
+
+  const q = query(collection(db, "menuItems"), where("foodCourse", "==", oldName));
+  const snap = await getDocs(q);
+  const ops = [];
+  snap.forEach((s) => ops.push(updateDoc(s.ref, { foodCourse: newId })));
+  await Promise.all(ops);
+
+  if (newId !== oldName) await deleteDoc(doc(db, "menuCourses", oldName));
+}
+
+/** ========== Delete everywhere (non-destructive) ========== */
+// Clears the field on items; DOES NOT delete items.
 export async function deleteCategoryEverywhere(name) {
   const id = (name || "").trim();
   if (!id) return;
 
-  // 1) Blank out all items using this category
   const q = query(collection(db, "menuItems"), where("category", "==", id));
   const snap = await getDocs(q);
   const ops = [];
-  snap.forEach(s => ops.push(updateDoc(s.ref, { category: "" })));
+  snap.forEach((s) => ops.push(updateDoc(s.ref, { category: "" })));
   await Promise.all(ops);
 
-  // 2) Delete category doc
   await deleteDoc(doc(db, "menuCategories", id));
 }
-
-// DELETE course: remove doc + blank out foodCourse on linked menuItems (do NOT delete items)
 export async function deleteCourseEverywhere(name) {
   const id = (name || "").trim();
   if (!id) return;
@@ -117,28 +118,8 @@ export async function deleteCourseEverywhere(name) {
   const q = query(collection(db, "menuItems"), where("foodCourse", "==", id));
   const snap = await getDocs(q);
   const ops = [];
-  snap.forEach(s => ops.push(updateDoc(s.ref, { foodCourse: "" })));
+  snap.forEach((s) => ops.push(updateDoc(s.ref, { foodCourse: "" })));
   await Promise.all(ops);
 
   await deleteDoc(doc(db, "menuCourses", id));
-}
-
-export async function renameCourseEverywhere(oldName, newName) {
-  const newId = (newName || "").trim();
-  if (!newId || newId === oldName) return;
-
-  // 1) Create / overwrite new course doc
-  await setDoc(doc(db, "menuCourses", newId), { name: newId });
-
-  // 2) Migrate all menuItems.foodCourse = oldName -> newId
-  const q = query(collection(db, "menuItems"), where("foodCourse", "==", oldName));
-  const snap = await getDocs(q);
-  const updates = [];
-  snap.forEach(s => updates.push(updateDoc(s.ref, { foodCourse: newId })));
-  await Promise.all(updates);
-
-  // 3) Delete old course doc so it doesn't show again
-  if (newId !== oldName) {
-    await deleteDoc(doc(db, "menuCourses", oldName));
-  }
 }
