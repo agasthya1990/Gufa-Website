@@ -93,6 +93,35 @@ export async function renameCategoryEverywhere(oldName, newName) {
     await deleteDoc(doc(db, "menuCategories", oldName));
   }
 }
+// DELETE category: remove doc + blank out category on linked menuItems (do NOT delete items)
+export async function deleteCategoryEverywhere(name) {
+  const id = (name || "").trim();
+  if (!id) return;
+
+  // 1) Blank out all items using this category
+  const q = query(collection(db, "menuItems"), where("category", "==", id));
+  const snap = await getDocs(q);
+  const ops = [];
+  snap.forEach(s => ops.push(updateDoc(s.ref, { category: "" })));
+  await Promise.all(ops);
+
+  // 2) Delete category doc
+  await deleteDoc(doc(db, "menuCategories", id));
+}
+
+// DELETE course: remove doc + blank out foodCourse on linked menuItems (do NOT delete items)
+export async function deleteCourseEverywhere(name) {
+  const id = (name || "").trim();
+  if (!id) return;
+
+  const q = query(collection(db, "menuItems"), where("foodCourse", "==", id));
+  const snap = await getDocs(q);
+  const ops = [];
+  snap.forEach(s => ops.push(updateDoc(s.ref, { foodCourse: "" })));
+  await Promise.all(ops);
+
+  await deleteDoc(doc(db, "menuCourses", id));
+}
 
 export async function renameCourseEverywhere(oldName, newName) {
   const newId = (newName || "").trim();
