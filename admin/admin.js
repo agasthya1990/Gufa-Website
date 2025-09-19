@@ -23,6 +23,9 @@ import {
   getDownloadURL
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
 
+// Import category management helpers
+import { loadCategories, renderCategoryList, addCategory } from "./categoryCourse.js";
+
 // Storage ref
 const storage = getStorage(undefined, "gs://gufa-restaurant.firebasestorage.app");
 
@@ -57,6 +60,9 @@ const addCourseBtn = document.getElementById("addCourseBtn");
 
 const foodTypeSelect = document.getElementById("foodType");
 
+// Optional container for category list (if present in HTML)
+const categoryListContainer = document.getElementById("categoryList");
+
 // Auth login/logout
 loginBtn.onclick = () => {
   signInWithEmailAndPassword(auth, email.value, password.value)
@@ -73,7 +79,13 @@ onAuthStateChanged(auth, user => {
   if (user) {
     loginBox.style.display = "none";
     adminContent.style.display = "block";
-    loadCategories();
+
+    // Categories via helper
+    loadCategories(categoryDropdown);
+    if (categoryListContainer) {
+      renderCategoryList(categoryListContainer);
+    }
+
     loadCourses();
     renderMenuItems();
   } else {
@@ -89,24 +101,13 @@ qtyTypeSelect.onchange = () => {
   halfPrice.style.display = fullPrice.style.display = value === "Half & Full" ? "block" : "none";
 };
 
-// Category add/load
-addCategoryBtn.onclick = async () => {
-  const newCat = newCategoryInput.value.trim();
-  if (!newCat) return alert("Enter a category");
-  await setDoc(doc(db, "menuCategories", newCat), { name: newCat });
-  newCategoryInput.value = "";
-  loadCategories();
+// Add Category (using helper)
+addCategoryBtn.onclick = () => {
+  addCategory(newCategoryInput, () => loadCategories(categoryDropdown));
+  if (categoryListContainer) {
+    renderCategoryList(categoryListContainer);
+  }
 };
-async function loadCategories() {
-  categoryDropdown.innerHTML = '<option value="">-- Select Category --</option>';
-  const snapshot = await getDocs(collection(db, "menuCategories"));
-  snapshot.forEach(doc => {
-    const opt = document.createElement("option");
-    opt.value = doc.id;
-    opt.textContent = doc.id;
-    categoryDropdown.appendChild(opt);
-  });
-}
 
 // Food Course add/load
 addCourseBtn.onclick = async () => {
