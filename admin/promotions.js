@@ -2,13 +2,94 @@
 import { db } from "./firebase.js";
 import {
   collection, doc, setDoc, updateDoc, deleteDoc, onSnapshot,
-  serverTimestamp, query, orderBy, getDoc
+  serverTimestamp, query, orderBy
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 import {
-  getStorage, ref, uploadBytes, getDownloadURL
+  getStorage, ref as storageRef, uploadBytes, getDownloadURL
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
 
 const storage = getStorage(undefined, "gs://gufa-restaurant.firebasestorage.app");
+
+/* =========================
+   Banner resize parameters
+   ========================= */
+const BANNER_W = 1600;  // common wide hero/banner
+const BANNER_H = 600;
+const BANNER_MIME = "image/jpeg";
+const BANNER_QUALITY = 0.85;
+const MAX_UPLOAD_MB = 10;
+
+/* ============ Helpers ============ */
+function isImage(file) {
+  return file && /^image\//i.test(file.type);
+}
+
+function fileTooLarge(file) {
+  return file && file.size > MAX_UPLOAD_MB * 1024 * 1024;
+}
+
+function fileToImage(file) {
+  return new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onload = e => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = reject;
+      img.src = e.target.result;
+    };
+    fr.onerror = reject;
+    fr.readAsDataURL(file);
+  });
+}
+
+/**
+ * Cover-crops any image to BANNER_W × BANNER_H and returns a JPEG Blob.
+ * - Fills background white (for PNG transparency).
+ */
+async function resizeToBannerBlob(file) {
+  const img = await fileToImage(file);
+
+  // Compute source crop (cover)
+  const sw = img.naturalWidth || img.width;
+  const sh = img.naturalHeight || img.height;
+  const targetRatio = BANNER_W / BANNER_H;
+  const srcRatio = sw / sh;
+
+  let sx, sy, sWidth, sHeight;
+  if (srcRatio > targetRatio) {
+    // source wider -> crop sides
+    sHeight = sh;
+    sWidth = Math.round(sh * targetRatio);
+    sx = Math.round((sw - sWidth) / 2);
+    sy = 0;
+  } else {
+    // source taller/narrower -> crop top/bottom
+    sWidth = sw;
+    sHeight = Math.round(sw / targetRatio);
+    sx = 0;
+    sy = Math.round((sh - sHeight) / 2);
+  }
+
+  // Draw
+  const canvas = document.createElement("canvas");
+  canvas.width = BANNER_W;
+  canvas.height = BANNER_H;
+  const ctx = canvas.getContext("2d");
+
+  // White background for transparent PNGs
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  ctx.drawImage(img, sx, sy, sWidth, sHeight, 0, 0, BANNER_W, BANNER_H);
+
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      blob => (blob ? resolve(blob) : reject(new Error("Failed to generate banner blob"))),
+      BANNER_MIME,
+      BANNER_QUALITY
+    );
+  });
+}
 
 /* ============ UI bootstrap ============ */
 export function initPromotions() {
@@ -23,7 +104,10 @@ export function initPromotions() {
       <h3 style="margin:0 0 8px">Coupons</h3>
       <div class="adm-form-grid" id="couponForm">
         <input id="cCode" class="adm-input" placeholder="CODE (e.g., WELCOME10)" />
-        <select id="cType" class="adm-select"><option value="percent">% off</option><option value="flat">Flat ₹</option></select>
+        <select id="cType" class="adm-select">
+          <option value="percent">% off</option>
+          <option value="flat">Flat ₹</option>
+        </select>
         <input id="cValue" type="number" class="adm-input" placeholder="Value" />
         <input id="cMin" type="number" class="adm-input" placeholder="Min Order (₹)" />
         <input id="cUsage" type="number" class="adm-input" placeholder="Usage Limit (optional)" />
@@ -44,6 +128,9 @@ export function initPromotions() {
 
     <div class="adm-card" style="margin:12px 0">
       <h3 style="margin:0 0 8px">Banners</h3>
+      <div class="adm-muted" style="margin:-6px 0 8px">
+        Recommended size <strong>${BANNER_W}×${BANNER_H}</strong> (we'll auto-crop & resize).
+      </div>
       <div class="adm-form-grid" id="bannerForm">
         <input id="bTitle" class="adm-input full" placeholder="Banner title" />
         <input id="bLink" class="adm-input full" placeholder="Link URL (optional)" />
@@ -63,66 +150,115 @@ export function initPromotions() {
     </div>
   `;
 
-  // Save coupon
-  root.querySelector("#cSave").onclick = async () => {
+  // --- Save coupon ---
+  const cSaveBtn = root.querySelector("#cSave");
+  cSaveBtn.onclick = async () => {
     const code = root.querySelector("#cCode").value.trim().toUpperCase();
     const type = root.querySelector("#cType").value;
     const value = parseFloat(root.querySelector("#cValue").value);
     const minOrder = parseFloat(root.querySelector("#cMin").value) || 0;
-    const usageLimit = parseInt(root.querySelector("#cUsage").value || "0", 10) || null;
-    const perUserLimit = parseInt(root.querySelector("#cUserLimit").value || "0", 10) || null;
+    const usageLimitRaw = root.querySelector("#cUsage").value.trim();
+    const perUserLimitRaw = root.querySelector("#cUserLimit").value.trim();
+    const usageLimit = usageLimitRaw ? parseInt(usageLimitRaw, 10) : null;
+    const perUserLimit = perUserLimitRaw ? parseInt(perUserLimitRaw, 10) : null;
     const active = root.querySelector("#cActive").checked;
-    if (!code || isNaN(value) || value <= 0) return alert("Enter valid coupon details");
 
-    const ref = doc(collection(db, "promotions"));
-    await setDoc(ref, {
-      kind: "coupon", code, type, value, minOrder, usageLimit, perUserLimit, active,
-      createdAt: serverTimestamp(), updatedAt: serverTimestamp()
-    });
-    root.querySelectorAll("#couponForm input").forEach(i=> i.value = "");
-    root.querySelector("#cActive").checked = true;
+    if (!code || isNaN(value) || value <= 0) return alert("Enter valid coupon details");
+    if (type === "percent" && value > 95) {
+      if (!confirm("Percent seems high. Continue?")) return;
+    }
+
+    try {
+      cSaveBtn.disabled = true;
+      const promoRef = doc(collection(db, "promotions"));
+      await setDoc(promoRef, {
+        kind: "coupon",
+        code, type, value, minOrder, usageLimit, perUserLimit, active,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+
+      // reset
+      root.querySelector("#couponForm").reset();
+      root.querySelector("#cActive").checked = true;
+    } catch (e) {
+      console.error(e);
+      alert("Failed to save coupon: " + (e?.message || e));
+    } finally {
+      cSaveBtn.disabled = false;
+    }
   };
 
-  // Save banner
-  root.querySelector("#bSave").onclick = async () => {
+  // --- Save banner (with resize) ---
+  const bSaveBtn = root.querySelector("#bSave");
+  bSaveBtn.onclick = async () => {
     const title = root.querySelector("#bTitle").value.trim();
     const linkUrl = root.querySelector("#bLink").value.trim();
     const file = root.querySelector("#bFile").files[0];
     const active = root.querySelector("#bActive").checked;
+
     if (!title || !file) return alert("Title & image required");
+    if (!isImage(file)) return alert("Please choose an image file");
+    if (fileTooLarge(file)) return alert(`Image is too large (>${MAX_UPLOAD_MB} MB). Choose a smaller file.`);
+
     try {
-      const refImg = ref(storage, `promoBanners/${Date.now()}_${file.name}`);
-      await uploadBytes(refImg, file);
-      const imageUrl = await getDownloadURL(refImg);
-      const ref = doc(collection(db, "promotions"));
-      await setDoc(ref, {
-        kind: "banner", title, linkUrl, imageUrl, active,
-        createdAt: serverTimestamp(), updatedAt: serverTimestamp()
+      bSaveBtn.disabled = true;
+
+      // Resize to banner blob
+      const bannerBlob = await resizeToBannerBlob(file);
+
+      // Upload with caching metadata
+      const path = `promoBanners/${Date.now()}_${file.name.replace(/\s+/g, "_")}`;
+      const imgRef = storageRef(storage, path);
+      await uploadBytes(imgRef, bannerBlob, {
+        contentType: BANNER_MIME,
+        cacheControl: "public, max-age=31536000, immutable"
       });
-      root.querySelectorAll("#bannerForm input").forEach(i=> i.value = "");
+      const imageUrl = await getDownloadURL(imgRef);
+
+      const promoRef = doc(collection(db, "promotions"));
+      await setDoc(promoRef, {
+        kind: "banner",
+        title, linkUrl, imageUrl, active,
+        bannerSize: { w: BANNER_W, h: BANNER_H }, // helpful downstream
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+
+      // reset
+      root.querySelector("#bannerForm").reset();
       root.querySelector("#bActive").checked = true;
-    } catch (e) { alert(e.message); }
+    } catch (e) {
+      console.error(e);
+      alert("Failed to save banner: " + (e?.message || e));
+    } finally {
+      bSaveBtn.disabled = false;
+    }
   };
 
-  // Live lists
+  // --- Live lists (coupons & banners) ---
   const bodyC = root.querySelector("#couponsBody");
   const bodyB = root.querySelector("#bannersBody");
-  const qAll = query(collection(db,"promotions"), orderBy("createdAt","desc"));
-  onSnapshot(qAll, (snap)=>{
-    bodyC.innerHTML = ""; bodyB.innerHTML = "";
-    snap.forEach(d=>{
+  const qAll = query(collection(db, "promotions"), orderBy("createdAt", "desc"));
+
+  onSnapshot(qAll, (snap) => {
+    bodyC.innerHTML = "";
+    bodyB.innerHTML = "";
+    snap.forEach(d => {
       const p = d.data();
       if (p.kind === "coupon") {
         const tr = document.createElement("tr");
         tr.innerHTML = `
           <td>${p.code}</td>
           <td>${p.type}</td>
-          <td>${p.type==="percent" ? p.value+"%" : "₹"+p.value}</td>
+          <td>${p.type === "percent" ? p.value + "%" : "₹" + p.value}</td>
           <td>${p.minOrder || 0}</td>
-          <td>${p.usageLimit || "-"}/${p.perUserLimit || "-"}</td>
-          <td>${p.active ? '<span class="adm-badge adm-badge--ok">Active</span>' : '<span class="adm-badge adm-badge--muted">Disabled</span>'}</td>
+          <td>${p.usageLimit ?? "-"} / ${p.perUserLimit ?? "-"}</td>
+          <td>${p.active
+            ? '<span class="adm-badge adm-badge--ok">Active</span>'
+            : '<span class="adm-badge adm-badge--muted">Disabled</span>'}</td>
           <td>
-            <button class="adm-btn toggle" data-id="${d.id}" data-active="${p.active}">${p.active?"Disable":"Enable"}</button>
+            <button class="adm-btn toggle" data-id="${d.id}" data-active="${p.active}">${p.active ? "Disable" : "Enable"}</button>
             <button class="adm-btn adm-btn--danger del" data-id="${d.id}">Delete</button>
           </td>
         `;
@@ -130,12 +266,14 @@ export function initPromotions() {
       } else if (p.kind === "banner") {
         const tr = document.createElement("tr");
         tr.innerHTML = `
-          <td><img src="${p.imageUrl}" style="width:90px;height:auto;border-radius:8px;border:1px solid #eee"/></td>
+          <td><img src="${p.imageUrl}" style="width:180px;height:auto;border-radius:8px;border:1px solid #eee"/></td>
           <td>${p.title}</td>
-          <td><a href="${p.linkUrl||'#'}" target="_blank">${p.linkUrl||"-"}</a></td>
-          <td>${p.active ? '<span class="adm-badge adm-badge--ok">Active</span>' : '<span class="adm-badge adm-badge--muted">Disabled</span>'}</td>
+          <td>${p.linkUrl ? `<a href="${p.linkUrl}" target="_blank" rel="noopener">Link</a>` : "-"}</td>
+          <td>${p.active
+            ? '<span class="adm-badge adm-badge--ok">Active</span>'
+            : '<span class="adm-badge adm-badge--muted">Disabled</span>'}</td>
           <td>
-            <button class="adm-btn toggle" data-id="${d.id}" data-active="${p.active}">${p.active?"Disable":"Enable"}</button>
+            <button class="adm-btn toggle" data-id="${d.id}" data-active="${p.active}">${p.active ? "Disable" : "Enable"}</button>
             <button class="adm-btn adm-btn--danger del" data-id="${d.id}">Delete</button>
           </td>
         `;
@@ -143,21 +281,43 @@ export function initPromotions() {
       }
     });
 
-    root.querySelectorAll(".toggle").forEach(btn=>{
-      btn.onclick = async ()=>{
-        const id = btn.dataset.id; const next = btn.dataset.active !== "true";
-        await updateDoc(doc(db,"promotions",id), { active: next, updatedAt: serverTimestamp() });
+    // Toggle active
+    root.querySelectorAll(".toggle").forEach(btn => {
+      btn.onclick = async () => {
+        const id = btn.dataset.id;
+        const next = btn.dataset.active !== "true";
+        try {
+          btn.disabled = true;
+          await updateDoc(doc(db, "promotions", id), { active: next, updatedAt: serverTimestamp() });
+        } catch (e) {
+          console.error(e);
+          alert("Failed to toggle: " + (e?.message || e));
+        } finally {
+          btn.disabled = false;
+        }
       };
     });
-    root.querySelectorAll(".del").forEach(btn=>{
-      btn.onclick = async ()=>{
+
+    // Delete
+    root.querySelectorAll(".del").forEach(btn => {
+      btn.onclick = async () => {
         const id = btn.dataset.id;
-        if (confirm("Delete this promotion?")) await deleteDoc(doc(db,"promotions",id));
+        if (!confirm("Delete this promotion?")) return;
+        try {
+          btn.disabled = true;
+          await deleteDoc(doc(db, "promotions", id));
+        } catch (e) {
+          console.error(e);
+          alert("Failed to delete: " + (e?.message || e));
+        } finally {
+          btn.disabled = false;
+        }
       };
     });
   });
 }
 
 /* Auto-init if container exists */
-(function(){ if (document.getElementById("promotionsRoot")) initPromotions(); })();
-
+(function () {
+  if (document.getElementById("promotionsRoot")) initPromotions();
+})();
