@@ -1,13 +1,13 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>GUFA – Home</title>
-  <link rel="stylesheet" href="customer/styles.css">
+  <!-- NOTE: styles.css lives inside /customer -->
+  <link rel="stylesheet" href="customer/styles.css" />
 </head>
 <body>
-
   <!-- Header / Navbar -->
   <header class="site-header">
     <div class="logo">GUFA</div>
@@ -20,20 +20,19 @@
     </nav>
   </header>
 
-  <!-- Hero / Banner -->
-  <section id="hero">
-    <div class="banner">
+  <!-- Hero: transparent so BODY background image is visible -->
+  <section id="hero" class="hero">
+    <div class="hero-inner">
       <h1>Welcome to GUFA</h1>
       <p>Delicious food delivered to your doorstep</p>
     </div>
   </section>
 
-  <!-- Menu Section -->
+  <!-- Menu Section (placeholder for now) -->
   <main>
     <section id="menu">
       <h2>Our Menu</h2>
 
-      <!-- Filters -->
       <div class="filters">
         <select id="filter-category">
           <option value="">All Categories</option>
@@ -46,24 +45,19 @@
           <option>Veg</option>
           <option>Non-Veg</option>
         </select>
-        <input type="text" id="filter-search" placeholder="Search dishes...">
+        <input type="text" id="filter-search" placeholder="Search dishes..." />
       </div>
 
-      <!-- Menu Grid -->
       <div class="menu-grid">
-        <!-- Item cards will be injected here -->
         <div class="menu-item placeholder">Sample Dish Card</div>
       </div>
     </section>
   </main>
 
-  <!-- Footer -->
   <footer id="contact">
     <p>📍 Address: Your restaurant address here</p>
     <p>📞 Phone: +91 99999 99999</p>
     <p>&copy; 2025 GUFA – All Rights Reserved</p>
   </footer>
-
 </body>
 </html>
-
