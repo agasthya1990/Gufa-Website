@@ -2,9 +2,10 @@ body {
   font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   font-size: 16px;
   line-height: 1.5;
-  color: #1f2937;
+  color: #1f2937; /* dark gray */
   background: url("../images/background.jpg") center/cover no-repeat fixed;
 }
+
 
 /* Reset */
 * { box-sizing: border-box; margin: 0; padding: 0; }
