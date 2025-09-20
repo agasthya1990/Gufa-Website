@@ -1,1 +1,111 @@
+/* Reset */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+  color: #1f2937; /* dark gray */
+  background: #fafafa;
+}
+
+/* Header / Navbar */
+.site-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 24px;
+  background: #ffffff;
+  border-bottom: 1px solid #e5e7eb;
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+}
+.site-header .logo {
+  font-size: 22px;
+  font-weight: 700;
+  color: #2563eb; /* blue */
+}
+.site-header .nav-links a {
+  margin-left: 16px;
+  text-decoration: none;
+  color: #374151;
+  font-weight: 500;
+}
+.site-header .nav-links a.active,
+.site-header .nav-links a:hover {
+  color: #2563eb;
+}
+
+/* Hero Banner */
+#hero {
+  background: url("https://via.placeholder.com/1600x400?text=GUFA+Hero+Banner") center/cover no-repeat;
+  padding: 80px 20px;
+  text-align: center;
+  color: white;
+}
+#hero .banner h1 {
+  font-size: 42px;
+  font-weight: 800;
+  margin-bottom: 10px;
+}
+#hero .banner p {
+  font-size: 20px;
+  font-weight: 400;
+}
+
+/* Menu Section */
+main {
+  max-width: 1200px;
+  margin: 32px auto;
+  padding: 0 16px;
+}
+#menu h2 {
+  font-size: 28px;
+  margin-bottom: 16px;
+  text-align: center;
+}
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.filters select,
+.filters input {
+  padding: 8px 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  flex: 1 1 160px;
+}
+
+/* Menu Grid */
+.menu-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 16px;
+}
+.menu-item {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  padding: 16px;
+  text-align: center;
+  box-shadow: 0 4px 10px rgba(0,0,0,.05);
+}
+.menu-item.placeholder {
+  color: #6b7280;
+  font-style: italic;
+}
+
+/* Footer */
+footer {
+  background: #111827;
+  color: #d1d5db;
+  text-align: center;
+  padding: 24px 16px;
+  margin-top: 40px;
+}
+footer p {
+  margin: 6px 0;
+}
 
