@@ -1,3 +1,11 @@
+/* ---- Base / Reset ---- */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+
+/* ---- Body with site-wide background image ----
+   IMPORTANT: The path is relative to THIS file (/customer/styles.css).
+   It goes up one level into /images/background.jpg
+*/
 body {
   font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   font-size: 16px;
@@ -6,28 +14,29 @@ body {
   background: url("../images/background.jpg") center/cover no-repeat fixed;
 }
 
-
-/* Reset */
-* { box-sizing: border-box; margin: 0; padding: 0; }
-body {
-  font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  font-size: 16px;
-  line-height: 1.5;
-  color: #1f2937; /* dark gray */
-  background: #fafafa;
+/* Optional readability overlay (tweak opacity as needed) */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.68); /* soften the bg so text is readable */
+  pointer-events: none;
+  z-index: 0;
 }
 
-/* Header / Navbar */
+/* ---- Layout wrappers ---- */
+main { position: relative; z-index: 1; } /* keep above overlay */
+.site-header { position: sticky; top: 0; z-index: 2; }
+
+/* ---- Header / Navbar ---- */
 .site-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding: 12px 24px;
-  background: #ffffff;
+  backdrop-filter: blur(6px);
+  background: rgba(255,255,255,0.8);
   border-bottom: 1px solid #e5e7eb;
-  position: sticky;
-  top: 0;
-  z-index: 1000;
 }
 .site-header .logo {
   font-size: 22px;
@@ -45,29 +54,37 @@ body {
   color: #2563eb;
 }
 
-/* Hero Banner */
-#hero {
-  background: url("https://via.placeholder.com/1600x400?text=GUFA+Hero+Banner") center/cover no-repeat;
+/* ---- Hero (transparent so body bg shows through) ---- */
+.hero {
   padding: 80px 20px;
   text-align: center;
-  color: white;
+  background: transparent; /* no image here, let BODY show */
 }
-#hero .banner h1 {
+.hero-inner {
+  display: inline-block;
+  padding: 20px 28px;
+  border-radius: 14px;
+  background: rgba(255,255,255,0.75);
+  box-shadow: 0 8px 28px rgba(0,0,0,0.08);
+}
+.hero h1 {
   font-size: 42px;
   font-weight: 800;
   margin-bottom: 10px;
 }
-#hero .banner p {
+.hero p {
   font-size: 20px;
   font-weight: 400;
 }
 
-/* Menu Section */
+/* ---- Content ---- */
 main {
   max-width: 1200px;
   margin: 32px auto;
   padding: 0 16px;
 }
+
+/* ---- Menu Section ---- */
 #menu h2 {
   font-size: 28px;
   margin-bottom: 16px;
@@ -85,16 +102,17 @@ main {
   border: 1px solid #d1d5db;
   border-radius: 6px;
   flex: 1 1 160px;
+  background: rgba(255,255,255,0.95);
 }
 
-/* Menu Grid */
+/* ---- Menu Grid ---- */
 .menu-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
   gap: 16px;
 }
 .menu-item {
-  background: #fff;
+  background: rgba(255,255,255,0.95);
   border: 1px solid #e5e7eb;
   border-radius: 10px;
   padding: 16px;
@@ -106,15 +124,14 @@ main {
   font-style: italic;
 }
 
-/* Footer */
+/* ---- Footer ---- */
 footer {
-  background: #111827;
+  background: rgba(17,24,39,0.92);
   color: #d1d5db;
   text-align: center;
   padding: 24px 16px;
   margin-top: 40px;
+  position: relative;
+  z-index: 1;
 }
-footer p {
-  margin: 6px 0;
-}
-
+footer p { margin: 6px 0; }
