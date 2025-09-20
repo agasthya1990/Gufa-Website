@@ -2,178 +2,299 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>GUFA Admin Panel</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>GUFA Admin</title>
+
+  <!-- Primary stylesheet (absolute path so it works from anywhere) -->
   <link rel="stylesheet" href="/admin/style.admin.css" />
+
+  <!-- Minimal inline styles to ensure tabs look fine even if the CSS file is not yet deployed -->
   <style>
-    /* Hide native selects but keep them for form value + validation */
+    /* Tabs */
+    .adm-tabs { display:flex; gap:10px; border-bottom:1px solid #e5e7eb; margin:16px 0; flex-wrap:wrap; }
+    .adm-tablink {
+      appearance:none; border:0; background:transparent; padding:10px 12px; cursor:pointer; 
+      font-weight:700; border-bottom:3px solid transparent;
+    }
+    .adm-tablink.is-active { border-color:#2563eb; color:#2563eb; }
+    .adm-tabpanel { display:none; gap:12px; }
+    .adm-tabpanel.is-active { display:block; }
+
+    /* Keep native selects hidden (custom dropdowns render next to them) */
     #itemCategory, #foodCourse, #addonsSelect {
-      position: absolute !important;
-      left: -9999px !important;
-      width: 1px !important;
-      height: 1px !important;
-      opacity: 0 !important;
+      position:absolute !important; left:-9999px !important; width:1px !important; height:1px !important; opacity:0 !important;
     }
 
-    .cat-row, .course-row { display:flex; align-items:center; gap:8px; padding:6px 4px; border-radius:6px; }
-    .cat-row:hover, .course-row:hover { background:#f7f7f7; }
-    .cat-check, .course-check { width:16px; height:16px; border:1px solid #aaa; border-radius:3px; display:inline-block; position:relative; cursor:pointer; }
-    .cat-check.checked::after, .course-check.checked::after {
+    /* Category/Course/Add-on list rows */
+    .cat-row, .course-row, .addon-row { display:flex; align-items:center; gap:8px; padding:6px 4px; border-radius:6px; }
+    .cat-row:hover, .course-row:hover, .addon-row:hover { background:#f7f7f7; }
+    .cat-check, .course-check, .addon-check {
+      width:16px; height:16px; border:1px solid #aaa; border-radius:3px; display:inline-block; position:relative; cursor:pointer;
+    }
+    .cat-check.checked::after, .course-check.checked::after, .addon-check.checked::after {
       content:""; position:absolute; left:3px; top:1px; width:8px; height:12px; border-right:2px solid #222; border-bottom:2px solid #222; transform:rotate(45deg);
     }
-    .cat-label, .course-label { flex:1; cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-    .cat-btn, .course-btn { background:none; border:none; cursor:pointer; font-size:14px; }
+    .cat-label, .course-label, .addon-label { flex:1; cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .cat-btn, .course-btn, .addon-btn { background:none; border:none; cursor:pointer; font-size:14px; }
     .inline-controls { display:flex; align-items:center; gap:8px; width:100%; }
-    .cat-input, .course-input { width:100%; padding:4px 6px; }
 
     .dropdown-wrap { position:relative; display:inline-block; margin-left:8px; }
     .dropdown-panel { display:none; position:absolute; z-index:10; background:#fff; border:1px solid #ddd; border-radius:6px; padding:8px; min-width:240px; max-height:240px; overflow:auto; }
-
-    /* Add-ons UI */
-    .addon-row { display:flex; align-items:center; gap:8px; padding:6px 4px; border-radius:6px; }
-    .addon-row:hover { background:#f7f7f7; }
-    .addon-check { width:16px; height:16px; border:1px solid #aaa; border-radius:3px; display:inline-block; position:relative; cursor:pointer; }
-    .addon-check.checked::after { content:""; position:absolute; left:3px; top:1px; width:8px; height:12px; border-right:2px solid #222; border-bottom:2px solid #222; transform:rotate(45deg); }
-    .addon-label { flex:1; cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-    .addon-btn { background:none; border:none; cursor:pointer; font-size:14px; }
   </style>
 </head>
 <body>
+  <!-- Login -->
   <h2>Admin Login</h2>
-  <div id="loginBox">
-    <input type="email" id="email" placeholder="Email" />
-    <input type="password" id="password" placeholder="Password" />
-    <button id="loginBtn">Login</button>
-  </div>
-
-  <div id="adminContent" style="display: none;">
-    <h3>Welcome, Admin!</h3>
-    <button id="logoutBtn">Logout</button>
-
-    <h3>Add New Menu Item</h3>
-    <form id="menuForm">
-      <input type="text" id="itemName" placeholder="Item Name" required /><br />
-      <input type="text" id="itemDescription" placeholder="Description" required /><br />
-
-      <!-- Category (hidden select + custom dropdown) -->
-      <select id="itemCategory" required>
-        <option value="">-- Select Category --</option>
-      </select>
-      <div class="dropdown-wrap">
-        <button type="button" id="categoryDropdownBtn">Select Category ▾</button>
-        <div id="categoryDropdownPanel" class="dropdown-panel"><!-- injected --></div>
-      </div>
-      <input type="text" id="newCategoryInput" placeholder="Add New Category" />
-      <button type="button" id="addCategoryBtn">Add Category</button><br />
-
-      <!-- Food Course (hidden select + custom dropdown) -->
-      <select id="foodCourse" required>
-        <option value="">-- Select Food Course --</option>
-      </select>
-      <div class="dropdown-wrap">
-        <button type="button" id="courseDropdownBtn">Select Course ▾</button>
-        <div id="courseDropdownPanel" class="dropdown-panel"><!-- injected --></div>
-      </div>
-      <input type="text" id="newCourseInput" placeholder="Add New Food Course" />
-      <button type="button" id="addCourseBtn">Add Course</button><br />
-
-      <!-- Add-ons (hidden multi-select + custom dropdown + add) -->
-      <select id="addonsSelect" multiple></select>
-      <div class="dropdown-wrap">
-        <button type="button" id="addonDropdownBtn">Select Add-ons ▾</button>
-        <div id="addonDropdownPanel" class="dropdown-panel"><!-- injected --></div>
-      </div>
-      <input type="text" id="newAddonInput" placeholder="Add New Add-on" />
-      <button type="button" id="addAddonBtn">Add Add-on</button><br />
-
-      <!-- Food Type -->
-      <select id="foodType" required>
-        <option value="">-- Select Food Type --</option>
-        <option value="Veg">Veg</option>
-        <option value="Non-Veg">Non-Veg</option>
-      </select><br />
-
-      <!-- Quantity Type -->
-      <select id="qtyType" required>
-        <option value="">-- Select Qty Type --</option>
-        <option value="Not Applicable">Not Applicable</option>
-        <option value="Half & Full">Half & Full</option>
-      </select><br />
-
-      <input type="number" id="itemPrice" placeholder="Price" style="display:none;" /><br />
-      <input type="number" id="halfPrice" placeholder="Half Price" style="display:none;" /><br />
-      <input type="number" id="fullPrice" placeholder="Full Price" style="display:none;" /><br />
-
-      <!-- Image Upload -->
-      <input type="file" id="itemImage" accept="image/*" required /><br />
-      <button type="submit">Add Menu Item</button>
-    </form>
-
-    <h3>Search & Filters</h3>
-    <input type="text" id="searchInput" placeholder="Search by name, description, category..." />
-    <select id="filterCategory"><option value="">All Categories</option></select>
-    <select id="filterCourse"><option value="">All Courses</option></select>
-    <select id="filterType">
-      <option value="">All Types</option>
-      <option value="Veg">Veg</option>
-      <option value="Non-Veg">Non-Veg</option>
-    </select>
-
-    <h3>Menu Items</h3>
-    <table border="1" id="menuTable">
-      <thead>
-        <tr>
-          <th>Name</th>
-          <th>Description</th>
-          <th>Category</th>
-          <th>Food Course</th>
-          <th>Food Type</th>
-          <th>Qty Type</th>
-          <th>Price(s)</th>
-          <th>Add-ons</th> <!-- NEW -->
-          <th>Image</th>
-          <th>In Stock</th>
-          <th>Actions</th>
-        </tr>
-      </thead>
-      <tbody id="menuBody"></tbody>
-    </table>
-
-    <p id="statusMsg"></p>
-  </div>
-
-  <!-- Modal for Editing -->
-  <div id="editModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background-color:rgba(0,0,0,0.6);">
-    <div style="background:#fff; padding:20px; max-width:500px; margin:5% auto; position:relative;">
-      <h3>Edit Menu Item</h3>
-      <form id="editForm">
-        <input type="text" id="editName" required><br />
-        <input type="text" id="editDescription" required><br />
-        <select id="editCategory"></select><br />
-        <select id="editCourse"></select><br />
-        <select id="editType">
-          <option value="Veg">Veg</option>
-          <option value="Non-Veg">Non-Veg</option>
-        </select><br />
-        <select id="editQtyType">
-          <option value="Not Applicable">Not Applicable</option>
-          <option value="Half & Full">Half & Full</option>
-        </select><br />
-        <input type="number" id="editItemPrice" style="display:none;" /><br />
-        <input type="number" id="editHalfPrice" style="display:none;" /><br />
-        <input type="number" id="editFullPrice" style="display:none;" /><br />
-        <input type="file" id="editImage" accept="image/*" /><br />
-        <button type="submit">Save Changes</button>
-        <button type="button" id="closeEditModal">Cancel</button>
-      </form>
+  <div id="loginBox" class="adm-card" style="max-width:520px">
+    <label for="email">Email</label>
+    <input
+      type="email"
+      id="email"
+      name="username"
+      autocomplete="username"
+      autocapitalize="none"
+      autocorrect="off"
+      class="adm-input"
+      placeholder="you@company.com"
+      required
+    />
+    <label for="password" style="margin-top:8px; display:block;">Password</label>
+    <input
+      type="password"
+      id="password"
+      name="current-password"
+      autocomplete="current-password"
+      class="adm-input"
+      placeholder="••••••••"
+      required
+    />
+    <div class="adm-row" style="justify-content:flex-end; margin-top:10px">
+      <button id="loginBtn" type="button" class="adm-btn adm-btn--primary">Login</button>
     </div>
   </div>
 
-  <!-- Scripts (ensure these paths match your folder layout) -->
+  <!-- App -->
+  <div id="adminContent" style="display:none;">
+    <div class="adm-row" style="justify-content:space-between; align-items:center;">
+      <h3>GUFA — Admin Panel</h3>
+      <button id="logoutBtn" class="adm-btn">Logout</button>
+    </div>
+
+    <!-- Tabs -->
+    <nav class="adm-tabs" role="tablist" aria-label="Admin sections">
+      <button class="adm-tablink is-active" data-tab="menu" aria-selected="true">Menu</button>
+      <button class="adm-tablink" data-tab="orders" aria-selected="false">Orders</button>
+      <button class="adm-tablink" data-tab="promotions" aria-selected="false">Promotions</button>
+      <button class="adm-tablink" data-tab="payments" aria-selected="false">Payments</button>
+      <button class="adm-tablink" data-tab="deliveries" aria-selected="false">Deliveries</button>
+    </nav>
+
+    <!-- Panel: Menu -->
+    <section id="panel-menu" class="adm-tabpanel is-active" role="tabpanel" aria-labelledby="tab-menu">
+      <h3>Add New Menu Item</h3>
+      <form id="menuForm" class="adm-card adm-form-grid">
+        <input type="text" id="itemName" class="adm-input full" autocomplete="off" placeholder="Item Name" required />
+        <input type="text" id="itemDescription" class="adm-input full" autocomplete="off" placeholder="Description" required />
+
+        <!-- Category (hidden select + custom dropdown) -->
+        <div class="full">
+          <select id="itemCategory" required>
+            <option value="">-- Select Category --</option>
+          </select>
+          <div class="dropdown-wrap">
+            <button type="button" id="categoryDropdownBtn" class="adm-btn">Select Category ▾</button>
+            <div id="categoryDropdownPanel" class="dropdown-panel"><!-- injected --></div>
+          </div>
+          <div class="adm-row" style="margin-top:8px">
+            <input type="text" id="newCategoryInput" class="adm-input adm-grow" autocomplete="off" placeholder="Add New Category" />
+            <button type="button" id="addCategoryBtn" class="adm-btn">Add Category</button>
+          </div>
+        </div>
+
+        <!-- Food Course -->
+        <div class="full">
+          <select id="foodCourse" required>
+            <option value="">-- Select Food Course --</option>
+          </select>
+          <div class="dropdown-wrap">
+            <button type="button" id="courseDropdownBtn" class="adm-btn">Select Course ▾</button>
+            <div id="courseDropdownPanel" class="dropdown-panel"><!-- injected --></div>
+          </div>
+          <div class="adm-row" style="margin-top:8px">
+            <input type="text" id="newCourseInput" class="adm-input adm-grow" autocomplete="off" placeholder="Add New Food Course" />
+            <button type="button" id="addCourseBtn" class="adm-btn">Add Course</button>
+          </div>
+        </div>
+
+        <!-- Add-ons -->
+        <div class="full">
+          <select id="addonsSelect" multiple></select>
+          <div class="dropdown-wrap">
+            <button type="button" id="addonDropdownBtn" class="adm-btn">Select Add-ons ▾</button>
+            <div id="addonDropdownPanel" class="dropdown-panel"><!-- injected --></div>
+          </div>
+          <div class="adm-row" style="margin-top:8px">
+            <input type="text" id="newAddonInput" class="adm-input adm-grow" autocomplete="off" placeholder="Add New Add-on" />
+            <button type="button" id="addAddonBtn" class="adm-btn">Add Add-on</button>
+          </div>
+        </div>
+
+        <!-- Food Type -->
+        <div>
+          <label>Food Type</label>
+          <select id="foodType" class="adm-select" required>
+            <option value="">-- Select Food Type --</option>
+            <option value="Veg">Veg</option>
+            <option value="Non-Veg">Non-Veg</option>
+          </select>
+        </div>
+
+        <!-- Quantity Type -->
+        <div>
+          <label>Quantity Type</label>
+          <select id="qtyType" class="adm-select" required>
+            <option value="">-- Select Qty Type --</option>
+            <option value="Not Applicable">Not Applicable</option>
+            <option value="Half & Full">Half & Full</option>
+          </select>
+        </div>
+
+        <input type="number" id="itemPrice" class="adm-input" autocomplete="off" placeholder="Price" style="display:none;" />
+        <input type="number" id="halfPrice" class="adm-input" autocomplete="off" placeholder="Half Price" style="display:none;" />
+        <input type="number" id="fullPrice" class="adm-input" autocomplete="off" placeholder="Full Price" style="display:none;" />
+
+        <!-- Image Upload -->
+        <div class="full">
+          <label>Image</label>
+          <input type="file" id="itemImage" class="adm-file" accept="image/*" required />
+        </div>
+
+        <div class="full" style="text-align:right">
+          <button type="submit" class="adm-btn adm-btn--primary">Add Menu Item</button>
+        </div>
+      </form>
+
+      <h3>Search & Filters</h3>
+      <div class="adm-card adm-row">
+        <input type="text" id="searchInput" class="adm-input adm-grow" autocomplete="off" placeholder="Search by name, description, category..." />
+        <select id="filterCategory" class="adm-select"><option value="">All Categories</option></select>
+        <select id="filterCourse" class="adm-select"><option value="">All Courses</option></select>
+        <select id="filterType" class="adm-select">
+          <option value="">All Types</option>
+          <option value="Veg">Veg</option>
+          <option value="Non-Veg">Non-Veg</option>
+        </select>
+      </div>
+
+      <h3>Menu Items</h3>
+      <div class="adm-card">
+        <table class="adm-table" id="menuTable">
+          <thead>
+            <tr>
+              <!-- select-all checkbox header will be injected by admin.js -->
+              <th>Name</th>
+              <th>Description</th>
+              <th>Category</th>
+              <th>Food Course</th>
+              <th>Food Type</th>
+              <th>Qty Type</th>
+              <th>Price(s)</th>
+              <th>Add-ons</th>
+              <th>Image</th>
+              <th>In Stock</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="menuBody"></tbody>
+        </table>
+        <p id="statusMsg" class="adm-muted" style="margin-top:8px"></p>
+      </div>
+    </section>
+
+    <!-- Panel: Orders -->
+    <section id="panel-orders" class="adm-tabpanel" role="tabpanel" aria-labelledby="tab-orders">
+      <div id="ordersRoot" class="adm-card"><!-- orders.js will render here --></div>
+    </section>
+
+    <!-- Panel: Promotions -->
+    <section id="panel-promotions" class="adm-tabpanel" role="tabpanel" aria-labelledby="tab-promotions">
+      <div id="promotionsRoot" class="adm-card"><!-- promotions.js will render here --></div>
+    </section>
+
+    <!-- Panel: Payments -->
+    <section id="panel-payments" class="adm-tabpanel" role="tabpanel" aria-labelledby="tab-payments">
+      <div id="paymentsRoot" class="adm-card"><!-- paymentgateway.js will render here --></div>
+    </section>
+
+    <!-- Panel: Deliveries -->
+    <section id="panel-deliveries" class="adm-tabpanel" role="tabpanel" aria-labelledby="tab-deliveries">
+      <div id="deliveriesRoot" class="adm-card"><!-- deliverytracking.js will render here --></div>
+    </section>
+  </div>
+
+  <!-- Edit Modal (used by admin.js) -->
+  <div id="editModal" class="adm-modal">
+    <div class="adm-modal__dialog" style="max-width:640px">
+      <div class="adm-modal__head">
+        <strong>Edit Menu Item</strong>
+        <button type="button" id="closeEditModal" class="adm-btn adm-btn--ghost">Close</button>
+      </div>
+      <div class="adm-modal__body">
+        <form id="editForm" class="adm-form-grid">
+          <input type="text" id="editName" class="adm-input full" required />
+          <input type="text" id="editDescription" class="adm-input full" required />
+          <select id="editCategory" class="adm-select"></select>
+          <select id="editCourse" class="adm-select"></select>
+          <select id="editType" class="adm-select">
+            <option value="Veg">Veg</option>
+            <option value="Non-Veg">Non-Veg</option>
+          </select>
+          <select id="editQtyType" class="adm-select">
+            <option value="Not Applicable">Not Applicable</option>
+            <option value="Half & Full">Half & Full</option>
+          </select>
+          <input type="number" id="editItemPrice" class="adm-input" style="display:none;" />
+          <input type="number" id="editHalfPrice" class="adm-input" style="display:none;" />
+          <input type="number" id="editFullPrice" class="adm-input" style="display:none;" />
+          <input type="file" id="editImage" class="adm-file full" accept="image/*" />
+        </form>
+      </div>
+      <div class="adm-modal__foot">
+        <button type="submit" form="editForm" class="adm-btn adm-btn--primary">Save Changes</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tab switcher (small + isolated) -->
+  <script>
+    (function(){
+      function showTab(key){
+        document.querySelectorAll('.adm-tablink').forEach(b=>{
+          const on = b.dataset.tab === key;
+          b.classList.toggle('is-active', on);
+          b.setAttribute('aria-selected', on ? 'true' : 'false');
+        });
+        document.querySelectorAll('.adm-tabpanel').forEach(p=>{
+          p.classList.toggle('is-active', p.id === 'panel-' + key);
+        });
+        try { localStorage.setItem('adm.tab', key); } catch(e){}
+      }
+      document.addEventListener('click', (e)=>{
+        const btn = e.target.closest('.adm-tablink'); if (!btn) return;
+        showTab(btn.dataset.tab);
+      });
+      // Restore last tab (default to menu)
+      const last = (function(){ try { return localStorage.getItem('adm.tab') || 'menu'; } catch(e){ return 'menu'; } })();
+      showTab(last);
+    })();
+  </script>
+
+  <!-- App scripts (absolute paths) -->
   <script type="module" src="/admin/firebase.js"></script>
   <script type="module" src="/admin/admin.js"></script>
-<script type="module" src="/admin/orders.js"></script>
-<script type="module" src="/admin/promotions.js"></script>
-<script type="module" src="/admin/paymentgateway.js"></script>
-<script type="module" src="/admin/deliverytracking.js"></script>
+  <script type="module" src="/admin/orders.js"></script>
+  <script type="module" src="/admin/promotions.js"></script>
+  <script type="module" src="/admin/paymentgateway.js"></script>
+  <script type="module" src="/admin/deliverytracking.js"></script>
 </body>
 </html>
