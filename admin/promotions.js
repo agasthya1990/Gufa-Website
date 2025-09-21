@@ -1,4 +1,4 @@
-// /admin/promotions.js  (rewrite to match your Firestore fields)
+// /admin/promotions.js  — standardized storage (explicit bucket) + minor cleanups
 import { db } from "./firebase.js";
 import {
   collection, doc, setDoc, updateDoc, deleteDoc, onSnapshot,
@@ -8,8 +8,9 @@ import {
   getStorage, ref as storageRef, uploadBytes, getDownloadURL
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
 
-// Use default bucket for this project (fixes earlier bucket mismatch)
-const storage = gs://gufa-restaurant.firebasestorage.app;
+// --- Storage: use the SAME explicit bucket as the rest of the app
+const STORAGE_BUCKET = "gs://gufa-restaurant.firebasestorage.app";
+const storage = getStorage(undefined, STORAGE_BUCKET);
 
 /* =========================
    Banner resize parameters
@@ -160,8 +161,8 @@ export function initPromotions() {
     const minOrder = parseFloat(root.querySelector("#cMin").value) || 0;
     const usageLimitRaw = root.querySelector("#cUsage").value.trim();
     const perUserLimitRaw = root.querySelector("#cUserLimit").value.trim();
-    const usageLimit = usageLimitRaw ? parseInt(usageLimitRaw, 10) : 1 * 0 || null; // keep null when blank
-    const perUserLimit = perUserLimitRaw ? parseInt(perUserLimitRaw, 10) : 1 * 0 || null;
+    const usageLimit = usageLimitRaw ? parseInt(usageLimitRaw, 10) : null;       // clearer default
+    const perUserLimit = perUserLimitRaw ? parseInt(perUserLimitRaw, 10) : null; // clearer default
     const active = root.querySelector("#cActive").checked;
 
     if (!code || isNaN(value) || value <= 0) return alert("Enter valid coupon details");
@@ -177,7 +178,6 @@ export function initPromotions() {
         updatedAt: serverTimestamp()
       });
 
-      // Safe reset (works even if the node isn't a <form> for some reason)
       if (couponForm && typeof couponForm.reset === "function") couponForm.reset();
       root.querySelector("#cActive").checked = true;
       couponMsg.textContent = "Saved ✓"; setTimeout(() => couponMsg.textContent = "", 1400);
@@ -210,7 +210,6 @@ export function initPromotions() {
 
       // Resize and upload
       const bannerBlob = await resizeToBannerBlob(file);
-      // Keep your existing folder name. If your Storage rules use bannerImages/, change this path accordingly.
       const path = `promoBanners/${Date.now()}_${file.name.replace(/\s+/g, "_")}`;
       const imgRef = storageRef(storage, path);
       await uploadBytes(imgRef, bannerBlob, {
