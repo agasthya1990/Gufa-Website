@@ -1,11 +1,11 @@
 // customer/app.menu.js — bifurcations (Category / Food Course) + collages + qty steppers
 import { db } from "./firebase.client.js";
 import {
-  collection, onSnapshot, getDocs, query, where, orderBy
+  collection, onSnapshot, query, orderBy
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 import { Cart } from "./app.cart.js";
 
-/* ---------- tiny dom helpers ---------- */
+/* ---------- dom helpers ---------- */
 const $  = (s, r=document) => r.querySelector(s);
 const $$ = (s, r=document) => Array.from(r.querySelectorAll(s));
 
@@ -13,11 +13,9 @@ const $$ = (s, r=document) => Array.from(r.querySelectorAll(s));
 const menuSection = $("#menu");
 const grid = $("#menu .menu-grid") || $(".menu-grid");
 const filtersEl = $(".filters");
-if (!menuSection || !grid) {
-  console.error("[menu] Missing #menu or .menu-grid container"); 
-}
+if (!menuSection || !grid) console.error("[menu] Missing #menu or .menu-grid");
 
-/* Inject “Browse by …” bifurcations above filters (no HTML edits required) */
+/* Inject “Browse by …” bifurcations above filters */
 let bucketsWrap = $("#menuBuckets");
 if (!bucketsWrap) {
   bucketsWrap = document.createElement("div");
@@ -36,9 +34,9 @@ if (!bucketsWrap) {
 }
 
 /* ---------- state ---------- */
-let ITEMS = [];     // [{id, ...data}]
-let CATS  = new Set();   // string ids
-let COURSES = new Set(); // string ids
+let ITEMS = [];           // [{id, ...}]
+let CATS = new Set();     // category ids
+let COURSES = new Set();  // course ids
 
 /* ---------- helpers ---------- */
 function priceModel(qtyType) {
@@ -57,23 +55,22 @@ function priceModel(qtyType) {
   return null;
 }
 function getQty(key) {
-  const bag = Cart.get?.() || {};
-  return Number(bag[key]?.qty || 0);
+  const bag = typeof Cart.get === "function" ? Cart.get() : {};
+  return Number(bag?.[key]?.qty || 0);
 }
-function setQty(found, variant, price, next) {
-  const key = `${found.id}:${variant}`;
-  next = Math.max(0, Number(next||0));
+function setQty(found, variantKey, price, nextQty) {
+  const key = `${found.id}:${variantKey}`;
+  const next = Math.max(0, Number(nextQty || 0));
   if (typeof Cart.setQty === "function") {
-    Cart.setQty(key, next, { id: found.id, name: found.name, variant, price });
+    Cart.setQty(key, next, { id: found.id, name: found.name, variant: variantKey, price });
   } else {
-    // Fallback: upsert with the target qty (most carts interpret qty=0 as remove)
-    Cart.upsert({ key, id: found.id, name: found.name, variant, price, qty: next });
+    Cart.upsert({ key, id: found.id, name: found.name, variant: variantKey, price, qty: next });
   }
   const badge = $(`.qty[data-key="${key}"] .num`);
   if (badge) badge.textContent = String(next);
 }
 
-/* ---------- item card renderer with steppers ---------- */
+/* ---------- item cards with steppers ---------- */
 function stepperHTML(found, variant) {
   const key = `${found.id}:${variant.key}`;
   const qty = getQty(key);
@@ -100,11 +97,11 @@ function itemCardHTML(m) {
   return `
     <article class="menu-item" data-id="${m.id}">
       ${m.imageUrl ? `<img loading="lazy" src="${m.imageUrl}" alt="${m.name||""}"
-        style="width:100%;height:160px;object-fit:cover;border-radius:8px 8px 0 0;margin:-16px -16px 8px"/>` : ""}
-      <h4 style="margin:10px 0 4px">${m.name || ""}</h4>
-      <p style="margin:0 0 6px">${m.description || ""}</p>
+        class="menu-img"/>` : ""}
+      <h4 class="menu-name">${m.name || ""}</h4>
+      <p class="menu-desc">${m.description || ""}</p>
       ${addons}
-      <div class="row" style="margin-top:8px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;">
+      <div class="row meta">
         <small class="muted">${tags}</small>
       </div>
       <div class="steppers">${steppers}</div>
@@ -112,7 +109,7 @@ function itemCardHTML(m) {
   `;
 }
 
-/* ---------- filters (keep your selects working) ---------- */
+/* ---------- filters ---------- */
 const selCat = $("#filter-category");
 const selCourse = $("#filter-course");
 const selType = $("#filter-type");
@@ -130,7 +127,8 @@ function applyFilters(items) {
     if (typ && it.foodType !== typ) return false;
     if (q) {
       const hay = [
-        it.name, it.description, it.category, it.foodCourse, ...(Array.isArray(it.addons)? it.addons:[])
+        it.name, it.description, it.category, it.foodCourse,
+        ...(Array.isArray(it.addons) ? it.addons : [])
       ].filter(Boolean).join(" ").toLowerCase();
       if (!hay.includes(q)) return false;
     }
@@ -138,7 +136,7 @@ function applyFilters(items) {
   });
 }
 
-/* ---------- grid + stepper wiring ---------- */
+/* ---------- renderers ---------- */
 function renderGrid() {
   if (!grid) return;
   const filtered = applyFilters(ITEMS);
@@ -147,49 +145,26 @@ function renderGrid() {
     return;
   }
   grid.innerHTML = filtered.map(itemCardHTML).join("");
-
-  // Stepper handlers (event delegation)
-  grid.addEventListener("click", (e) => {
-    const btn = e.target.closest(".inc, .dec");
-    if (!btn) return;
-    const step = btn.classList.contains("inc") ? +1 : -1;
-    const wrap = btn.closest(".stepper");
-    const id = wrap?.dataset.item;
-    const variant = wrap?.dataset.variant;
-    const found = ITEMS.find(x => x.id === id);
-    if (!found) return;
-
-    // price lookup from model
-    const pm = priceModel(found.qtyType);
-    const v = (pm?.variants || []).find(x => x.key === variant);
-    if (!v || !v.price) return;
-
-    const key = `${id}:${variant}`;
-    const now = getQty(key);
-    const next = Math.max(0, now + step);
-    setQty(found, variant, v.price, next);
-  }, { once: true }); // attach once per render; re-attached next render
 }
 
-/* ---------- build collages for buckets ---------- */
+/* Collages */
 function collageHTML(imgs) {
   const a = imgs[0] || "", b = imgs[1] || "", c = imgs[2] || "", d = imgs[3] || "";
-  // 2x2 collage (falls back gracefully if fewer than 4)
   return `
     <div class="collage">
       ${a ? `<img loading="lazy" src="${a}" alt="">` : `<div class="ph"></div>`}
       ${b ? `<img loading="lazy" src="${b}" alt="">` : `<div class="ph"></div>`}
       ${c ? `<img loading="lazy" src="${c}" alt="">` : `<div class="ph"></div>`}
       ${d ? `<img loading="lazy" src="${d}" alt="">` : `<div class="ph"></div>`}
-    </div>
-  `;
+    </div>`;
 }
+
 function renderBuckets() {
   const catEl = $("#catBuckets");
   const courseEl = $("#courseBuckets");
   if (!catEl || !courseEl) return;
 
-  // Group items for quick collage picks
+  // Gather images by group
   const byCat = new Map(); const byCourse = new Map();
   for (const it of ITEMS) {
     if (it.category) {
@@ -202,9 +177,9 @@ function renderBuckets() {
     }
   }
 
-  // Categories: show all known, even if zero items (disabled look)
-  const catList = Array.from(CATS).sort((a,b)=>a.localeCompare(b));
-  catEl.innerHTML = catList.map(name => {
+  // Categories
+  const cats = Array.from(CATS).sort((a,b)=>a.localeCompare(b));
+  catEl.innerHTML = cats.map(name => {
     const imgs = (byCat.get(name) || []).slice(0,4);
     const count = (byCat.get(name) || []).length;
     return `
@@ -218,8 +193,8 @@ function renderBuckets() {
   }).join("");
 
   // Courses
-  const crsList = Array.from(COURSES).sort((a,b)=>a.localeCompare(b));
-  courseEl.innerHTML = crsList.map(name => {
+  const crs = Array.from(COURSES).sort((a,b)=>a.localeCompare(b));
+  courseEl.innerHTML = crs.map(name => {
     const imgs = (byCourse.get(name) || []).slice(0,4);
     const count = (byCourse.get(name) || []).length;
     return `
@@ -231,71 +206,112 @@ function renderBuckets() {
         </div>
       </button>`;
   }).join("");
-
-  // Click → set filters and scroll to grid
-  bucketsWrap.addEventListener("click", (e) => {
-    const tile = e.target.closest(".bucket-tile");
-    if (!tile) return;
-    const kind = tile.dataset.kind;
-    const val = tile.dataset.id;
-    if (kind === "category" && selCat) { selCat.value = val; if (selCourse) selCourse.value=""; }
-    if (kind === "course" && selCourse){ selCourse.value = val; if (selCat) selCat.value=""; }
-    renderGrid();
-    grid.scrollIntoView({ behavior: "smooth", block: "start" });
-  }, { once: true });
 }
 
 /* ---------- live data ---------- */
 function listenCategories() {
   onSnapshot(collection(db, "menuCategories"), (snap) => {
-    CATS = new Set(); snap.forEach(d => CATS.add(d.id));
-    // keep the filters select in sync (if present)
+    const prev = new Set(CATS);
+    CATS = new Set();
+    snap.forEach(d => CATS.add(d.id));
+    // keep filter options in sync
     if (selCat) {
       const selected = selCat.value;
-      selCat.innerHTML = `<option value="">All Categories</option>` + 
+      selCat.innerHTML = `<option value="">All Categories</option>` +
         Array.from(CATS).sort().map(c => `<option>${c}</option>`).join("");
       if (selected && CATS.has(selected)) selCat.value = selected;
+      // if selection points to now-missing category, clear it
+      if (selected && !CATS.has(selected)) selCat.value = "";
     }
-    renderBuckets();
+    if (prev.size !== CATS.size) renderBuckets();
   });
 }
 function listenCourses() {
   onSnapshot(collection(db, "menuCourses"), (snap) => {
-    COURSES = new Set(); snap.forEach(d => COURSES.add(d.id));
+    const prev = new Set(COURSES);
+    COURSES = new Set();
+    snap.forEach(d => COURSES.add(d.id));
     if (selCourse) {
       const selected = selCourse.value;
-      selCourse.innerHTML = `<option value="">All Courses</option>` + 
+      selCourse.innerHTML = `<option value="">All Courses</option>` +
         Array.from(COURSES).sort().map(c => `<option>${c}</option>`).join("");
       if (selected && COURSES.has(selected)) selCourse.value = selected;
+      if (selected && !COURSES.has(selected)) selCourse.value = "";
     }
-    renderBuckets();
+    if (prev.size !== COURSES.size) renderBuckets();
   });
 }
 function listenItems() {
-  // Show in-stock items; newest first (fallback if index missing: remove orderBy)
+  const baseCol = collection(db, "menuItems");
+  const renderFrom = (docs) => {
+    ITEMS = docs.map(d => ({ id: d.id, ...d.data() }))
+                .filter(v => v.inStock !== false); // show legacy docs too
+    renderBuckets();
+    renderGrid();
+  };
   try {
-    const qLive = query(collection(db, "menuItems"), orderBy("createdAt","desc"));
-    onSnapshot(qLive, (snap) => {
-      ITEMS = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-      renderBuckets();
-      renderGrid();
-    });
-  } catch (e) {
-    // fallback (no index) — still live on collection without ordering
-    onSnapshot(collection(db, "menuItems"), (snap) => {
-      const tmp = []; snap.forEach(d => { const v=d.data(); if (v.inStock!==false) tmp.push({ id:d.id, ...v }) });
-      ITEMS = tmp; renderBuckets(); renderGrid();
-    });
+    const qLive = query(baseCol, orderBy("createdAt","desc"));
+    onSnapshot(
+      qLive,
+      snap => renderFrom(snap.docs),
+      () => {
+        // fallback: still live without ordering
+        onSnapshot(baseCol, snap => renderFrom(snap.docs));
+      }
+    );
+  } catch {
+    onSnapshot(baseCol, snap => renderFrom(snap.docs));
   }
 }
 
-/* ---------- filter listeners ---------- */
-[selCat, selCourse, selType, inpSearch].forEach(el => {
-  el && el.addEventListener("change", renderGrid);
-  el && el.addEventListener("input", renderGrid);
+/* ---------- events ---------- */
+// Buckets → set filters and scroll to grid (bind once)
+bucketsWrap.addEventListener("click", (e) => {
+  const tile = e.target.closest(".bucket-tile");
+  if (!tile) return;
+  const kind = tile.dataset.kind;
+  const val = tile.dataset.id;
+  if (kind === "category" && selCat) { selCat.value = val; if (selCourse) selCourse.value=""; }
+  if (kind === "course" && selCourse){ selCourse.value = val; if (selCat) selCat.value=""; }
+  renderGrid();
+  grid.scrollIntoView({ behavior: "smooth", block: "start" });
 });
 
+// Filters → re-render (bind once)
+[selCat, selCourse, selType, inpSearch].forEach(el => {
+  if (!el) return;
+  el.addEventListener("input", renderGrid, { passive: true });
+  el.addEventListener("change", renderGrid);
+});
+
+// Single delegated handler for all item steppers (bind once)
+let gridHandlerBound = false;
+function bindGridHandlers() {
+  if (gridHandlerBound || !grid) return;
+  gridHandlerBound = true;
+  grid.addEventListener("click", (e) => {
+    const btn = e.target.closest(".inc, .dec");
+    if (!btn) return;
+    const wrap = btn.closest(".stepper");
+    const id = wrap?.dataset.item;
+    const variantKey = wrap?.dataset.variant;
+    const found = ITEMS.find(x => x.id === id);
+    if (!found) return;
+
+    // variant price lookup
+    const pm = priceModel(found.qtyType);
+    const v = (pm?.variants || []).find(x => x.key === variantKey);
+    if (!v || !v.price) return;
+
+    const key = `${id}:${variantKey}`;
+    const now = getQty(key);
+    const next = Math.max(0, now + (btn.classList.contains("inc") ? 1 : -1));
+    setQty(found, variantKey, v.price, next);
+  });
+}
+
 /* ---------- boot ---------- */
-listenCategories();  // auto-creates bifurcations even before items exist
+bindGridHandlers();
+listenCategories();
 listenCourses();
 listenItems();
