@@ -63,7 +63,7 @@ async function submitOrder(e) {
     if (!resp.ok) throw new Error(data.error || "Failed to place order");
 
     Cart.clear();
-    window.location.href = `track.html?order=${encodeURIComponent(data.orderId)}`;
+    window.location.href = `customer/track.html?order=${encodeURIComponent(data.orderId)}`;
   } catch (err) {
     msg.textContent = err.message || "Something went wrong";
   } finally {
