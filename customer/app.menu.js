@@ -1,11 +1,10 @@
-// customer/app.menu.js — bifurcations (Category / Food Course) + collages + qty steppers
+// app.menu.js — live menu with Category/Course tiles (auto-collages) + − qty + steppers
 import { db } from "./firebase.client.js";
+import { Cart } from "./app.cart.js";
 import {
   collection, onSnapshot, query, orderBy
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
-import { Cart } from "./app.cart.js";
 
-/* ---------- dom helpers ---------- */
 const $  = (s, r=document) => r.querySelector(s);
 const $$ = (s, r=document) => Array.from(r.querySelectorAll(s));
 
@@ -15,7 +14,6 @@ const grid = $("#menu .menu-grid") || $(".menu-grid");
 const filtersEl = $(".filters");
 if (!menuSection || !grid) console.error("[menu] Missing #menu or .menu-grid");
 
-/* Inject “Browse by …” bifurcations above filters */
 let bucketsWrap = $("#menuBuckets");
 if (!bucketsWrap) {
   bucketsWrap = document.createElement("div");
@@ -34,9 +32,9 @@ if (!bucketsWrap) {
 }
 
 /* ---------- state ---------- */
-let ITEMS = [];           // [{id, ...}]
-let CATS = new Set();     // category ids
-let COURSES = new Set();  // course ids
+let ITEMS = [];
+let CATS = new Set();
+let COURSES = new Set();
 
 /* ---------- helpers ---------- */
 function priceModel(qtyType) {
@@ -61,11 +59,7 @@ function getQty(key) {
 function setQty(found, variantKey, price, nextQty) {
   const key = `${found.id}:${variantKey}`;
   const next = Math.max(0, Number(nextQty || 0));
-  if (typeof Cart.setQty === "function") {
-    Cart.setQty(key, next, { id: found.id, name: found.name, variant: variantKey, price });
-  } else {
-    Cart.upsert({ key, id: found.id, name: found.name, variant: variantKey, price, qty: next });
-  }
+  Cart.setQty(key, next, { id: found.id, name: found.name, variant: variantKey, price });
   const badge = $(`.qty[data-key="${key}"] .num`);
   if (badge) badge.textContent = String(next);
 }
@@ -96,14 +90,11 @@ function itemCardHTML(m) {
 
   return `
     <article class="menu-item" data-id="${m.id}">
-      ${m.imageUrl ? `<img loading="lazy" src="${m.imageUrl}" alt="${m.name||""}"
-        class="menu-img"/>` : ""}
+      ${m.imageUrl ? `<img loading="lazy" src="${m.imageUrl}" alt="${m.name||""}" class="menu-img"/>` : ""}
       <h4 class="menu-name">${m.name || ""}</h4>
       <p class="menu-desc">${m.description || ""}</p>
       ${addons}
-      <div class="row meta">
-        <small class="muted">${tags}</small>
-      </div>
+      <div class="row meta"><small class="muted">${tags}</small></div>
       <div class="steppers">${steppers}</div>
     </article>
   `;
@@ -140,14 +131,11 @@ function applyFilters(items) {
 function renderGrid() {
   if (!grid) return;
   const filtered = applyFilters(ITEMS);
-  if (!filtered.length) {
-    grid.innerHTML = `<div class="menu-item placeholder">No items match your selection.</div>`;
-    return;
-  }
-  grid.innerHTML = filtered.map(itemCardHTML).join("");
+  grid.innerHTML = filtered.length
+    ? filtered.map(itemCardHTML).join("")
+    : `<div class="menu-item placeholder">No items match your selection.</div>`;
 }
 
-/* Collages */
 function collageHTML(imgs) {
   const a = imgs[0] || "", b = imgs[1] || "", c = imgs[2] || "", d = imgs[3] || "";
   return `
@@ -164,7 +152,6 @@ function renderBuckets() {
   const courseEl = $("#courseBuckets");
   if (!catEl || !courseEl) return;
 
-  // Gather images by group
   const byCat = new Map(); const byCourse = new Map();
   for (const it of ITEMS) {
     if (it.category) {
@@ -177,7 +164,6 @@ function renderBuckets() {
     }
   }
 
-  // Categories
   const cats = Array.from(CATS).sort((a,b)=>a.localeCompare(b));
   catEl.innerHTML = cats.map(name => {
     const imgs = (byCat.get(name) || []).slice(0,4);
@@ -192,7 +178,6 @@ function renderBuckets() {
       </button>`;
   }).join("");
 
-  // Courses
   const crs = Array.from(COURSES).sort((a,b)=>a.localeCompare(b));
   courseEl.innerHTML = crs.map(name => {
     const imgs = (byCourse.get(name) || []).slice(0,4);
@@ -213,14 +198,12 @@ function listenCategories() {
   onSnapshot(collection(db, "menuCategories"), (snap) => {
     const prev = new Set(CATS);
     CATS = new Set();
-    snap.forEach(d => CATS.add(d.id));
-    // keep filter options in sync
+    snap.forEach(d => CATS.add(d.id)); // use doc.id to match Admin “Rename” flow
     if (selCat) {
       const selected = selCat.value;
       selCat.innerHTML = `<option value="">All Categories</option>` +
         Array.from(CATS).sort().map(c => `<option>${c}</option>`).join("");
       if (selected && CATS.has(selected)) selCat.value = selected;
-      // if selection points to now-missing category, clear it
       if (selected && !CATS.has(selected)) selCat.value = "";
     }
     if (prev.size !== CATS.size) renderBuckets();
@@ -244,8 +227,8 @@ function listenCourses() {
 function listenItems() {
   const baseCol = collection(db, "menuItems");
   const renderFrom = (docs) => {
-    ITEMS = docs.map(d => ({ id: d.id, ...d.data() }))
-                .filter(v => v.inStock !== false); // show legacy docs too
+    // Hide only explicit false; legacy docs without field still show
+    ITEMS = docs.map(d => ({ id: d.id, ...d.data() })).filter(v => v.inStock !== false);
     renderBuckets();
     renderGrid();
   };
@@ -254,10 +237,7 @@ function listenItems() {
     onSnapshot(
       qLive,
       snap => renderFrom(snap.docs),
-      () => {
-        // fallback: still live without ordering
-        onSnapshot(baseCol, snap => renderFrom(snap.docs));
-      }
+      () => onSnapshot(baseCol, snap => renderFrom(snap.docs)) // fallback: no index needed
     );
   } catch {
     onSnapshot(baseCol, snap => renderFrom(snap.docs));
@@ -265,7 +245,6 @@ function listenItems() {
 }
 
 /* ---------- events ---------- */
-// Buckets → set filters and scroll to grid (bind once)
 bucketsWrap.addEventListener("click", (e) => {
   const tile = e.target.closest(".bucket-tile");
   if (!tile) return;
@@ -277,14 +256,6 @@ bucketsWrap.addEventListener("click", (e) => {
   grid.scrollIntoView({ behavior: "smooth", block: "start" });
 });
 
-// Filters → re-render (bind once)
-[selCat, selCourse, selType, inpSearch].forEach(el => {
-  if (!el) return;
-  el.addEventListener("input", renderGrid, { passive: true });
-  el.addEventListener("change", renderGrid);
-});
-
-// Single delegated handler for all item steppers (bind once)
 let gridHandlerBound = false;
 function bindGridHandlers() {
   if (gridHandlerBound || !grid) return;
@@ -298,7 +269,6 @@ function bindGridHandlers() {
     const found = ITEMS.find(x => x.id === id);
     if (!found) return;
 
-    // variant price lookup
     const pm = priceModel(found.qtyType);
     const v = (pm?.variants || []).find(x => x.key === variantKey);
     if (!v || !v.price) return;
