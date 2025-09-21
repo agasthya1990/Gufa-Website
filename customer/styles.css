@@ -135,6 +135,7 @@ footer {
   z-index: 1;
 }
 footer p { margin: 6px 0; }
+
 /* Buckets (collaged tiles) */
 .bucket-title { margin: 12px 6px; font-size: 18px; color: #0b2a38; }
 .bucket-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); margin-bottom: 16px; }
@@ -157,3 +158,85 @@ footer p { margin: 6px 0; }
 .qty { display:inline-flex; align-items:center; gap:8px; border:1px solid #d1d5db; border-radius:999px; padding:4px 8px; }
 .qty .dec, .qty .inc { width:24px; height:24px; border-radius:999px; border:0; background:#f3f4f6; cursor:pointer; }
 .qty .num { min-width:16px; text-align:center; font-weight:600; }
+
+/* =================================================================
+   Enhancements (additive only — nothing above is removed or changed)
+================================================================= */
+
+/* Design tokens (optional usage across new additions) */
+:root{
+  --ink:#111827; --muted:#6b7280; --line:#e5e7eb; --brand:#2563eb; --shadow:0 6px 18px rgba(0,0,0,.08);
+}
+
+/* Accessibility: visible focus where appropriate */
+:where(a, button, input, select)[tabindex], 
+:where(a, button, input, select):focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+/* Smooth UI polish */
+.site-header,
+.site-header .nav-links a,
+.bucket-tile,
+.menu-item,
+.qty .dec, .qty .inc {
+  transition: color .2s ease, background-color .2s ease, box-shadow .2s ease, transform .15s ease;
+}
+
+/* Header subtle elevation on hover of links */
+.site-header .nav-links a:hover { text-decoration: none; }
+
+/* Buckets hover lift */
+.bucket-tile:hover:not(:disabled){
+  transform: translateY(-2px);
+  box-shadow: var(--shadow);
+}
+
+/* Cards hover lift */
+.menu-item:hover{
+  transform: translateY(-2px);
+  box-shadow: var(--shadow);
+}
+
+/* Qty buttons interaction */
+.qty .dec:hover, .qty .inc:hover { background:#e5e7eb; }
+.qty .dec:active, .qty .inc:active { transform: scale(0.95); }
+
+/* Consistent image styling for cards (used by menu item images if present) */
+.menu-img{
+  width:100%; height:160px; object-fit:cover; border-radius:8px 8px 0 0; margin:-16px -16px 8px;
+}
+
+/* Skeleton shimmer for placeholders */
+.skeleton { position: relative; overflow: hidden; }
+.skeleton::after{
+  content:""; position:absolute; inset:0;
+  background: linear-gradient(90deg, rgba(255,255,255,0), rgba(255,255,255,.35), rgba(255,255,255,0));
+  transform: translateX(-100%); animation: sk 1.2s ease-in-out infinite;
+}
+@keyframes sk { 100% { transform: translateX(100%); } }
+
+/* Responsive tweaks */
+@media (max-width: 640px){
+  .hero h1 { font-size: 32px; }
+  .hero p  { font-size: 16px; }
+  .site-header { padding: 10px 16px; }
+  .site-header .nav-links a { margin-left: 12px; }
+  .menu-grid { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
+  .collage { grid-template-rows: 56px 56px; }
+}
+@media (min-width: 1280px){
+  .menu-grid { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+}
+
+/* Respect reduced motion preferences */
+@media (prefers-reduced-motion: reduce){
+  * { animation: none !important; transition: none !important; }
+}
+
+/* Utility: visually hidden (for a11y helpers) */
+.sr-only{
+  position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden;
+  clip:rect(0,0,0,0); white-space:nowrap; border:0;
+}
