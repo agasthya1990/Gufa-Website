@@ -9,7 +9,7 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
 
 // Use default bucket for this project (fixes earlier bucket mismatch)
-const storage = getStorage();
+const storage = getStorage(gs://gufa-restaurant.firebasestorage.app);
 
 /* =========================
    Banner resize parameters
