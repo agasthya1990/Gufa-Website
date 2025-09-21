@@ -135,3 +135,25 @@ footer {
   z-index: 1;
 }
 footer p { margin: 6px 0; }
+/* Buckets (collaged tiles) */
+.bucket-title { margin: 12px 6px; font-size: 18px; color: #0b2a38; }
+.bucket-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); margin-bottom: 16px; }
+.bucket-tile { display: flex; flex-direction: column; gap: 8px; padding: 10px; border: 1px solid #e5e7eb;
+  border-radius: 10px; background:#fff; box-shadow: 0 3px 8px rgba(0,0,0,.05); cursor: pointer; text-align: left; }
+.bucket-tile:disabled { opacity: .6; cursor: not-allowed; }
+.bucket-meta { display:flex; justify-content:space-between; align-items:center; }
+.bucket-name { font-weight:600; color:#111827; }
+.bucket-count { color:#6b7280; font-size: 12px; }
+
+/* 2x2 collage grid */
+.collage { display:grid; grid-template-columns:1fr 1fr; grid-template-rows: 64px 64px; gap:4px; }
+.collage img, .collage .ph { width:100%; height:100%; object-fit:cover; border-radius:6px; background:#f3f4f6; }
+
+/* Qty steppers on item cards */
+.steppers { margin-top:10px; display:flex; gap:8px; flex-direction: column; }
+.stepper { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+.stepper .vlabel { min-width:48px; color:#374151; }
+.stepper .vprice { min-width:56px; text-align:right; font-weight:600; }
+.qty { display:inline-flex; align-items:center; gap:8px; border:1px solid #d1d5db; border-radius:999px; padding:4px 8px; }
+.qty .dec, .qty .inc { width:24px; height:24px; border-radius:999px; border:0; background:#f3f4f6; cursor:pointer; }
+.qty .num { min-width:16px; text-align:center; font-weight:600; }
