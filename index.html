@@ -80,6 +80,15 @@
     }
     .menu-item.placeholder { color: #6b7280; font-style: italic; }
 
+    /* Optional: subtle skeleton shimmer (kept additive) */
+    .skeleton { position: relative; overflow: hidden; }
+    .skeleton::after {
+      content: ""; position: absolute; inset: 0;
+      background: linear-gradient(90deg, rgba(0,0,0,0), rgba(255,255,255,.25), rgba(0,0,0,0));
+      transform: translateX(-100%); animation: sk 1.4s infinite;
+    }
+    @keyframes sk { 100% { transform: translateX(100%); } }
+
     /* Footer */
     footer {
       background: rgba(17,24,39,0.92); color: #d1d5db;
@@ -111,25 +120,34 @@
 
   <!-- Menu Section -->
   <main>
-    <section id="menu">
-      <h2>Our Menu</h2>
+    <section id="menu" aria-labelledby="menuTitle">
+      <h2 id="menuTitle">Our Menu</h2>
 
-      <div class="filters">
-        <select id="filter-category">
+      <!-- NEW (additive): buckets placeholder. JS will auto-use it if present -->
+      <div id="menuBuckets" aria-live="polite"></div>
+
+      <div class="filters" aria-label="Filters">
+        <select id="filter-category" aria-label="Category">
           <option value="">All Categories</option>
         </select>
-        <select id="filter-course">
+        <select id="filter-course" aria-label="Food Course">
           <option value="">All Courses</option>
         </select>
-        <select id="filter-type">
+        <select id="filter-type" aria-label="Food Type">
           <option value="">All Types</option>
           <option>Veg</option>
           <option>Non-Veg</option>
         </select>
-        <input type="text" id="filter-search" placeholder="Search dishes..." />
+        <input type="text" id="filter-search" placeholder="Search dishes..." aria-label="Search"/>
       </div>
 
-      <div class="menu-grid">
+      <div class="menu-grid" id="menuGrid" aria-live="polite">
+        <!-- kept your placeholder, added a couple for smoother first paint -->
+        <div class="menu-item placeholder skeleton">Loading menu…</div>
+        <div class="menu-item placeholder skeleton">Loading menu…</div>
+        <div class="menu-item placeholder skeleton">Loading menu…</div>
+        <div class="menu-item placeholder skeleton">Loading menu…</div>
+        <!-- your original sample card remains as-is -->
         <div class="menu-item placeholder">Sample Dish Card</div>
       </div>
     </section>
@@ -141,9 +159,20 @@
     <p>📞 Phone: +91 99999 99999</p>
     <p>&copy; 2025 GUFA – All Rights Reserved</p>
   </footer>
-    <!-- Customer UI logic (reads Admin data, builds cart) -->
+
+  <!-- Progressive enhancement: show message if JS disabled -->
+  <noscript>
+    <style>.menu-grid .placeholder{display:none}</style>
+    <div style="max-width:1200px;margin:16px auto;padding:12px;background:#fff;border:1px solid #e5e7eb;border-radius:8px;">
+      Please enable JavaScript to view the menu.
+    </div>
+  </noscript>
+
+  <!-- Customer UI logic (reads Admin data, builds cart) -->
   <script type="module" src="customer/firebase.client.js"></script>
   <script type="module" src="customer/app.cart.js"></script>
   <script type="module" src="customer/app.menu.js"></script>
+  <!-- If you later add a Cart drawer/badge module, load it after app.menu.js -->
+  <!-- <script type="module" src="customer/app.cart.ui.js"></script> -->
 </body>
 </html>
