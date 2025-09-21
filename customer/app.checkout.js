@@ -1,6 +1,22 @@
 // app.checkout.js
 import { Cart } from "./app.cart.js";
 const FUNCTIONS_BASE = "https://us-central1-gufa-restaurant.cloudfunctions.net"; // keep as-is
+const COUPON_KEY = "gufa_coupon";
+let appliedCoupon = "";
+let currentQuote = null;
+
+(function preloadSavedCoupon() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(COUPON_KEY) || "null");
+    if (saved?.code) {
+      appliedCoupon = saved.code;
+      currentQuote = saved.quote || null;
+      // preload input if present
+      const input = document.getElementById("couponCode");
+      if (input && !input.value) input.value = appliedCoupon;
+    }
+  } catch {}
+})();
 
 function calcTotals(items) {
   const subtotal = items.reduce((s, i) => s + (Number(i.price) * Number(i.qty)), 0);
