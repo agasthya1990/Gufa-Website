@@ -4,8 +4,89 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>GUFA – Home</title>
-  <!-- NOTE: styles.css lives inside /customer -->
+
+  <!-- Your existing base stylesheet -->
   <link rel="stylesheet" href="customer/styles.css" />
+
+  <!-- Ocean-breeze overrides (kept here to prevent path/case issues) -->
+  <style>
+    /* Keep it simple: one body rule, no later overrides */
+    html, body { height: 100%; margin: 0; }
+    body {
+      font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      color: #1f2937;
+      /* Ocean breeze gradient */
+      background: linear-gradient(135deg, #0077be 0%, #00c6fb 100%);
+      /* Make sure bg stays put on scroll */
+      background-attachment: fixed;
+    }
+    /* Subtle overlay for readability over the gradient */
+    body::before {
+      content: "";
+      position: fixed; inset: 0;
+      background: rgba(255,255,255,0.65);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    /* Layout layers (keep content above the overlay) */
+    header, main, footer { position: relative; z-index: 1; }
+
+    /* Header / Navbar */
+    .site-header {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 12px 24px;
+      background: rgba(255,255,255,0.85);
+      backdrop-filter: blur(6px);
+      border-bottom: 1px solid #e5e7eb;
+    }
+    .logo { font-size: 22px; font-weight: 700; color: #2563eb; }
+    .nav-links a {
+      margin-left: 16px; text-decoration: none; color: #374151; font-weight: 500;
+    }
+    .nav-links a:hover, .nav-links a.active { color: #2563eb; }
+
+    /* Hero */
+    #hero { text-align: center; padding: 80px 20px; color: #0b2a38; }
+    #hero .hero-inner {
+      display: inline-block; padding: 24px 32px; border-radius: 12px;
+      background: rgba(255,255,255,0.8);
+      box-shadow: 0 8px 28px rgba(0,0,0,0.08);
+    }
+    #hero h1 { font-size: 42px; font-weight: 800; margin: 0 0 10px; }
+    #hero p  { font-size: 20px; margin: 0; }
+
+    /* Main container */
+    main { max-width: 1200px; margin: 32px auto; padding: 0 16px; }
+
+    /* Menu section */
+    #menu { background: rgba(255,255,255,0.9); border-radius: 12px; padding: 24px; }
+    #menu h2 { font-size: 28px; margin: 0 0 16px; text-align: center; }
+    .filters {
+      display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 20px;
+    }
+    .filters select, .filters input {
+      padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 6px;
+      flex: 1 1 160px; background: #fff;
+    }
+    .menu-grid {
+      display: grid; gap: 16px;
+      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    }
+    .menu-item {
+      background: #fff; border: 1px solid #e5e7eb; border-radius: 10px;
+      padding: 16px; text-align: center; box-shadow: 0 4px 10px rgba(0,0,0,.05);
+      color: #111827;
+    }
+    .menu-item.placeholder { color: #6b7280; font-style: italic; }
+
+    /* Footer */
+    footer {
+      background: rgba(17,24,39,0.92); color: #d1d5db;
+      text-align: center; padding: 24px 16px; margin-top: 40px;
+    }
+    footer p { margin: 6px 0; }
+  </style>
 </head>
 <body>
   <!-- Header / Navbar -->
@@ -20,15 +101,15 @@
     </nav>
   </header>
 
-  <!-- Hero: transparent so BODY background image is visible -->
-  <section id="hero" class="hero">
+  <!-- Hero -->
+  <section id="hero">
     <div class="hero-inner">
       <h1>Welcome to GUFA</h1>
       <p>Delicious food delivered to your doorstep</p>
     </div>
   </section>
 
-  <!-- Menu Section (placeholder for now) -->
+  <!-- Menu Section -->
   <main>
     <section id="menu">
       <h2>Our Menu</h2>
@@ -54,6 +135,7 @@
     </section>
   </main>
 
+  <!-- Footer -->
   <footer id="contact">
     <p>📍 Address: Your restaurant address here</p>
     <p>📞 Phone: +91 99999 99999</p>
