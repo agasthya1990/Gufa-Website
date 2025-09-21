@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>GUFA – Checkout</title>
+  <link rel="stylesheet" href="customer/styles.css"/>
+</head>
+<body>
+  <header class="site-header">
+    <div class="logo">GUFA</div>
+    <nav class="nav-links">
+      <a href="index.html">Home</a>
+      <a href="checkout.html" class="active cart-link">Cart (0)</a>
+    </nav>
+  </header>
+
+  <main>
+    <section id="summary" class="menu-item" style="max-width:720px;margin:20px auto;">
+      <h2>Order Summary</h2>
+      <div id="cartList" style="margin-top:10px;"></div>
+      <hr style="margin:12px 0;">
+      <div id="totals"></div>
+    </section>
+
+    <section class="menu-item" style="max-width:720px;margin:20px auto;">
+      <h2>Delivery Details</h2>
+      <form id="checkoutForm" class="grid2" style="gap:10px;">
+        <input id="cName" placeholder="Name" required />
+        <input id="cPhone" placeholder="Phone" required />
+        <input id="cAddress" class="full" placeholder="Address" required />
+        <div class="full" style="display:flex;gap:12px;align-items:center;">
+          <label><input type="radio" name="pay" value="COD" checked /> Cash on Delivery</label>
+        </div>
+        <div class="full" style="display:flex;justify-content:flex-end;">
+          <button class="btn primary" type="submit">Place Order</button>
+        </div>
+        <div id="placeMsg" class="muted full"></div>
+      </form>
+    </section>
+  </main>
+
+  <footer id="contact">
+    <p>&copy; 2025 GUFA</p>
+  </footer>
+
+  <!-- logic -->
+  <script type="module" src="customer/firebase.client.js"></script>
+  <script type="module" src="customer/app.cart.js"></script>
+  <script type="module" src="customer/app.checkout.js"></script>
+</body>
+</html>
