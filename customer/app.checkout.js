@@ -1,5 +1,6 @@
-// app.checkout.js (fixed)
+// app.checkout.js — checkout with server-validated coupons + persistent quote
 import { Cart } from "./app.cart.js";
+
 const FUNCTIONS_BASE = "https://us-central1-gufa-restaurant.cloudfunctions.net";
 const COUPON_KEY = "gufa_coupon";
 
@@ -73,7 +74,7 @@ async function applyCoupon() {
 
   msg.textContent = "Checking…";
   try {
-    const phone = document.getElementById("cPhone")?.value.trim() || ""; // for per-user limits on server
+    const phone = document.getElementById("cPhone")?.value.trim() || ""; // for per-user limits
     const resp = await fetch(`${FUNCTIONS_BASE}/validateCoupon`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -103,10 +104,7 @@ document.getElementById("applyCouponBtn")?.addEventListener("click", (e) => {
   applyCoupon();
 });
 
-function renderSummaryAndMaybeResetQuote() {
-  renderSummary();
-}
-renderSummaryAndMaybeResetQuote();
+renderSummary();
 
 async function submitOrder(e) {
   e.preventDefault();
@@ -137,9 +135,7 @@ async function submitOrder(e) {
     if (!resp.ok) throw new Error(data.error || "Failed to place order");
 
     Cart.clear();
-    // Clear saved coupon after successful order
     saveCouponToLocal("", null);
-
     window.location.href = `customer/track.html?order=${encodeURIComponent(data.orderId)}`;
   } catch (err) {
     msg.textContent = err.message || "Something went wrong";
