@@ -274,7 +274,7 @@ function listenCourses() {
 function listenItems() {
   // Show in-stock items; newest first (fallback if index missing: remove orderBy)
   try {
-    const qLive = query(collection(db, "menuItems"), where("inStock","==",true), orderBy("createdAt","desc"));
+    const qLive = query(collection(db, "menuItems"), orderBy("createdAt","desc"));
     onSnapshot(qLive, (snap) => {
       ITEMS = snap.docs.map(d => ({ id: d.id, ...d.data() }));
       renderBuckets();
