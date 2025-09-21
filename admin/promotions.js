@@ -1,4 +1,4 @@
-// /admin/promotions.js
+// /admin/promotions.js  (rewrite to match your Firestore fields)
 import { db } from "./firebase.js";
 import {
   collection, doc, setDoc, updateDoc, deleteDoc, onSnapshot,
@@ -8,12 +8,13 @@ import {
   getStorage, ref as storageRef, uploadBytes, getDownloadURL
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
 
-const storage = getStorage(undefined, "gs://gufa-restaurant.firebasestorage.app");
+// Use default bucket for this project (fixes earlier bucket mismatch)
+const storage = getStorage();
 
 /* =========================
    Banner resize parameters
    ========================= */
-const BANNER_W = 1600;  // common wide hero/banner
+const BANNER_W = 1600;
 const BANNER_H = 600;
 const BANNER_MIME = "image/jpeg";
 const BANNER_QUALITY = 0.85;
@@ -23,11 +24,9 @@ const MAX_UPLOAD_MB = 10;
 function isImage(file) {
   return file && /^image\//i.test(file.type);
 }
-
 function fileTooLarge(file) {
   return file && file.size > MAX_UPLOAD_MB * 1024 * 1024;
 }
-
 function fileToImage(file) {
   return new Promise((resolve, reject) => {
     const fr = new FileReader();
@@ -41,45 +40,33 @@ function fileToImage(file) {
     fr.readAsDataURL(file);
   });
 }
-
-/**
- * Cover-crops any image to BANNER_W × BANNER_H and returns a JPEG Blob.
- * - Fills background white (for PNG transparency).
- */
+/** Cover-crops to BANNER_W×BANNER_H and returns a JPEG Blob. */
 async function resizeToBannerBlob(file) {
   const img = await fileToImage(file);
-
-  // Compute source crop (cover)
   const sw = img.naturalWidth || img.width;
   const sh = img.naturalHeight || img.height;
   const targetRatio = BANNER_W / BANNER_H;
   const srcRatio = sw / sh;
 
   let sx, sy, sWidth, sHeight;
-  if (srcRatio > targetRatio) {
-    // source wider -> crop sides
+  if (srcRatio > targetRatio) { // wider -> crop sides
     sHeight = sh;
     sWidth = Math.round(sh * targetRatio);
     sx = Math.round((sw - sWidth) / 2);
     sy = 0;
-  } else {
-    // source taller/narrower -> crop top/bottom
+  } else { // taller/narrower -> crop top/bottom
     sWidth = sw;
     sHeight = Math.round(sw / targetRatio);
     sx = 0;
     sy = Math.round((sh - sHeight) / 2);
   }
 
-  // Draw
   const canvas = document.createElement("canvas");
   canvas.width = BANNER_W;
   canvas.height = BANNER_H;
   const ctx = canvas.getContext("2d");
-
-  // White background for transparent PNGs
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
-
   ctx.drawImage(img, sx, sy, sWidth, sHeight, 0, 0, BANNER_W, BANNER_H);
 
   return new Promise((resolve, reject) => {
@@ -102,20 +89,25 @@ export function initPromotions() {
   root.innerHTML = `
     <div class="adm-card" style="margin:12px 0">
       <h3 style="margin:0 0 8px">Coupons</h3>
-      <div class="adm-form-grid" id="couponForm">
-        <input id="cCode" class="adm-input" placeholder="CODE (e.g., WELCOME10)" />
-        <select id="cType" class="adm-select">
-          <option value="percent">% off</option>
-          <option value="flat">Flat ₹</option>
-        </select>
-        <input id="cValue" type="number" class="adm-input" placeholder="Value" />
-        <input id="cMin" type="number" class="adm-input" placeholder="Min Order (₹)" />
-        <input id="cUsage" type="number" class="adm-input" placeholder="Usage Limit (optional)" />
-        <input id="cUserLimit" type="number" class="adm-input" placeholder="Per-user Limit (optional)" />
-        <div class="full adm-row" style="justify-content:flex-end;">
-          <label class="adm-row"><input id="cActive" type="checkbox" checked /> Active</label>
-          <button id="cSave" class="adm-btn adm-btn--primary">Save Coupon</button>
-        </div>
+      <div class="adm-form-grid">
+        <form id="couponForm" class="full">
+          <div class="adm-form-grid">
+            <input id="cCode" name="code" class="adm-input" placeholder="CODE (e.g., WELCOME10)" />
+            <select id="cType" name="type" class="adm-select">
+              <option value="percent">% off</option>
+              <option value="flat">Flat ₹</option>
+            </select>
+            <input id="cValue" name="value" type="number" class="adm-input" placeholder="Value" />
+            <input id="cMin" name="minOrder" type="number" class="adm-input" placeholder="Min Order (₹)" />
+            <input id="cUsage" name="usageLimit" type="number" class="adm-input" placeholder="Usage Limit (optional)" />
+            <input id="cUserLimit" name="perUserLimit" type="number" class="adm-input" placeholder="Per-user Limit (optional)" />
+            <div class="full adm-row" style="justify-content:flex-end; gap:12px;">
+              <label class="adm-row"><input id="cActive" name="active" type="checkbox" checked /> Active</label>
+              <button id="cSave" type="submit" class="adm-btn adm-btn--primary">Save Coupon</button>
+            </div>
+            <p id="couponMsg" class="adm-muted full" style="margin:6px 0 0"></p>
+          </div>
+        </form>
       </div>
     </div>
 
@@ -131,14 +123,19 @@ export function initPromotions() {
       <div class="adm-muted" style="margin:-6px 0 8px">
         Recommended size <strong>${BANNER_W}×${BANNER_H}</strong> (we'll auto-crop & resize).
       </div>
-      <div class="adm-form-grid" id="bannerForm">
-        <input id="bTitle" class="adm-input full" placeholder="Banner title" />
-        <input id="bLink" class="adm-input full" placeholder="Link URL (optional)" />
-        <input id="bFile" type="file" accept="image/*" class="adm-file full" />
-        <div class="full adm-row" style="justify-content:flex-end;">
-          <label class="adm-row"><input id="bActive" type="checkbox" checked /> Active</label>
-          <button id="bSave" class="adm-btn adm-btn--primary">Save Banner</button>
-        </div>
+      <div class="adm-form-grid">
+        <form id="bannerForm" class="full">
+          <div class="adm-form-grid">
+            <input id="bTitle" name="title" class="adm-input full" placeholder="Banner title" />
+            <input id="bLink" name="linkUrl" class="adm-input full" placeholder="Link URL (optional)" />
+            <input id="bFile" name="file" type="file" accept="image/*" class="adm-file full" />
+            <div class="full adm-row" style="justify-content:flex-end; gap:12px;">
+              <label class="adm-row"><input id="bActive" name="active" type="checkbox" checked /> Active</label>
+              <button id="bSave" type="submit" class="adm-btn adm-btn--primary">Save Banner</button>
+            </div>
+            <p id="bannerMsg" class="adm-muted full" style="margin:6px 0 0"></p>
+          </div>
+        </form>
       </div>
     </div>
 
@@ -150,26 +147,28 @@ export function initPromotions() {
     </div>
   `;
 
-  // --- Save coupon ---
+  /* ---------- Save coupon ---------- */
+  const couponForm = root.querySelector("#couponForm");
   const cSaveBtn = root.querySelector("#cSave");
-  cSaveBtn.onclick = async () => {
+  const couponMsg = root.querySelector("#couponMsg");
+
+  couponForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
     const code = root.querySelector("#cCode").value.trim().toUpperCase();
     const type = root.querySelector("#cType").value;
     const value = parseFloat(root.querySelector("#cValue").value);
     const minOrder = parseFloat(root.querySelector("#cMin").value) || 0;
     const usageLimitRaw = root.querySelector("#cUsage").value.trim();
     const perUserLimitRaw = root.querySelector("#cUserLimit").value.trim();
-    const usageLimit = usageLimitRaw ? parseInt(usageLimitRaw, 10) : null;
-    const perUserLimit = perUserLimitRaw ? parseInt(perUserLimitRaw, 10) : null;
+    const usageLimit = usageLimitRaw ? parseInt(usageLimitRaw, 10) : 1 * 0 || null; // keep null when blank
+    const perUserLimit = perUserLimitRaw ? parseInt(perUserLimitRaw, 10) : 1 * 0 || null;
     const active = root.querySelector("#cActive").checked;
 
     if (!code || isNaN(value) || value <= 0) return alert("Enter valid coupon details");
-    if (type === "percent" && value > 95) {
-      if (!confirm("Percent seems high. Continue?")) return;
-    }
+    if (type === "percent" && value > 95 && !confirm("Percent looks high. Continue?")) return;
 
     try {
-      cSaveBtn.disabled = true;
+      cSaveBtn.disabled = true; cSaveBtn.textContent = "Saving…";
       const promoRef = doc(collection(db, "promotions"));
       await setDoc(promoRef, {
         kind: "coupon",
@@ -178,20 +177,25 @@ export function initPromotions() {
         updatedAt: serverTimestamp()
       });
 
-      // reset
-      root.querySelector("#couponForm").reset();
+      // Safe reset (works even if the node isn't a <form> for some reason)
+      if (couponForm && typeof couponForm.reset === "function") couponForm.reset();
       root.querySelector("#cActive").checked = true;
-    } catch (e) {
-      console.error(e);
-      alert("Failed to save coupon: " + (e?.message || e));
+      couponMsg.textContent = "Saved ✓"; setTimeout(() => couponMsg.textContent = "", 1400);
+    } catch (e2) {
+      console.error(e2);
+      alert("Failed to save coupon: " + (e2?.message || e2));
     } finally {
-      cSaveBtn.disabled = false;
+      cSaveBtn.disabled = false; cSaveBtn.textContent = "Save Coupon";
     }
-  };
+  });
 
-  // --- Save banner (with resize) ---
+  /* ---------- Save banner (with resize) ---------- */
+  const bannerForm = root.querySelector("#bannerForm");
   const bSaveBtn = root.querySelector("#bSave");
-  bSaveBtn.onclick = async () => {
+  const bannerMsg = root.querySelector("#bannerMsg");
+
+  bannerForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
     const title = root.querySelector("#bTitle").value.trim();
     const linkUrl = root.querySelector("#bLink").value.trim();
     const file = root.querySelector("#bFile").files[0];
@@ -202,12 +206,11 @@ export function initPromotions() {
     if (fileTooLarge(file)) return alert(`Image is too large (>${MAX_UPLOAD_MB} MB). Choose a smaller file.`);
 
     try {
-      bSaveBtn.disabled = true;
+      bSaveBtn.disabled = true; bSaveBtn.textContent = "Uploading…";
 
-      // Resize to banner blob
+      // Resize and upload
       const bannerBlob = await resizeToBannerBlob(file);
-
-      // Upload with caching metadata
+      // Keep your existing folder name. If your Storage rules use bannerImages/, change this path accordingly.
       const path = `promoBanners/${Date.now()}_${file.name.replace(/\s+/g, "_")}`;
       const imgRef = storageRef(storage, path);
       await uploadBytes(imgRef, bannerBlob, {
@@ -220,23 +223,22 @@ export function initPromotions() {
       await setDoc(promoRef, {
         kind: "banner",
         title, linkUrl, imageUrl, active,
-        bannerSize: { w: BANNER_W, h: BANNER_H }, // helpful downstream
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       });
 
-      // reset
-      root.querySelector("#bannerForm").reset();
+      if (bannerForm && typeof bannerForm.reset === "function") bannerForm.reset();
       root.querySelector("#bActive").checked = true;
-    } catch (e) {
-      console.error(e);
-      alert("Failed to save banner: " + (e?.message || e));
+      bannerMsg.textContent = "Saved ✓"; setTimeout(() => bannerMsg.textContent = "", 1400);
+    } catch (e2) {
+      console.error(e2);
+      alert("Failed to save banner: " + (e2?.message || e2));
     } finally {
-      bSaveBtn.disabled = false;
+      bSaveBtn.disabled = false; bSaveBtn.textContent = "Save Banner";
     }
-  };
+  });
 
-  // --- Live lists (coupons & banners) ---
+  /* ---------- Live lists (coupons & banners) ---------- */
   const bodyC = root.querySelector("#couponsBody");
   const bodyB = root.querySelector("#bannersBody");
   const qAll = query(collection(db, "promotions"), orderBy("createdAt", "desc"));
@@ -288,7 +290,10 @@ export function initPromotions() {
         const next = btn.dataset.active !== "true";
         try {
           btn.disabled = true;
-          await updateDoc(doc(db, "promotions", id), { active: next, updatedAt: serverTimestamp() });
+          await updateDoc(doc(db, "promotions", id), {
+            active: next,
+            updatedAt: serverTimestamp()
+          });
         } catch (e) {
           console.error(e);
           alert("Failed to toggle: " + (e?.message || e));
