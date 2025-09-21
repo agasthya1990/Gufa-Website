@@ -21,8 +21,14 @@
       <div id="cartList" style="margin-top:10px;"></div>
       <hr style="margin:12px 0;">
       <div id="totals"></div>
+      <!-- Coupon -->
+<div class="row" style="gap:8px; align-items:center; margin:8px 0;">
+  <input id="couponCode" type="text" placeholder="Coupon code" class="adm-input" style="flex:1" />
+  <button id="applyCouponBtn" class="adm-btn" type="button">Apply</button>
+</div>
+<small id="couponMsg" class="adm-muted"></small>
     </section>
-
+    
     <section class="menu-item" style="max-width:720px;margin:20px auto;">
       <h2>Delivery Details</h2>
       <form id="checkoutForm" class="grid2" style="gap:10px;">
@@ -50,4 +56,5 @@
   <script type="module" src="app.checkout.js"></script>
 </body>
 </html>
+
 
