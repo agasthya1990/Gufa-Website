@@ -1,9 +1,10 @@
-// app.checkout.js
+// app.checkout.js (fixed)
 import { Cart } from "./app.cart.js";
-const FUNCTIONS_BASE = "https://us-central1-gufa-restaurant.cloudfunctions.net"; // keep as-is
+const FUNCTIONS_BASE = "https://us-central1-gufa-restaurant.cloudfunctions.net";
 const COUPON_KEY = "gufa_coupon";
+
 let appliedCoupon = "";
-let currentQuote = null;
+let currentQuote = null; // { subtotal, discount, total, coupon?: { code, type, value } }
 
 (function preloadSavedCoupon() {
   try {
@@ -11,7 +12,6 @@ let currentQuote = null;
     if (saved?.code) {
       appliedCoupon = saved.code;
       currentQuote = saved.quote || null;
-      // preload input if present
       const input = document.getElementById("couponCode");
       if (input && !input.value) input.value = appliedCoupon;
     }
@@ -25,9 +25,12 @@ function calcTotals(items) {
   return { subtotal, discount, total };
 }
 
-// --- NEW: coupon state
-let appliedCoupon = "";
-let currentQuote = null; // { subtotal, discount, total, coupon?: { code, type, value } }
+function saveCouponToLocal(code, quote) {
+  try {
+    if (!code) localStorage.removeItem(COUPON_KEY);
+    else localStorage.setItem(COUPON_KEY, JSON.stringify({ code, quote }));
+  } catch {}
+}
 
 function renderSummary() {
   const items = Object.values(Cart.get());
@@ -47,10 +50,11 @@ function renderSummary() {
     </div>`
   ).join("");
 
-  // Prefer server quote (when a coupon is applied), else local calc
-  const t = currentQuote
+  const local = calcTotals(items);
+  const useQuote = currentQuote && Number(currentQuote.subtotal) === Number(local.subtotal);
+  const t = useQuote
     ? { subtotal: currentQuote.subtotal, discount: currentQuote.discount, total: currentQuote.total }
-    : calcTotals(items);
+    : local;
 
   totalsEl.innerHTML = `
     <div class="row" style="justify-content:space-between;"><div>Subtotal</div><div>₹${t.subtotal}</div></div>
@@ -69,7 +73,7 @@ async function applyCoupon() {
 
   msg.textContent = "Checking…";
   try {
-    const phone = document.getElementById("cPhone")?.value.trim() || ""; // used for per-user limits
+    const phone = document.getElementById("cPhone")?.value.trim() || ""; // for per-user limits on server
     const resp = await fetch(`${FUNCTIONS_BASE}/validateCoupon`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -78,13 +82,17 @@ async function applyCoupon() {
     const data = await resp.json();
     if (!resp.ok || !data.valid) throw new Error(data.reason || "Invalid coupon");
 
-    appliedCoupon = code.toUpperCase();
+    appliedCoupon = (data.coupon?.code || code).toUpperCase();
     currentQuote = data;
-    msg.textContent = `Applied ✓ ${data.coupon?.code || ""}`;
+    saveCouponToLocal(appliedCoupon, data);
+
+    msg.textContent = `Applied ✓ ${appliedCoupon}`;
     renderSummary();
   } catch (err) {
     appliedCoupon = "";
     currentQuote = null;
+    saveCouponToLocal("", null);
+
     msg.textContent = err.message || "Coupon not valid";
     renderSummary();
   }
@@ -96,13 +104,10 @@ document.getElementById("applyCouponBtn")?.addEventListener("click", (e) => {
 });
 
 function renderSummaryAndMaybeResetQuote() {
-  // If cart changed after applying coupon, you could clear the quote. For MVP we keep it as-is.
   renderSummary();
 }
-
 renderSummaryAndMaybeResetQuote();
 
-// --- submit order (include couponCode)
 async function submitOrder(e) {
   e.preventDefault();
   const items = Object.values(Cart.get());
@@ -132,6 +137,9 @@ async function submitOrder(e) {
     if (!resp.ok) throw new Error(data.error || "Failed to place order");
 
     Cart.clear();
+    // Clear saved coupon after successful order
+    saveCouponToLocal("", null);
+
     window.location.href = `customer/track.html?order=${encodeURIComponent(data.orderId)}`;
   } catch (err) {
     msg.textContent = err.message || "Something went wrong";
@@ -139,4 +147,5 @@ async function submitOrder(e) {
     btn.disabled = false;
   }
 }
+
 document.getElementById("checkoutForm").addEventListener("submit", submitOrder);
