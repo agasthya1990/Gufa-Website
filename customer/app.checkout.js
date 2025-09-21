@@ -1,6 +1,5 @@
 import { Cart } from "./app.cart.js";
-
-const FUNCTIONS_BASE = "https://us-central1-<PROJECT-ID>.cloudfunctions.net"; // <-- change this
+const FUNCTIONS_BASE = "https://us-central1-gufa-restaurant.cloudfunctions.net"; // <-- change this
 
 function calcTotals(items) {
   const subtotal = items.reduce((s, i) => s + (Number(i.price) * Number(i.qty)), 0);
