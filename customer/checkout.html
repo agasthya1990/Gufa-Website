@@ -4,24 +4,18 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>GUFA — Your Cart</title>
-  <!-- uses the same global file you already use for the site -->
+
+  <!-- Your site CSS lives in the same folder -->
   <link rel="stylesheet" href="./styles.css"/>
 
-  <!-- page-local polish for Cart only (doesn't affect other pages) -->
+  <!-- Page-local polish; does NOT change your global styles -->
   <style>
-    :root{
-      --ink:#1f2937; --muted:#6b7280; --line:#e5e7eb; --card:#fff; --gold:#f1c36c;
-      --shadow:0 6px 18px rgba(0,0,0,.08);
-    }
+    :root{--ink:#1f2937;--muted:#6b7280;--line:#e5e7eb;--card:#fff;--shadow:0 6px 18px rgba(0,0,0,.08)}
     .checkout-wrap{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:16px}
     @media (max-width:1000px){.checkout-wrap{grid-template-columns:1fr}}
-
     .section-title{margin:8px 0 12px}
     .cart-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:12px}
-    .cart-row{
-      display:grid;grid-template-columns:84px 1fr auto;gap:12px;
-      background:var(--card);border:1px solid var(--line);border-radius:16px;padding:12px;box-shadow:var(--shadow)
-    }
+    .cart-row{display:grid;grid-template-columns:84px 1fr auto;gap:12px;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:12px;box-shadow:var(--shadow)}
     .cart-row .card-thumb{width:84px;height:84px;border-radius:12px;object-fit:cover;background:#f3f4f6}
     .cart-title{margin:0 0 4px;font-weight:700}
     .cart-sub{margin:0;color:var(--muted);font-size:13px}
@@ -31,11 +25,7 @@
     .stepper output{min-width:24px;text-align:center}
     .line-subtotal{font-weight:700}
     .remove-link{font-size:12px;color:#b91c1c;background:none;border:0;cursor:pointer}
-
-    .summary-card{
-      position:sticky;top:76px;background:var(--card);border:1px solid var(--line);border-radius:16px;
-      padding:14px;box-shadow:var(--shadow)
-    }
+    .summary-card{position:sticky;top:76px;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px;box-shadow:var(--shadow)}
     .summary-title{margin:0 0 10px}
     .coupon-form{display:flex;gap:8px;margin:8px 0 12px}
     .coupon-input{flex:1;padding:8px 10px;border-radius:10px;border:1px solid var(--line)}
@@ -50,7 +40,7 @@
   </style>
 </head>
 <body>
-  <!-- Header (same feel as index) -->
+  <!-- Header consistent with your site -->
   <header class="site-header">
     <div class="brand">
       <span class="brand-mark">GUFA</span>
@@ -68,7 +58,7 @@
   </header>
 
   <main class="page-wrap checkout-wrap">
-    <!-- LEFT: Items list -->
+    <!-- LEFT: Items -->
     <section class="cart-left">
       <h1 class="section-title">Your Cart <span id="cart-items-count" class="muted">(0 items)</span></h1>
 
@@ -84,7 +74,7 @@
         <button class="button" onclick="location.href='../index.html'">Back to Menu</button>
       </div>
 
-      <!-- items -->
+      <!-- IMPORTANT: this UL id must exist for the script -->
       <ul id="cart-items" class="cart-list" aria-live="polite"></ul>
     </section>
 
@@ -114,9 +104,11 @@
 
   <footer class="site-footer"><small>© <span id="year"></span> GUFA</small></footer>
 
-  <!-- correct: scripts live in /customer/, so use ./ -->
-   <script type="module" src="./firebase.client.js"></script>
+  <!-- ✅ Firebase must be a module so window.db exists -->
+  <script type="module" src="./firebase.client.js"></script>
+  <!-- ✅ Cart store defines window.Cart -->
   <script src="./cart.store.js"></script>
+  <!-- ✅ Cart UI script renders into the IDs above -->
   <script src="./app.cart.js"></script>
   <script>document.getElementById('year').textContent = new Date().getFullYear();</script>
 </body>
