@@ -72,22 +72,50 @@ main { max-width:1200px; margin:18px auto 32px; padding:0 16px; }
 .primary-filters{ display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
 .primary-filters .divider{ width:2px; height:22px; background:var(--line); border-radius:2px; }
 
+/* Switches (Veg / Non-Veg) */
+.switch{
+  position: relative;
+  display:inline-flex; align-items:center; gap:8px;
+  padding:6px 10px; background:#fff; border:1px solid var(--line); border-radius:999px;
+  cursor:pointer; font-weight:800; color:#374151;
+  box-shadow:0 2px 6px rgba(0,0,0,.06);
+  transition: background-color .2s ease, border-color .2s ease, transform .15s ease, box-shadow .2s ease;
+}
+.switch:hover{ transform: translateY(-1px); box-shadow:0 6px 14px rgba(0,0,0,.08); }
+.switch .track{
+  width:38px; height:22px; border-radius:999px; background:#f3f4f6; border:1px solid var(--line);
+  position: relative; display:inline-block;
+}
+.switch .knob{
+  width:18px; height:18px; border-radius:999px; background:#fff; border:1px solid var(--line);
+  position:absolute; top:50%; left:3px; transform: translateY(-50%); transition: left .18s ease;
+}
+.switch.on .knob{ left:17px; }
+.switch .label{ font-weight:800; }
+
+/* Veg color */
+.switch.veg.on{ border-color: var(--veg); }
+.switch.veg.on .track{ background: #10b98120; border-color: var(--veg); }
+.switch.veg .label{ color:#065f46; }
+
+/* Non-Veg color */
+.switch.nonveg.on{ border-color: var(--nonveg); }
+.switch.nonveg.on .track{ background: #ef444420; border-color: var(--nonveg); }
+.switch.nonveg .label{ color:#7f1d1d; }
+
+/* Nav chips (scroll only) */
 .pill-toggle{
-  appearance:none; border:1px solid var(--line); background:#fff; color:var(--ink);
+  appearance:none; border:1px solid var(--line); background:#fff; color:#064b56;
   padding:8px 14px; border-radius:999px; cursor:pointer; font-weight:800;
   box-shadow:0 2px 6px rgba(0,0,0,.06);
   transition:transform .15s ease, box-shadow .2s ease, background-color .2s ease, color .2s ease, border-color .2s ease;
 }
 .pill-toggle:hover { transform: translateY(-1px); box-shadow:0 6px 14px rgba(0,0,0,.08); }
-.pill-toggle:active { transform: scale(.98); }
-.pill-toggle.veg.on    { background:#10b9811a; border-color:#10b981; color:#065f46; }
-.pill-toggle.nonveg.on { background:#ef44441a; border-color:#ef4444; color:#7f1d1d; }
+.pill-toggle.course, .pill-toggle.category { background: rgba(0,198,251,.12); border-color: var(--brand); }
 
-/* Search (home) */
-.searchbar{
-  position: relative; min-width: 260px; flex: 1 1 320px; max-width: 420px;
-}
-.searchbar.compact{ min-width: 220px; max-width: 360px; }
+/* Search (home & compact versions) */
+.searchbar{ position: relative; min-width: 240px; flex: 1 1 300px; max-width: 380px; }
+.searchbar.compact{ min-width: 220px; max-width: 320px; }
 .searchbar input{
   width:100%; padding:10px 42px 10px 12px; border:1px solid var(--line); background:#fff; color:var(--ink);
   border-radius:12px; outline:none; transition: border-color .2s ease, box-shadow .2s ease;
@@ -136,10 +164,8 @@ main { max-width:1200px; margin:18px auto 32px; padding:0 16px; }
 }
 
 /* Tile OPEN panel (list inside the collage) */
-.tile-open .panel{
-  padding: 10px 10px 14px;
-  background: #fff;
-}
+.tile-open .panel{ padding: 10px 10px 14px; background: #fff; }
+
 .tile-open .topbar{
   display:flex; gap:10px; align-items:center; justify-content:flex-start; flex-wrap:wrap;
   margin-bottom: 10px;
@@ -147,10 +173,6 @@ main { max-width:1200px; margin:18px auto 32px; padding:0 16px; }
 .topbar .back-btn{
   border:1px solid var(--line); background:#fff; border-radius:999px; padding:8px 12px; cursor:pointer; font-weight:800;
 }
-.topbar .pill-toggle{ /* re-use pill style */ }
-.topbar .pill-toggle.veg.on    { background:#10b9811a; border-color:#10b981; color:#065f46; }
-.topbar .pill-toggle.nonveg.on { background:#ef44441a; border-color:#ef4444; color:#7f1d1d; }
-.topbar .pill-toggle.nav { background: rgba(0,198,251,.12); border-color: var(--brand); color:#064b56; }
 .topbar .searchbar{ margin-left:auto; }
 
 .tile-open .list-grid{
