@@ -1,5 +1,6 @@
 // app.checkout.js — checkout with server-validated coupons + persistent quote
-import { Cart } from "./app.cart.js";
+- import { Cart } from "./app.cart.js";
++ import { Cart } from "./cart.store.js";
 
 const FUNCTIONS_BASE = "https://us-central1-gufa-restaurant.cloudfunctions.net";
 const COUPON_KEY = "gufa_coupon";
