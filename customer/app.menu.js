@@ -1,8 +1,8 @@
-// app.menu.js — BBK/Swiggy/Zomato-style navigation:
+// app.menu.js — Home bar hides in list/search, shows in home.
 //  • Home view: two bifurcation grids (Food Course / Food Categories) with single-image tiles
-//  • Click a tile => full-page LIST view (grids hidden) with top bar & global search
-//  • Back returns to grids; Veg/Non-Veg switches are opt-in (both OFF => all)
-//  • No count badges on tiles; latest item image per group; smooth fades
+//  • Click a tile => full-page LIST view with its own top bar; home bar hidden
+//  • Back returns to grids; home bar shown again
+//  • Veg/Non-Veg switches are opt-in (both OFF => all), latest image per group, smooth fades
 import { db } from "./firebase.client.js";
 import {
   collection, onSnapshot, query, orderBy
@@ -19,6 +19,7 @@ const categoryToggle = $("#categoryToggle");
 const searchInputHome = $("#filter-search");
 const searchBtnHome = $("#searchBtn");
 
+const primaryBar = $("#menu .primary-bar");      // << NEW: home bar wrapper
 const coursesSection = $("#coursesSection");
 const categoriesSection = $("#categoriesSection");
 const courseBuckets = $("#courseBuckets");
@@ -264,22 +265,22 @@ function renderContentView(fade=false){
   });
 }
 
-/* ---------- View transitions ---------- */
+/* ---------- View transitions (now hide/show the PRIMARY BAR) ---------- */
 function showHome(){
   view = "home"; listKind=""; listId=""; listLabel="";
   globalResults.classList.add("hidden");
   coursesSection.classList.remove("hidden");
   categoriesSection.classList.remove("hidden");
+  primaryBar?.classList.remove("hidden");           // << SHOW home bar
+
   document.getElementById("menuTitle")?.scrollIntoView({ behavior: "smooth", block: "start" });
-  // Refresh tiles (in case filters changed while in list/search)
-  renderCourseBuckets();
-  renderCategoryBuckets();
+  renderCourseBuckets(); renderCategoryBuckets();
 }
 function enterList(kind, id, label){
   view = "list"; listKind=kind; listId=id; listLabel=label||id;
-  // Hide grids, show content view
   coursesSection.classList.add("hidden");
   categoriesSection.classList.add("hidden");
+  primaryBar?.classList.add("hidden");              // << HIDE home bar
   globalResults.classList.remove("hidden");
   renderContentView();
   document.getElementById("menuTitle")?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -289,6 +290,7 @@ function enterSearch(q){
   searchQuery = q || "";
   coursesSection.classList.add("hidden");
   categoriesSection.classList.add("hidden");
+  primaryBar?.classList.add("hidden");              // << HIDE home bar
   globalResults.classList.remove("hidden");
   renderContentView();
   document.getElementById("menuTitle")?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -319,7 +321,7 @@ function listenCourses() {
     snap.forEach(d => list.push({ id: d.id, label: d.data()?.name || d.id }));
     COURSES = list;
     if (view === "home") renderCourseBuckets();
-  }, () => { /* fallback handled by ensureGroupsFromItems */ });
+  }, () => {});
 }
 function listenCategories() {
   onSnapshot(collection(db, "menuCategories"), (snap) => {
@@ -460,7 +462,6 @@ document.addEventListener("click", (e) => {
 
 /* ---------- Boot ---------- */
 function boot(){
-  // reflect default switch state (both off)
   syncHomeSwitches();
   listenCourses();
   listenCategories();
