@@ -115,7 +115,7 @@
   <footer class="site-footer"><small>© <span id="year"></span> GUFA</small></footer>
 
   <!-- correct: scripts live in /customer/, so use ./ -->
-  <script src="./firebase.client.js"></script>
+   <script type="module" src="./firebase.client.js"></script>
   <script src="./cart.store.js"></script>
   <script src="./app.cart.js"></script>
   <script>document.getElementById('year').textContent = new Date().getFullYear();</script>
