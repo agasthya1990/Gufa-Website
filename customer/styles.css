@@ -125,23 +125,26 @@ main { max-width:1200px; margin:18px auto 32px; padding:0 16px; }
   background-repeat:no-repeat; background-position:center;
 }
 
-/* Buckets (single-image tiles) — centered grid */
+/* Buckets (single-image tiles) — CENTER the tiles */
 .bucket-group{ margin:8px 0 18px; }
 .bucket-header{
   margin:6px 4px 10px; font-size:16px; font-weight:800; color:#0b2a38;
   text-transform:uppercase; letter-spacing:.5px; text-align:center;
 }
 .bucket-grid{
-  display:grid; gap:12px; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  display:grid; gap:12px;
+  /* Centered, fixed tile widths for clean columns */
+  grid-template-columns: repeat(auto-fit, minmax(180px, 220px));
+  justify-content: center;   /* center the grid tracks */
+  align-content: start;
   transition: opacity .25s ease, transform .25s ease;
-  justify-items: center;
 }
-.bucket-grid > .bucket-tile{ width:100%; max-width: 220px; }
-
 .bucket-grid.fade-out{ opacity:.15; transform: scale(0.99); }
 .bucket-grid.fade-in{ opacity:1; transform: scale(1); }
 
 .bucket-tile{
+  width: 100%;
+  max-width: 220px;
   position: relative; display:block; border: 1px solid var(--line); background: #fff;
   border-radius: 16px; overflow: hidden; box-shadow: 0 3px 10px rgba(0,0,0,.06);
   cursor: pointer; text-decoration: none; color: inherit;
@@ -256,7 +259,6 @@ footer p{ margin:6px 0; }
 
 /* Responsive */
 @media (max-width: 640px){
-  .bucket-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
   .results .list-grid { grid-template-columns: 1fr; }
 }
 
