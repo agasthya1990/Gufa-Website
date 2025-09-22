@@ -105,34 +105,28 @@
   </main>
 
   <footer class="site-footer"><small>© <span id="year"></span> GUFA</small></footer>
-
+  
   <!-- Load scripts in the right order -->
   <script type="module" src="./firebase.client.js"></script>
   <script src="./cart.store.js"></script>
-
-  <!-- 👇 CART_UI config goes BEFORE app.cart.js and uses the REAL IDs above -->
-  <script>
-    window.CART_UI = {
-      list: {
-        items: '#cart-items',
-        empty: '#cart-empty',
-        count: '#cart-items-count',
-        addonsNote: '#addons-note',
-        subtotal: '#subtotal-amt',
-        gst: '#gst-amt',
-        delivery: '#delivery-amt',
-        total: '#total-amt',
-        proceed: '#proceed-btn'
-      },
-      table: null
-    };
-  </script>
-
-  <!-- Cart UI logic -->
+<script>
+  window.CART_UI = {
+    list: {
+      items: '#cart-items',
+      empty: '#cart-empty',
+      count: '#cart-items-count',
+      addonsNote: '#addons-note',
+      subtotal: '#subtotal-amt',
+      gst: '#gst-amt',
+      delivery: '#delivery-amt',
+      total: '#total-amt',
+      proceed: '#proceed-btn'
+    },
+    table: null
+  };
+</script>
+<script src="./app.cart.js"></script>
   <script src="./app.cart.js"></script>
-
   <script>document.getElementById('year').textContent = new Date().getFullYear();</script>
 </body>
 </html>
-
-
