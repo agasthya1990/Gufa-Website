@@ -1,51 +1,104 @@
-// app.cart.js — robust cart renderer that supports two layouts:
-//  A) List + Summary: #cart-items, #subtotal-amt, #gst-amt, #delivery-amt, #total-amt (+ #cart-empty, #cart-items-count)
-//  B) Table:          #cartBody, #cartTotal
-// Uses global window.Cart (get, setQty, clear). No CSS/HTML changes required.
+// app.cart.js — cart renderer with selector adapter.
+// Uses window.CART_UI to find the right elements on YOUR page.
+// Falls back to default IDs if no config is provided.
 
 (function () {
-  const $ = (s) => document.querySelector(s);
+  const $ = (s) => s ? document.querySelector(s) : null;
 
-  // --- Detect layout A (list + summary) ---
-  const $list       = $("#cart-items");
-  const $empty      = $("#cart-empty");
-  const $itemsCount = $("#cart-items-count");
-  const $addonsNote = $("#addons-note");
-  const $subtotal   = $("#subtotal-amt");
-  const $gst        = $("#gst-amt");
-  const $delivery   = $("#delivery-amt");
-  const $total      = $("#total-amt");
-  const $proceed    = $("#proceed-btn");
+  // ---- 1) Read mapping (list OR table) ----
+  const CFG = (window.CART_UI || {});
+  const LIST = CFG.list || null;
+  const TABLE = CFG.table || null;
 
-  // --- Detect layout B (table) ---
-  const $tableBody  = $("#cartBody");
-  const $tableTotal = $("#cartTotal");
+  // DEFAULTS if no config is given (you can remove these if you want it strict)
+  const defaultsList = {
+    items: '#cart-items',
+    empty: '#cart-empty',
+    count: '#cart-items-count',
+    addonsNote: '#addons-note',
+    subtotal: '#subtotal-amt',
+    gst: '#gst-amt',
+    delivery: '#delivery-amt',
+    total: '#total-amt',
+    proceed: '#proceed-btn'
+  };
+  const defaultsTable = {
+    body: '#cartBody',
+    total: '#cartTotal'
+  };
 
-  const $countTop   = $("#cart-count");
+  const USE_LIST = LIST ? true : (TABLE ? false : !!document.querySelector(defaultsList.items));
+  const useListCfg = LIST || (USE_LIST ? defaultsList : null);
+  const useTableCfg = TABLE || (!USE_LIST ? defaultsTable : null);
 
-  // Display rules you asked for
+  // ---- 2) Grab elements based on chosen mapping ----
+  // header badge is optional and common
+  const $countTop = $('#cart-count');
+
+  // List layout refs
+  const $list       = USE_LIST ? $(useListCfg.items)      : null;
+  const $empty      = USE_LIST ? $(useListCfg.empty)      : null;
+  const $itemsCount = USE_LIST ? $(useListCfg.count)      : null;
+  const $addonsNote = USE_LIST ? $(useListCfg.addonsNote) : null;
+  const $subtotal   = USE_LIST ? $(useListCfg.subtotal)   : null;
+  const $gst        = USE_LIST ? $(useListCfg.gst)        : null;
+  const $delivery   = USE_LIST ? $(useListCfg.delivery)   : null;
+  const $total      = USE_LIST ? $(useListCfg.total)      : null;
+  const $proceed    = USE_LIST ? $(useListCfg.proceed)    : null;
+
+  // Table layout refs
+  const $tableBody  = !USE_LIST ? $(useTableCfg.body)  : null;
+  const $tableTotal = !USE_LIST ? $(useTableCfg.total) : null;
+
+  // If neither layout is found, log once and stop
+  const listOk = USE_LIST && $list && ($subtotal || $tableTotal || $total);
+  const tableOk = !USE_LIST && $tableBody && $tableTotal;
+  if (!listOk && !tableOk) {
+    console.warn("[cart] No usable layout found. Provide window.CART_UI with your selectors.");
+    return;
+  }
+
+  // ---- 3) Helpers ----
   const GST_PERCENT = 5;
   const DELIVERY_TEXT = "Shown at payment";
+  const INR = (v) => "₹" + Math.round(Number(v) || 0).toLocaleString("en-IN");
 
-  function inr(v) { return "₹" + Math.round(Number(v) || 0).toLocaleString("en-IN"); }
+  const entries = () => {
+    try { return Object.entries(window.Cart?.get?.() || {}); }
+    catch { return []; }
+  };
+  const count = () => entries().reduce((n, [, it]) => n + (Number(it.qty) || 0), 0);
+  const subtotal = () => entries().reduce((s, [, it]) => s + (Number(it.price)||0)*(Number(it.qty)||0), 0);
+  const gst = (s) => Math.max(0, (s * GST_PERCENT) / 100);
 
-  function entries() {
-    const bag = (window.Cart && Cart.get && Cart.get()) || {};
-    return Object.entries(bag); // [ [key, item], ... ]
+  // ---- 4) Renderers ----
+  function renderList() {
+    const es = entries();
+    const n = count();
+
+    if ($empty) $empty.hidden = n > 0;
+    if ($list)  $list.hidden  = n === 0;
+    if ($itemsCount) $itemsCount.textContent = `(${n} ${n === 1 ? "item" : "items"})`;
+    if ($countTop) $countTop.textContent = String(n);
+    if ($proceed) $proceed.disabled = n === 0;
+    if ($addonsNote) $addonsNote.style.display = n > 0 ? "block" : "none";
+
+    if ($list) {
+      $list.innerHTML = "";
+      for (const [key, it] of es) $list.appendChild(lineItem(key, it));
+    }
+
+    if ($subtotal && $gst && $delivery && $total) {
+      const sub = subtotal();
+      const g   = gst(sub);
+      $subtotal.textContent = INR(sub);
+      $gst.textContent      = INR(g);
+      $delivery.textContent = DELIVERY_TEXT;
+      $total.textContent    = INR(sub + g);
+    }
   }
 
-  function count() {
-    return entries().reduce((n, [, it]) => n + (Number(it.qty) || 0), 0);
-  }
-
-  function subtotal() {
-    return entries().reduce((sum, [, it]) => sum + (Number(it.price) || 0) * (Number(it.qty) || 0), 0);
-  }
-
-  function calcGST(sub) { return Math.max(0, (sub * GST_PERCENT) / 100); }
-
-  // ---------- Layout A: helpers ----------
-  function lineA(key, it) {
+  function lineItem(key, it) {
     const li = document.createElement("li");
     li.className = "cart-row";
     li.dataset.key = key;
@@ -63,7 +116,7 @@
     title.textContent = it.name || "";
     const sub = document.createElement("p");
     sub.className = "cart-sub";
-    sub.textContent = `${it.variant || ""} • ${inr(Number(it.price) || 0)}`;
+    sub.textContent = `${it.variant || ""} • ${INR(Number(it.price) || 0)}`;
 
     const right = document.createElement("div");
     right.className = "row-right";
@@ -71,29 +124,29 @@
     const stepper = document.createElement("div");
     stepper.className = "stepper";
     const minus = document.createElement("button"); minus.textContent = "–";
-    const out = document.createElement("output");  out.textContent = String(it.qty || 0);
-    const plus = document.createElement("button");  plus.textContent = "+";
+    const out   = document.createElement("output");  out.textContent = String(it.qty || 0);
+    const plus  = document.createElement("button");  plus.textContent = "+";
     stepper.append(minus, out, plus);
 
     const lineSub = document.createElement("div");
     lineSub.className = "line-subtotal";
-    lineSub.textContent = inr((Number(it.price) || 0) * (Number(it.qty) || 0));
+    lineSub.textContent = INR((Number(it.price) || 0) * (Number(it.qty) || 0));
 
     const remove = document.createElement("button");
     remove.className = "remove-link";
     remove.textContent = "Remove";
 
     plus.addEventListener("click", () => {
-      const next = (Number(Cart.get()?.[key]?.qty) || 0) + 1;
-      Cart.setQty(key, next, it);
+      const next = (Number(window.Cart.get()?.[key]?.qty) || 0) + 1;
+      window.Cart.setQty(key, next, it);
     });
     minus.addEventListener("click", () => {
-      const prev = Number(Cart.get()?.[key]?.qty) || 0;
+      const prev = Number(window.Cart.get()?.[key]?.qty) || 0;
       const next = Math.max(0, prev - 1);
-      Cart.setQty(key, next, it);
+      window.Cart.setQty(key, next, it);
     });
     remove.addEventListener("click", () => {
-      Cart.setQty(key, 0);
+      window.Cart.setQty(key, 0);
     });
 
     mid.append(title, sub);
@@ -102,55 +155,31 @@
     return li;
   }
 
-  function renderListA() {
-    if (!$list) return false; // layout not present
-
+  function renderTable() {
     const es = entries();
-    const n = count();
-
-    if ($empty) $empty.hidden = n > 0;
-    $list.hidden = n === 0;
-
-    if ($itemsCount) $itemsCount.textContent = `(${n} ${n === 1 ? "item" : "items"})`;
-    if ($countTop) $countTop.textContent = String(n);
-    if ($proceed) $proceed.disabled = n === 0;
-    if ($addonsNote) $addonsNote.style.display = n > 0 ? "block" : "none";
-
-    // Guard: if somehow $list is null, just return
-    if (!$list) return true;
-
-    $list.innerHTML = "";
-    for (const [key, it] of es) $list.appendChild(lineA(key, it));
-
-    // Totals
-    if ($subtotal && $gst && $delivery && $total) {
-      const subVal = subtotal();
-      const gstVal = calcGST(subVal);
-      const totalVal = subVal + gstVal;
-      $subtotal.textContent = inr(subVal);
-      $gst.textContent = inr(gstVal);
-      $delivery.textContent = DELIVERY_TEXT;
-      $total.textContent = inr(totalVal);
+    if ($tableBody) {
+      if (!es.length) {
+        $tableBody.innerHTML = `<tr><td colspan="5" class="empty">Your cart is empty</td></tr>`;
+      } else {
+        $tableBody.innerHTML = "";
+        for (const [key, it] of es) $tableBody.appendChild(rowB(key, it));
+      }
     }
-
-    return true;
+    if ($tableTotal) $tableTotal.textContent = INR(subtotal());
+    if ($countTop)   $countTop.textContent   = String(count());
   }
 
-  // ---------- Layout B: helpers ----------
   function rowB(key, it) {
     const tr = document.createElement("tr");
 
     const tdImg = document.createElement("td");
-    tdImg.innerHTML = it.thumb
-      ? `<img src="${it.thumb}" alt="${it.name || ""}" class="thumb" loading="lazy"/>`
-      : "";
+    tdImg.innerHTML = it.thumb ? `<img src="${it.thumb}" alt="${it.name || ""}" class="thumb" loading="lazy"/>` : "";
 
     const tdName = document.createElement("td");
-    tdName.innerHTML = `<div class="name">${it.name || ""}</div>
-                        <div class="muted">${it.variant || ""}</div>`;
+    tdName.innerHTML = `<div class="name">${it.name || ""}</div><div class="muted">${it.variant || ""}</div>`;
 
     const tdPrice = document.createElement("td");
-    tdPrice.textContent = inr(it.price || 0);
+    tdPrice.textContent = INR(it.price || 0);
 
     const tdQty = document.createElement("td");
     tdQty.className = "qty-cell";
@@ -164,55 +193,33 @@
 
     const tdSub = document.createElement("td");
     tdSub.className = "subtotal";
-    tdSub.textContent = inr((Number(it.price) || 0) * (Number(it.qty) || 0));
+    tdSub.textContent = INR((Number(it.price) || 0) * (Number(it.qty) || 0));
 
     btnPlus.addEventListener("click", () => {
-      const next = (Number(Cart.get()?.[key]?.qty) || 0) + 1;
-      Cart.setQty(key, next, it);
+      const next = (Number(window.Cart.get()?.[key]?.qty) || 0) + 1;
+      window.Cart.setQty(key, next, it);
     });
     btnMinus.addEventListener("click", () => {
-      const prev = Number(Cart.get()?.[key]?.qty) || 0;
+      const prev = Number(window.Cart.get()?.[key]?.qty) || 0;
       const next = Math.max(0, prev - 1);
-      Cart.setQty(key, next, it);
+      window.Cart.setQty(key, next, it);
     });
 
     tr.append(tdImg, tdName, tdPrice, tdQty, tdSub);
     return tr;
   }
 
-  function renderTableB() {
-    if (!$tableBody || !$tableTotal) return false; // layout not present
-
-    const es = entries();
-    if (!es.length) {
-      $tableBody.innerHTML = `<tr><td colspan="5" class="empty">Your cart is empty</td></tr>`;
-      $tableTotal.textContent = inr(0);
-      if ($countTop) $countTop.textContent = "0";
-      return true;
-    }
-
-    $tableBody.innerHTML = "";
-    for (const [key, it] of es) $tableBody.appendChild(rowB(key, it));
-
-    $tableTotal.textContent = inr(subtotal());
-    if ($countTop) $countTop.textContent = String(count());
-    return true;
-  }
-
-  // ---------- Unified render ----------
+  // ---- 5) Unified render & hooks ----
   function render() {
-    // Try list layout first; if not present, try table layout.
-    if (renderListA()) return;
-    if (renderTableB()) return;
-    console.warn("[cart] No known cart layout found on this page (expected list or table elements).");
+    if (USE_LIST) renderList();
+    else          renderTable();
   }
 
-  // Boot + keep in sync
   document.addEventListener("DOMContentLoaded", render);
   window.addEventListener("cart:update", render);
 
-  // Proceed placeholder
-  $proceed?.addEventListener("click", () => {
+  // proceed placeholder
+  (USE_LIST ? $proceed : null)?.addEventListener("click", () => {
     if (count() === 0) return;
     alert("Cart confirmed. Payment step will be added next.");
   });
