@@ -1,24 +1,58 @@
-// app.cart.js — header badge + cross-page sync (bridged to cart.store.js)
+// app.cart.js
 import { Cart } from "./cart.store.js";
 
-function countItems(bag) {
-  return Object.values(bag || {}).reduce((n, it) => n + Number(it.qty || 0), 0);
-}
+document.addEventListener("DOMContentLoaded", () => {
+  const cartBody = document.getElementById("cartBody");
+  const cartTotal = document.getElementById("cartTotal");
 
-function renderHeaderCount() {
-  const a = document.getElementById("cartLink");
-  if (!a) return;
-  const n = countItems(Cart.get());
-  a.textContent = `Cart (${n})`;
-}
+  function renderCart() {
+    cartBody.innerHTML = "";
+    const items = Cart.getAll();
 
-// initial paint
-renderHeaderCount();
+    if (!items.length) {
+      cartBody.innerHTML = `<tr><td colspan="5" class="empty">Your cart is empty</td></tr>`;
+      cartTotal.textContent = "₹0";
+      return;
+    }
 
-// repaint when any page updates the cart (custom event fired by cart.store.js)
-window.addEventListener("cart:update", renderHeaderCount);
+    let total = 0;
 
-// repaint on cross-tab localStorage changes
-window.addEventListener("storage", (e) => {
-  if (e.key === "gufa_cart_v1") renderHeaderCount();
+    items.forEach(item => {
+      const price = item.qtyType?.itemPrice || item.qtyType?.halfPrice || 0;
+      const subtotal = price * item.qty;
+      total += subtotal;
+
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td><img src="${item.imageUrl}" class="cart-img"/></td>
+        <td>${item.name}</td>
+        <td>₹${price}</td>
+        <td>
+          <button class="qty-btn dec" data-id="${item.id}">-</button>
+          <span class="qty">${item.qty}</span>
+          <button class="qty-btn inc" data-id="${item.id}">+</button>
+        </td>
+        <td>₹${subtotal}</td>
+      `;
+
+      cartBody.appendChild(tr);
+    });
+
+    cartTotal.textContent = `₹${total}`;
+
+    // Qty buttons
+    cartBody.querySelectorAll(".qty-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const id = btn.dataset.id;
+        if (btn.classList.contains("inc")) {
+          Cart.increase(id);
+        } else {
+          Cart.decrease(id);
+        }
+        renderCart();
+      });
+    });
+  }
+
+  renderCart();
 });
