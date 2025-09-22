@@ -72,7 +72,7 @@ main { max-width:1200px; margin:18px auto 32px; padding:0 16px; }
 .primary-filters{ display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
 .primary-filters .divider{ width:2px; height:22px; background:var(--line); border-radius:2px; }
 
-/* Switches (Veg / Non-Veg) */
+/* Switches (Veg / Non-Veg) — opt-in filters */
 .switch{
   position: relative;
   display:inline-flex; align-items:center; gap:8px;
@@ -92,13 +92,9 @@ main { max-width:1200px; margin:18px auto 32px; padding:0 16px; }
 }
 .switch.on .knob{ left:17px; }
 .switch .label{ font-weight:800; }
-
-/* Veg color */
 .switch.veg.on{ border-color: var(--veg); }
 .switch.veg.on .track{ background: #10b98120; border-color: var(--veg); }
 .switch.veg .label{ color:#065f46; }
-
-/* Non-Veg color */
 .switch.nonveg.on{ border-color: var(--nonveg); }
 .switch.nonveg.on .track{ background: #ef444420; border-color: var(--nonveg); }
 .switch.nonveg .label{ color:#7f1d1d; }
@@ -114,7 +110,7 @@ main { max-width:1200px; margin:18px auto 32px; padding:0 16px; }
 .pill-toggle.course, .pill-toggle.category { background: rgba(0,198,251,.12); border-color: var(--brand); }
 
 /* Search (home & compact versions) */
-.searchbar{ position: relative; min-width: 240px; flex: 1 1 300px; max-width: 380px; }
+.searchbar{ position: relative; min-width: 240px; flex: 1 1 300px; max-width: 360px; }
 .searchbar.compact{ min-width: 220px; max-width: 320px; }
 .searchbar input{
   width:100%; padding:10px 42px 10px 12px; border:1px solid var(--line); background:#fff; color:var(--ink);
@@ -128,7 +124,7 @@ main { max-width:1200px; margin:18px auto 32px; padding:0 16px; }
   background-repeat:no-repeat; background-position:center;
 }
 
-/* Buckets (collages) */
+/* Buckets (single-image tiles) */
 .bucket-group{ margin:8px 0 18px; }
 .bucket-header{
   margin:6px 4px 10px; font-size:16px; font-weight:800; color:#0b2a38;
@@ -150,20 +146,19 @@ main { max-width:1200px; margin:18px auto 32px; padding:0 16px; }
 .bucket-tile:hover{ transform: translateY(-2px); box-shadow: 0 10px 18px rgba(0,0,0,.10); }
 .bucket-tile.active{ outline: 3px solid rgba(0,198,251,.35); }
 
-.collage{
-  display:grid; grid-template-columns:1fr 1fr; grid-template-rows: 90px 90px; gap:4px;
-  padding: 6px; background: #fff;
-}
-.collage img, .collage .ph{
-  width:100%; height:100%; object-fit:cover; border-radius: 10px; background:#f3f4f6;
-}
+.tile-img{ width:100%; aspect-ratio: 1 / 1; background:#f3f4f6; }
+.tile-img img{ width:100%; height:100%; object-fit:cover; display:block; }
 .bucket-label{
   position:absolute; left:10px; bottom:10px;
   background: rgba(0,0,0,.55); color: #fff; padding: 6px 10px; border-radius: 999px;
   font-weight: 700; font-size: 13px; letter-spacing: .2px;
 }
+.count-badge{
+  position:absolute; right:10px; top:10px;
+  background: rgba(0,0,0,.65); color:#fff; padding:4px 8px; border-radius:999px; font-size:12px; font-weight:800;
+}
 
-/* Tile OPEN panel (list inside the collage) */
+/* Tile OPEN panel (list inside the collage/tile) */
 .tile-open .panel{ padding: 10px 10px 14px; background: #fff; }
 
 .tile-open .topbar{
@@ -238,7 +233,7 @@ footer p{ margin:6px 0; }
 
 /* Responsive */
 @media (max-width: 640px){
-  .collage { grid-template-rows: 76px 76px; }
+  .bucket-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
   .results .list-grid { grid-template-columns: 1fr; }
 }
 
