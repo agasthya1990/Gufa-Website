@@ -1,4 +1,6 @@
 // app.cart.js — lightweight Cart store with localStorage + live "Cart (n)" badge
+- import { Cart } from "./app.cart.js";
++ import { Cart } from "./cart.store.js";
 
 export const Cart = (() => {
   const KEY = "gufa_cart";
