@@ -1,117 +1,151 @@
-// app.cart.js — cart table wired to your existing cart.store.js (no UI changes)
-
-// NOTE: cart.store.js attaches a global `Cart` with:
-//   Cart.get() -> { [key]: { id, name, variant, price, qty, thumb? } }
-//   Cart.setQty(key, qty, meta) -> updates one line (removes if qty <= 0)
-//   Cart.clear() -> empties cart
-// It also fires: window.dispatchEvent(new CustomEvent("cart:update", { detail: { cart } }))
+// app.cart.js — cart wired to existing store, with site-consistent layout and totals.
+// No changes to overall site styles; this script just fills the cart page cleanly.
 
 (function () {
-  const $$ = (sel) => document.querySelector(sel);
+  const $ = (s) => document.querySelector(s);
 
-  const $body   = $$("#cartBody");   // <tbody>
-  const $total  = $$("#cartTotal");  // <span id="cartTotal">
-  const $count  = document.getElementById("cart-count"); // optional header badge if present
+  // DOM hooks
+  const $countTop = $("#cart-count");
+  const $itemsCount = $("#cart-items-count");
+  const $empty = $("#cart-empty");
+  const $list = $("#cart-items");
+  const $addonsNote = $("#addons-note");
 
-  function asEntries() {
-    // { key: item } -> [ [key, item], ... ]
+  const $subtotal = $("#subtotal-amt");
+  const $gst = $("#gst-amt");
+  const $delivery = $("#delivery-amt");
+  const $total = $("#total-amt");
+  const $proceed = $("#proceed-btn");
+
+  // simple rules (you asked to “show it in this format for now”)
+  const GST_PERCENT = 5; // can be changed later if needed
+
+  function inr(v) {
+    return "₹" + Math.round(v || 0).toLocaleString("en-IN");
+  }
+
+  function entries() {
     const bag = (window.Cart && Cart.get && Cart.get()) || {};
     return Object.entries(bag);
   }
 
-  function computeSubtotal() {
-    return asEntries().reduce((sum, [, it]) => sum + (Number(it.price) || 0) * (Number(it.qty) || 0), 0);
+  function count() {
+    return entries().reduce((n, [, it]) => n + (Number(it.qty) || 0), 0);
   }
 
-  function computeCount() {
-    return asEntries().reduce((n, [, it]) => n + (Number(it.qty) || 0), 0);
+  function subtotal() {
+    return entries().reduce((sum, [, it]) => {
+      const unit = Number(it.price) || 0;
+      const qty = Number(it.qty) || 0;
+      return sum + unit * qty;
+    }, 0);
   }
 
-  function formatINR(v) {
-    return "₹" + Math.round(Number(v) || 0).toLocaleString("en-IN");
+  function calcGST(sub) {
+    return Math.max(0, (sub * GST_PERCENT) / 100);
   }
 
-  function updateHeaderCount() {
-    if ($count) $count.textContent = String(computeCount());
+  function renderCounts() {
+    const n = count();
+    if ($countTop) $countTop.textContent = n;
+    if ($itemsCount) $itemsCount.textContent = `(${n} ${n === 1 ? "item" : "items"})`;
+    $empty.hidden = n > 0;
+    $list.hidden = n === 0;
+    $proceed.disabled = n === 0;
+
+    // soft reminder for add-ons (always show if there are any items)
+    $addonsNote.style.display = n > 0 ? "block" : "none";
   }
 
-  function renderEmpty() {
-    $body.innerHTML = `<tr><td colspan="5" class="empty">Your cart is empty</td></tr>`;
-    $total.textContent = formatINR(0);
-    updateHeaderCount();
-  }
+  function row(key, it) {
+    const li = document.createElement("li");
+    li.className = "cart-row";
+    li.dataset.key = key;
 
-  function lineRow(key, it) {
-    // builds one <tr> with image, name/variant, unit price, qty stepper, subtotal
-    const tr = document.createElement("tr");
+    const img = document.createElement("img");
+    img.className = "card-thumb";
+    img.alt = it.name || "";
+    img.loading = "lazy";
+    img.src = it.thumb || "";
+    img.onerror = () => { img.src = ""; };
 
-    const tdImg = document.createElement("td");
-    tdImg.innerHTML = it.thumb
-      ? `<img src="${it.thumb}" alt="${it.name}" class="thumb" loading="lazy"/>`
-      : "";
+    const mid = document.createElement("div");
+    const title = document.createElement("h3");
+    title.className = "cart-title";
+    title.textContent = it.name || "";
+    const sub = document.createElement("p");
+    sub.className = "cart-sub";
+    sub.textContent = `${it.variant || ""} • ${inr(Number(it.price) || 0)}`;
 
-    const tdName = document.createElement("td");
-    tdName.innerHTML = `<div class="name">${it.name || ""}</div>
-                        <div class="muted">${it.variant || ""}</div>`;
+    const right = document.createElement("div");
+    right.className = "row-right";
 
-    const tdPrice = document.createElement("td");
-    tdPrice.textContent = formatINR(it.price || 0);
+    // stepper
+    const stepper = document.createElement("div");
+    stepper.className = "stepper";
+    const minus = document.createElement("button"); minus.textContent = "–";
+    const out = document.createElement("output"); out.textContent = String(it.qty || 0);
+    const plus = document.createElement("button"); plus.textContent = "+";
+    stepper.append(minus, out, plus);
 
-    const tdQty = document.createElement("td");
-    tdQty.className = "qty-cell";
-    const minus = document.createElement("button");
-    const plus  = document.createElement("button");
-    const out   = document.createElement("span");
-    minus.className = "qty-btn dec";
-    plus.className  = "qty-btn inc";
-    minus.textContent = "–";
-    plus.textContent  = "+";
-    out.className     = "qty-out";
-    out.textContent   = String(it.qty || 0);
-    tdQty.append(minus, out, plus);
+    const subtotalEl = document.createElement("div");
+    subtotalEl.className = "line-subtotal";
+    subtotalEl.textContent = inr((Number(it.price) || 0) * (Number(it.qty) || 0));
 
-    const tdSub = document.createElement("td");
-    tdSub.className = "subtotal";
-    tdSub.textContent = formatINR((Number(it.price) || 0) * (Number(it.qty) || 0));
+    const remove = document.createElement("button");
+    remove.className = "remove-link";
+    remove.textContent = "Remove";
 
-    // wire actions
+    // actions
     plus.addEventListener("click", () => {
       const next = (Number(Cart.get()?.[key]?.qty) || 0) + 1;
-      Cart.setQty(key, next, it); // keep same meta (name, variant, price, thumb)
+      Cart.setQty(key, next, it);
     });
-
     minus.addEventListener("click", () => {
       const prev = Number(Cart.get()?.[key]?.qty) || 0;
       const next = Math.max(0, prev - 1);
       Cart.setQty(key, next, it);
     });
+    remove.addEventListener("click", () => {
+      Cart.setQty(key, 0);
+    });
 
-    tr.append(tdImg, tdName, tdPrice, tdQty, tdSub);
-    return tr;
+    // build
+    mid.append(title, sub);
+    right.append(stepper, subtotalEl, remove);
+    li.append(img, mid, right);
+    return li;
   }
 
-  function render() {
-    const entries = asEntries();
-
-    if (!entries.length) {
-      renderEmpty();
-      return;
-    }
-
-    // fill rows
-    $body.innerHTML = "";
-    for (const [key, it] of entries) {
-      $body.appendChild(lineRow(key, it));
-    }
-
-    // totals
-    $total.textContent = formatINR(computeSubtotal());
-    updateHeaderCount();
+  function renderList() {
+    const es = entries();
+    $list.innerHTML = "";
+    for (const [key, it] of es) $list.appendChild(row(key, it));
   }
 
-  // Initial render
-  document.addEventListener("DOMContentLoaded", render);
+  function renderTotals() {
+    const sub = subtotal();
+    const gst = calcGST(sub);
+    const grand = sub + gst; // delivery shown later at payment
+    $subtotal.textContent = inr(sub);
+    $gst.textContent = inr(gst);
+    $delivery.textContent = "Shown at payment";
+    $total.textContent = inr(grand);
+  }
 
-  // Re-render on any cart change
-  window.addEventListener("cart:update", render);
+  function syncAll() {
+    renderCounts();
+    renderList();
+    renderTotals();
+  }
+
+  // initial + subscribe
+  document.addEventListener("DOMContentLoaded", syncAll);
+  window.addEventListener("cart:update", syncAll);
+
+  // proceed (no gateway yet)
+  $("#proceed-btn")?.addEventListener("click", () => {
+    if (count() === 0) return;
+    alert("Cart confirmed. Payment step will be added next.");
+  });
 })();
