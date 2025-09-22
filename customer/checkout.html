@@ -85,7 +85,9 @@
 
         <!-- promotions not live yet -->
         <form id="coupon-form" class="coupon-form" onsubmit="return false">
-          <input id="coupon-code" class="coupon-input" type="text" placeholder="Coupon (coming soon)" disabled autocomplete="off" />
+          <input id="coupon-code" name="coupon-code" class="coupon-input"
+       type="text" placeholder="Coupon (coming soon)"
+       disabled autocomplete="off" />
           <button class="button" type="submit" disabled>Apply</button>
         </form>
 
@@ -132,4 +134,5 @@
   <script>document.getElementById('year').textContent = new Date().getFullYear();</script>
 </body>
 </html>
+
 
