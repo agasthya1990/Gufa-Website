@@ -1,36 +1,45 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>GUFA — Your Cart</title>
+  <link rel="stylesheet" href="../styles.css"/>
+</head>
+<body>
+  <!-- Header (same feel as index) -->
   <header class="site-header">
-    <div class="logo">GUFA - Cart and Checkout</div>
-     <link rel="stylesheet" href="styles.css"/>
-    <nav class="nav-links">
-      <a href="index.html" class="active">Home</a>
-      <a href="#menu">Menu</a>
-      <a href="customer/track.html">Track Order</a>
-      <a href="#contact">Contact</a>
-      <a href="customer/checkout.html" class="cart-link" id="cartLink">Cart (0)</a>
+    <div class="brand">
+      <span class="brand-mark">GUFA</span>
+      <span class="brand-tagline">Your Cart</span>
+    </div>
+    <nav class="top-nav">
+      <a href="../index.html" class="nav-link">Our Menu</a>
+      <a href="./track.html" class="nav-link">Track Order</a>
+      <button id="nav-cart" class="cart-button" onclick="location.href='./checkout.html'">
+        <span class="cart-icon" aria-hidden="true">🧺</span>
+        <span>Cart</span>
+        <span id="cart-count" class="cart-count-badge">0</span>
+      </button>
     </nav>
   </header>
-<body>
-  <div class="cart-container">
-    <table class="cart-table">
-      <thead>
-        <tr>
-          <th></th><th>Item</th><th>Price</th><th>Qty</th><th>Subtotal</th>
-        </tr>
-      </thead>
-      <tbody id="cartBody"></tbody>
-    </table>
-    <div class="cart-summary">
-      <strong>Total: <span id="cartTotal">₹0</span></strong>
-      <button class="checkout-btn">Proceed to Payment</button>
-    </div>
-  </div>
 
-  <script type="module" src="firebase.client.js"></script>
-  <script type="module" src="cart.store.js"></script>
-  <script type="module" src="app.cart.js"></script>
-</body>
-</html>
+  <main class="page-wrap checkout-wrap">
+    <!-- LEFT: Items list -->
+    <section class="cart-left">
+      <h1 class="section-title">Your Cart <span id="cart-items-count" class="muted">(0 items)</span></h1>
 
+      <!-- reminder for add-ons -->
+      <div class="empty-box" id="addons-note" style="display:none;margin-bottom:12px;">
+        <p>Some dishes come with add-ons. If you want extras, please add them from the menu card before checkout.</p>
+        <button class="button" onclick="location.href='../index.html'">Back to Menu</button>
+      </div>
 
+      <!-- fallback for empty cart -->
+      <div id="cart-empty" class="empty-box" hidden>
+        <p>Your cart is empty.</p>
+        <button class="button" onclick="location.href='../index.html'">Back to Menu</button>
+      </div>
+
+      <!-- items -->
+      <ul id="cart-items" class="cart-list" aria-live=
