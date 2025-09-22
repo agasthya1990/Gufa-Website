@@ -109,8 +109,7 @@ function setQty(found, variantKey, price, nextQty) {
   if (badge) badge.textContent = String(next);
 
   // Try to set in Cart (if available)
-  try { window?.Cart?.setQty?.(key, next, { id: found.id, name: found.name, variant: variantKey, price }); } catch {}
-
+  try { Cart.setQty(key, next, { id: found.id, name: found.name, variant: variantKey, price }); } catch {}
   // Re-sync UI bits
   updateItemMiniCartBadge(found.id, /*maybeRock:*/ true);
   updateCartLink();
