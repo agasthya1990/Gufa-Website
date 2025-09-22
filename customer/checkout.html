@@ -4,7 +4,50 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>GUFA — Your Cart</title>
-  <link rel="stylesheet" href="styles.css"/>
+  <!-- uses the same global file you already use for the site -->
+  <link rel="stylesheet" href="./styles.css"/>
+
+  <!-- page-local polish for Cart only (doesn't affect other pages) -->
+  <style>
+    :root{
+      --ink:#1f2937; --muted:#6b7280; --line:#e5e7eb; --card:#fff; --gold:#f1c36c;
+      --shadow:0 6px 18px rgba(0,0,0,.08);
+    }
+    .checkout-wrap{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:16px}
+    @media (max-width:1000px){.checkout-wrap{grid-template-columns:1fr}}
+
+    .section-title{margin:8px 0 12px}
+    .cart-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:12px}
+    .cart-row{
+      display:grid;grid-template-columns:84px 1fr auto;gap:12px;
+      background:var(--card);border:1px solid var(--line);border-radius:16px;padding:12px;box-shadow:var(--shadow)
+    }
+    .cart-row .card-thumb{width:84px;height:84px;border-radius:12px;object-fit:cover;background:#f3f4f6}
+    .cart-title{margin:0 0 4px;font-weight:700}
+    .cart-sub{margin:0;color:var(--muted);font-size:13px}
+    .row-right{display:flex;flex-direction:column;gap:6px;align-items:flex-end;justify-content:space-between}
+    .stepper{display:inline-flex;align-items:center;border:1px solid var(--line);border-radius:999px;overflow:hidden}
+    .stepper button{border:0;background:#fff;padding:6px 10px;cursor:pointer}
+    .stepper output{min-width:24px;text-align:center}
+    .line-subtotal{font-weight:700}
+    .remove-link{font-size:12px;color:#b91c1c;background:none;border:0;cursor:pointer}
+
+    .summary-card{
+      position:sticky;top:76px;background:var(--card);border:1px solid var(--line);border-radius:16px;
+      padding:14px;box-shadow:var(--shadow)
+    }
+    .summary-title{margin:0 0 10px}
+    .coupon-form{display:flex;gap:8px;margin:8px 0 12px}
+    .coupon-input{flex:1;padding:8px 10px;border-radius:10px;border:1px solid var(--line)}
+    .totals{display:flex;flex-direction:column;gap:6px;margin-bottom:12px}
+    .total-row{display:flex;justify-content:space-between;align-items:center}
+    .total-row.grand{font-weight:800}
+    .button{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:10px 12px;border-radius:12px;border:1px solid var(--line);background:#fff;cursor:pointer}
+    .button.primary{background:#111827;color:#fff;border-color:#111827}
+    .button.block{width:100%}
+    .empty-box{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px;text-align:center}
+    .muted{color:var(--muted)}
+  </style>
 </head>
 <body>
   <!-- Header (same feel as index) -->
@@ -29,18 +72,52 @@
     <section class="cart-left">
       <h1 class="section-title">Your Cart <span id="cart-items-count" class="muted">(0 items)</span></h1>
 
-      <!-- reminder for add-ons -->
+      <!-- add-ons reminder -->
       <div class="empty-box" id="addons-note" style="display:none;margin-bottom:12px;">
         <p>Some dishes come with add-ons. If you want extras, please add them from the menu card before checkout.</p>
         <button class="button" onclick="location.href='../index.html'">Back to Menu</button>
       </div>
 
-      <!-- fallback for empty cart -->
+      <!-- empty state -->
       <div id="cart-empty" class="empty-box" hidden>
         <p>Your cart is empty.</p>
         <button class="button" onclick="location.href='../index.html'">Back to Menu</button>
       </div>
 
       <!-- items -->
-      <ul id="cart-items" class="cart-list" aria-live=
+      <ul id="cart-items" class="cart-list" aria-live="polite"></ul>
+    </section>
 
+    <!-- RIGHT: Summary -->
+    <aside class="cart-right">
+      <div class="summary-card">
+        <h2 class="summary-title">Order Summary</h2>
+
+        <!-- promotions not live yet -->
+        <form id="coupon-form" class="coupon-form" onsubmit="return false">
+          <input id="coupon-code" class="coupon-input" type="text" placeholder="Coupon (coming soon)" disabled />
+          <button class="button" type="submit" disabled>Apply</button>
+        </form>
+
+        <div class="totals">
+          <div class="total-row"><span>Subtotal</span><span id="subtotal-amt">₹0</span></div>
+          <div class="total-row"><span>GST (5%)</span><span id="gst-amt">₹0</span></div>
+          <div class="total-row muted"><span>Delivery fee</span><span id="delivery-amt">Shown at payment</span></div>
+          <div class="total-row grand"><span>Total</span><span id="total-amt">₹0</span></div>
+        </div>
+
+        <button id="proceed-btn" class="button primary block">Proceed to Payment</button>
+        <p class="tiny muted" style="margin-top:8px;">We’ll add payment next.</p>
+      </div>
+    </aside>
+  </main>
+
+  <footer class="site-footer"><small>© <span id="year"></span> GUFA</small></footer>
+
+  <!-- correct: scripts live in /customer/, so use ./ -->
+  <script src="./firebase.client.js"></script>
+  <script src="./cart.store.js"></script>
+  <script src="./app.cart.js"></script>
+  <script>document.getElementById('year').textContent = new Date().getFullYear();</script>
+</body>
+</html>
