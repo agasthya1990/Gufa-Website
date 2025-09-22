@@ -1,8 +1,9 @@
-// app.menu.js — Home bar hides in list/search, shows in home.
-//  • Home view: two bifurcation grids (Food Course / Food Categories) with single-image tiles
-//  • Click a tile => full-page LIST view with its own top bar; home bar hidden
-//  • Back returns to grids; home bar shown again
-//  • Veg/Non-Veg switches are opt-in (both OFF => all), latest image per group, smooth fades
+// app.menu.js — forgiving search, cart icon & badge with rock animation, centered UI tweaks.
+//  • Search (home & list) uses the same fuzzy matcher (typo tolerant).
+//  • Stepper '+' increments beyond 1; Cart link count updates.
+//  • Each card has a mini cart icon (grey → gold when qty>0) with per-item badge.
+//  • Clicking the icon navigates to checkout.
+//  • Centered primary bar & grids are purely CSS; logic unchanged.
 import { db } from "./firebase.client.js";
 import {
   collection, onSnapshot, query, orderBy
@@ -19,14 +20,16 @@ const categoryToggle = $("#categoryToggle");
 const searchInputHome = $("#filter-search");
 const searchBtnHome = $("#searchBtn");
 
-const primaryBar = $("#menu .primary-bar");      // << NEW: home bar wrapper
+const primaryBar = $("#menu .primary-bar");
 const coursesSection = $("#coursesSection");
 const categoriesSection = $("#categoriesSection");
 const courseBuckets = $("#courseBuckets");
 const categoryBuckets = $("#categoryBuckets");
 
-const globalResults = $("#globalResults"); // used as our full-page "content view"
-let globalList = $("#globalResultsList");  // recreated per mode to ensure clean markup
+const globalResults = $("#globalResults"); // our content view (List/Search)
+let globalList = $("#globalResultsList");
+
+const cartLink = $("#cartLink"); // header link "Cart (n)"
 
 /* ---------- State ---------- */
 let ITEMS = [];
@@ -45,13 +48,54 @@ let searchQuery = "";  // global search text
 /* ---------- Utils ---------- */
 const cssSafe = (s) => String(s).replace(/[^a-zA-Z0-9_-]/g, "_");
 const normDiet = (t="") => t.toLowerCase().replace(/\s+/g,"-");
-const tsToMs = (v) => {
-  if (!v) return 0;
-  if (v instanceof Date) return v.getTime();
-  if (typeof v === "number") return v;
-  if (typeof v === "object" && typeof v.seconds === "number") return v.seconds * 1000 + (v.nanoseconds||0)/1e6;
-  const d = new Date(v); return isNaN(d.getTime()) ? 0 : d.getTime();
-};
+const strip = (s="") => s.normalize("NFKD").replace(/[\u0300-\u036f]/g,"").toLowerCase();
+const canon = (s="") => strip(s).replace(/[^a-z0-9]+/g," ").replace(/\s+/g," ").trim();
+
+/* Edit-distance (Damerau–Levenshtein, small) */
+function editDistance(a="", b=""){
+  const al=a.length, bl=b.length;
+  if (!al) return bl; if (!bl) return al;
+  const dp = Array.from({length: al+1}, (_,i)=>Array(bl+1).fill(0));
+  for (let i=0;i<=al;i++) dp[i][0]=i;
+  for (let j=0;j<=bl;j++) dp[0][j]=j;
+  for (let i=1;i<=al;i++){
+    for (let j=1;j<=bl;j++){
+      const cost = a[i-1]===b[j-1] ? 0 : 1;
+      dp[i][j] = Math.min(
+        dp[i-1][j]+1, dp[i][j-1]+1, dp[i-1][j-1]+cost
+      );
+      if (i>1 && j>1 && a[i-1]===b[j-2] && a[i-2]===b[j-1]){
+        dp[i][j] = Math.min(dp[i][j], dp[i-2][j-2]+cost);
+      }
+    }
+  }
+  return dp[al][bl];
+}
+
+/* Fuzzy matcher:
+   - Tokenize query; for each token:
+     * if haystack includes token -> hit
+     * else check per-word edit distance (<=1 for <=4 chars, <=2 for >=5)
+*/
+function fuzzyMatch(hay="", q=""){
+  const H = canon(hay);
+  const Q = canon(q);
+  if (!Q) return true;
+  const tokens = Q.split(" ");
+  for (const t of tokens){
+    if (!t) continue;
+    if (H.includes(t)) return true;
+    const threshold = t.length >= 5 ? 2 : 1;
+    // compare to each word in H
+    const words = H.split(" ");
+    for (const w of words){
+      if (!w) continue;
+      if (Math.abs(w.length - t.length) > threshold) continue;
+      if (editDistance(w, t) <= threshold) return true;
+    }
+  }
+  return false;
+}
 
 /* ---------- Price & Cart ---------- */
 function priceModel(qtyType) {
@@ -76,8 +120,55 @@ function setQty(found, variantKey, price, nextQty) {
   const key = `${found.id}:${variantKey}`;
   const next = Math.max(0, Number(nextQty || 0));
   try { window?.Cart?.setQty?.(key, next, { id: found.id, name: found.name, variant: variantKey, price }); } catch {}
+  // reflect in UI immediately
   const badge = $(`.qty[data-key="${key}"] .num`);
   if (badge) badge.textContent = String(next);
+  updateItemMiniCartBadge(found.id, /*maybeRock:*/ true);
+  updateCartLink();
+}
+function totalQtyForItem(itemId){
+  // Sum all variants currently rendered for this item
+  const nodes = $$(`.stepper[data-item="${itemId}"] .qty .num`);
+  return nodes.reduce((a,el)=> a + (parseInt(el.textContent||"0",10)||0), 0);
+}
+function updateItemMiniCartBadge(itemId, maybeRock=false){
+  const btn = $(`.menu-item[data-id="${itemId}"] .mini-cart-btn`);
+  if (!btn) return;
+  const q = totalQtyForItem(itemId);
+  btn.classList.toggle("active", q>0);
+  let b = btn.querySelector(".badge");
+  if (q>0){
+    if (!b){ b = document.createElement("span"); b.className = "badge"; btn.appendChild(b); }
+    const prev = Number(b.textContent||"0");
+    b.textContent = String(q);
+    if (maybeRock && prev===0 && q>0){
+      btn.classList.add("rock");
+      setTimeout(()=>btn.classList.remove("rock"), 400);
+    }
+  } else {
+    if (b) b.remove();
+  }
+}
+function updateAllMiniCartBadges(){
+  $$(".menu-item").forEach(card=>{
+    const id = card.getAttribute("data-id");
+    updateItemMiniCartBadge(id);
+  });
+}
+function updateCartLink(){
+  // prefer Cart.get() if available
+  let total = 0;
+  try {
+    const bag = window?.Cart?.get?.() || {};
+    total = Object.values(bag).reduce((a,entry)=> a + (Number(entry?.qty||0)||0), 0);
+  } catch {
+    // fallback: sum all counters on page
+    total = $$(".qty .num").reduce((a,el)=> a + (parseInt(el.textContent||"0",10)||0), 0);
+  }
+  if (cartLink){
+    const txt = cartLink.textContent || "Cart";
+    cartLink.textContent = `Cart (${total})`;
+  }
 }
 
 /* ---------- Cards ---------- */
@@ -102,6 +193,17 @@ function stepperHTML(found, variant) {
     </div>
   `;
 }
+function miniCartButtonHTML(){
+  return `
+    <button class="mini-cart-btn" data-action="goto-cart" title="Go to cart" aria-label="Go to cart">
+      <!-- basket icon -->
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+        <path d="M7 7l5-5 5 5"/>
+        <path d="M3 7h18l-2 12a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2L3 7z" fill="currentColor"/>
+      </svg>
+    </button>
+  `;
+}
 function itemCardHTML(m) {
   const pm = priceModel(m.qtyType);
   const variants = (pm?.variants || []).filter(v => v.price > 0);
@@ -114,10 +216,13 @@ function itemCardHTML(m) {
   return `
     <article class="menu-item" data-id="${m.id}">
       ${m.imageUrl ? `<img loading="lazy" src="${m.imageUrl}" alt="${m.name||""}" class="menu-img"/>` : ""}
-      <h4 class="menu-name">${m.name || ""}</h4>
+      <div class="menu-header">
+        <h4 class="menu-name">${m.name || ""}</h4>
+        ${miniCartButtonHTML()}
+      </div>
       <p class="menu-desc">${m.description || ""}</p>
       ${addons}
-      <div class="row meta">
+      <div class="row.meta">
         <small class="muted">${tagsLeft}</small>
         ${diet}
       </div>
@@ -126,18 +231,28 @@ function itemCardHTML(m) {
   `;
 }
 
-/* ---------- Filtering ---------- */
+/* ---------- Filtering & Search (forgiving) ---------- */
 function matchesDiet(it){
   const t = normDiet(it.foodType || "");
   if (vegOn && !nonvegOn) return t.startsWith("veg");
   if (!vegOn && nonvegOn) return t.startsWith("non-veg") || t.startsWith("nonveg");
-  // both ON or both OFF -> all items
-  return true;
+  return true; // both ON or both OFF -> all items
 }
 const baseFilter = items => items.filter(it => it.inStock !== false && matchesDiet(it));
 const courseMatch   = (it, c) => it.foodCourse === c.id || it.foodCourse === c.label;
 const categoryMatch = (it, c) => it.category   === c.id || it.category   === c.label;
 
+function searchHaystack(it){
+  const parts = [
+    it.name, it.description, it.foodCourse, it.category,
+    ...(Array.isArray(it.addons) ? it.addons : [])
+  ].filter(Boolean);
+  return parts.join(" ");
+}
+function applySearch(items, q){
+  if (!q) return items;
+  return items.filter(it => fuzzyMatch(searchHaystack(it), q));
+}
 function itemsForList(){
   let arr = baseFilter(ITEMS);
   if (view === "list" && listKind && listId) {
@@ -149,19 +264,19 @@ function itemsForList(){
       arr = arr.filter(it=>categoryMatch(it, c));
     }
   } else if (view === "search" && searchQuery.trim()) {
-    const q = searchQuery.toLowerCase();
-    arr = arr.filter(it=>{
-      const hay = [
-        it.name, it.description, it.foodCourse, it.category,
-        ...(Array.isArray(it.addons) ? it.addons : [])
-      ].filter(Boolean).join(" ").toLowerCase();
-      return hay.includes(q);
-    });
+    // fall through to applySearch
   }
-  return arr;
+  return applySearch(arr, view==="search" ? searchQuery : "");
 }
 
 /* ---------- Tiles (single-image) ---------- */
+function tsToMs(v){
+  if (!v) return 0;
+  if (v instanceof Date) return v.getTime();
+  if (typeof v === "number") return v;
+  if (typeof v === "object" && typeof v.seconds === "number") return v.seconds * 1000 + (v.nanoseconds||0)/1e6;
+  const d = new Date(v); return isNaN(d.getTime()) ? 0 : d.getTime();
+}
 function latestImageForGroup(items){
   if (!items.length) return "";
   const withTs = items.map(i => ({ ...i, _ts: Math.max(tsToMs(i.updatedAt), tsToMs(i.createdAt)) }));
@@ -254,7 +369,7 @@ function renderContentView(fade=false){
 
   // Fill with items
   if (fade) globalList.classList.add("fade-out");
-  const items = itemsForList();
+  const items = view==="search" ? applySearch(baseFilter(ITEMS), searchQuery) : itemsForList();
   globalList.innerHTML = items.length
     ? items.map(itemCardHTML).join("")
     : `<div class="menu-item placeholder">No items match your selection.</div>`;
@@ -263,16 +378,18 @@ function renderContentView(fade=false){
     globalList.classList.add("fade-in");
     setTimeout(()=>globalList.classList.remove("fade-in"),260);
   });
+
+  // After render, sync per-card badges
+  updateAllMiniCartBadges();
 }
 
-/* ---------- View transitions (now hide/show the PRIMARY BAR) ---------- */
+/* ---------- View transitions (hide/show PRIMARY BAR) ---------- */
 function showHome(){
   view = "home"; listKind=""; listId=""; listLabel="";
   globalResults.classList.add("hidden");
   coursesSection.classList.remove("hidden");
   categoriesSection.classList.remove("hidden");
-  primaryBar?.classList.remove("hidden");           // << SHOW home bar
-
+  primaryBar?.classList.remove("hidden");
   document.getElementById("menuTitle")?.scrollIntoView({ behavior: "smooth", block: "start" });
   renderCourseBuckets(); renderCategoryBuckets();
 }
@@ -280,7 +397,7 @@ function enterList(kind, id, label){
   view = "list"; listKind=kind; listId=id; listLabel=label||id;
   coursesSection.classList.add("hidden");
   categoriesSection.classList.add("hidden");
-  primaryBar?.classList.add("hidden");              // << HIDE home bar
+  primaryBar?.classList.add("hidden");
   globalResults.classList.remove("hidden");
   renderContentView();
   document.getElementById("menuTitle")?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -290,7 +407,7 @@ function enterSearch(q){
   searchQuery = q || "";
   coursesSection.classList.add("hidden");
   categoriesSection.classList.add("hidden");
-  primaryBar?.classList.add("hidden");              // << HIDE home bar
+  primaryBar?.classList.add("hidden");
   globalResults.classList.remove("hidden");
   renderContentView();
   document.getElementById("menuTitle")?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -343,6 +460,9 @@ function listenItems() {
     } else {
       renderContentView();
     }
+    // Keep badges & header cart in sync
+    updateAllMiniCartBadges();
+    updateCartLink();
   };
   try {
     const qLive = query(baseCol, orderBy("createdAt","desc"));
@@ -421,7 +541,7 @@ document.addEventListener("click", (e) => {
   }
 });
 
-// Home switches (opt-in) + search
+// Home switches (opt-in) + home search
 vegSwitch?.addEventListener("click", () => {
   vegOn = !vegOn; syncHomeSwitches(); syncTopbarSwitches();
   renderCourseBuckets(true); renderCategoryBuckets(true);
@@ -432,7 +552,6 @@ nonvegSwitch?.addEventListener("click", () => {
 });
 courseToggle?.addEventListener("click", () => { coursesSection?.scrollIntoView({ behavior: "smooth", block: "start" }); });
 categoryToggle?.addEventListener("click", () => { categoriesSection?.scrollIntoView({ behavior: "smooth", block: "start" }); });
-
 searchBtnHome?.addEventListener("click", () => {
   const q = (searchInputHome?.value || "").trim();
   enterSearch(q);
@@ -451,13 +570,24 @@ document.addEventListener("click", (e) => {
   const variantKey = wrap?.dataset.variant;
   const found = ITEMS.find(x => x.id === id);
   if (!found) return;
+
   const pm = priceModel(found.qtyType);
   const v = (pm?.variants || []).find(x => x.key === variantKey);
   if (!v || !v.price) return;
+
   const key = `${id}:${variantKey}`;
   const now = getQty(key);
   const next = Math.max(0, now + (btn.classList.contains("inc") ? 1 : -1));
   setQty(found, variantKey, v.price, next);
+});
+
+// Mini cart button click: go to checkout
+document.addEventListener("click", (e) => {
+  const btn = e.target.closest(".mini-cart-btn");
+  if (!btn) return;
+  e.preventDefault();
+  // optional: ensure cart is visible
+  window.location.href = "customer/checkout.html";
 });
 
 /* ---------- Boot ---------- */
@@ -466,5 +596,6 @@ function boot(){
   listenCourses();
   listenCategories();
   listenItems();
+  updateCartLink();
 }
 boot();
