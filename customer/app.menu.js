@@ -1,6 +1,6 @@
-// app.menu.js — Swiggy/Zomato-style switches (opt-in), single-image tiles, latest image per group,
-// strict in-bounds lists, smooth fades, global search, robust matching
-import { db } from "./firebase.client.js";
+// app.menu.js — resilient DB load, derived tiles fallback, robust field matching,
+// Swiggy/Zomato-style Veg switches, single-image tiles, in-bounds lists & fades
+
 import {
   collection, onSnapshot, query, orderBy
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -9,51 +9,46 @@ const $  = (s, r=document) => r.querySelector(s);
 const $$ = (s, r=document) => Array.from(r.querySelectorAll(s));
 
 /* ---------- DOM ---------- */
-// Home (primary) controls
 const vegSwitch = $("#vegSwitch");
 const nonvegSwitch = $("#nonvegSwitch");
 const courseToggle = $("#courseToggle");
 const categoryToggle = $("#categoryToggle");
 const searchInputHome = $("#filter-search");
 const searchBtnHome = $("#searchBtn");
-
-// Buckets
 const coursesSection = $("#coursesSection");
 const categoriesSection = $("#categoriesSection");
 const courseBuckets = $("#courseBuckets");
 const categoryBuckets = $("#categoryBuckets");
-
-// Global search view
 const globalResults = $("#globalResults");
 const globalList = $("#globalResultsList");
 
 /* ---------- State ---------- */
+let db = null;
 let ITEMS = [];
-let COURSES = [];            // [{id, label}]
-let CATEGORIES = [];         // [{id, label}]
+let COURSES = [];     // [{id, label}]
+let CATEGORIES = [];  // [{id, label}]
 
-let vegOn = false;           // both OFF by default (opt-in)
+let vegOn = false;    // opt-in filters: both OFF = show all
 let nonvegOn = false;
 
-let mode = "home";           // 'home' | 'open-course' | 'open-category' | 'search'
-let openKind = "";           // 'course' | 'category'
-let openId = "";             // selected course/category id
-let searchQuery = "";        // global search query
+let mode = "home";    // 'home' | 'open-course' | 'open-category' | 'search'
+let openKind = "";
+let openId = "";
+let searchQuery = "";
 
 /* ---------- Utils ---------- */
+const FIREBASE_CLIENT_PATH = "./firebase.client.js"; // change if your path differs
 const cssSafe = (s) => String(s).replace(/[^a-zA-Z0-9_-]/g, "_");
 const normDiet = (t="") => t.toLowerCase().replace(/\s+/g,"-"); // "non veg" -> "non-veg"
-function tsToMs(v){
+const tsToMs = (v) => {
   if (!v) return 0;
   if (v instanceof Date) return v.getTime();
   if (typeof v === "number") return v;
-  if (typeof v === "object" && typeof v.seconds === "number") return v.seconds * 1000 + (v.nanoseconds||0)/1e6;
-  // string or unknown
-  const d = new Date(v);
-  return isNaN(d.getTime()) ? 0 : d.getTime();
-}
+  if (typeof v === "object" && typeof v.seconds === "number") return v.seconds*1000 + (v.nanoseconds||0)/1e6;
+  const d = new Date(v); return isNaN(d.getTime()) ? 0 : d.getTime();
+};
 
-/* ---------- Price & Cart helpers ---------- */
+/* ---------- Price & Cart ---------- */
 function priceModel(qtyType) {
   if (!qtyType) return null;
   if (qtyType.type === "Not Applicable") {
@@ -105,10 +100,9 @@ function stepperHTML(found, variant) {
 function itemCardHTML(m) {
   const pm = priceModel(m.qtyType);
   const variants = (pm?.variants || []).filter(v => v.price > 0);
-  const tagsLeft = [m.foodCourse||"", m.category||""].filter(Boolean).join(" • ");
+  const tagsLeft = [m.foodCourse||m.foodCourseId||m.course||"", m.category||m.categoryId||""].filter(Boolean).join(" • ");
   const diet = dietSpan(m.foodType);
-  const addons = Array.isArray(m.addons) && m.addons.length
-    ? `<small class="muted">Add-ons: ${m.addons.join(", ")}</small>` : "";
+  const addons = Array.isArray(m.addons) && m.addons.length ? `<small class="muted">Add-ons: ${m.addons.join(", ")}</small>` : "";
   const steppers = variants.map(v => stepperHTML(m, v)).join("");
 
   return `
@@ -126,22 +120,25 @@ function itemCardHTML(m) {
   `;
 }
 
-/* ---------- Filtering (opt-in logic like Swiggy/Zomato) ---------- */
+/* ---------- Filtering (opt-in like Swiggy/Zomato) ---------- */
 function matchesDiet(it){
   const t = normDiet(it.foodType || "");
   if (vegOn && !nonvegOn) return t.startsWith("veg");
   if (!vegOn && nonvegOn) return t.startsWith("non-veg") || t.startsWith("nonveg");
-  // both ON or both OFF -> all items
-  return true;
+  return true; // both ON or both OFF => all
 }
 function applyItemFiltersBase(items){
   return items.filter(it => it.inStock !== false && matchesDiet(it));
 }
-function courseMatch(it, course){ // accept by id OR label
-  return it.foodCourse === course.id || it.foodCourse === course.label;
+function anyMatch(val, arr){ return arr.filter(Boolean).some(v => v === val); }
+
+function courseMatch(it, course){
+  const candidates = [it.foodCourse, it.foodCourseId, it.course, it.courseId];
+  return anyMatch(course.id, candidates) || anyMatch(course.label, candidates);
 }
 function categoryMatch(it, cat){
-  return it.category === cat.id || it.category === cat.label;
+  const candidates = [it.category, it.categoryId];
+  return anyMatch(cat.id, candidates) || anyMatch(cat.label, candidates);
 }
 function applyItemFiltersForOpen(items){
   let arr = applyItemFiltersBase(items);
@@ -161,8 +158,8 @@ function applyItemFiltersForSearch(items){
   if (q) {
     arr = arr.filter(it => {
       const hay = [
-        it.name, it.description, it.foodCourse, it.category,
-        ...(Array.isArray(it.addons) ? it.addons : [])
+        it.name, it.description, it.foodCourse, it.foodCourseId, it.course, it.courseId,
+        it.category, it.categoryId, ...(Array.isArray(it.addons) ? it.addons : [])
       ].filter(Boolean).join(" ").toLowerCase();
       return hay.includes(q);
     });
@@ -173,13 +170,12 @@ function applyItemFiltersForSearch(items){
 /* ---------- Tiles (single-image) ---------- */
 function latestImageForGroup(items){
   if (!items.length) return "";
-  // prefer updatedAt, fallback to createdAt
   const withTs = items.map(i => ({ ...i, _ts: Math.max(tsToMs(i.updatedAt), tsToMs(i.createdAt)) }));
   withTs.sort((a,b)=> b._ts - a._ts);
   const hit = withTs.find(x => x.imageUrl);
   return hit?.imageUrl || "";
 }
-function tileHTML(kind, id, label, imgsCount, imgUrl, active){
+function tileHTML(kind, id, label, count, imgUrl, active){
   const act = active ? "active tile-open" : "";
   const safe = cssSafe(id);
   const listId = `tileList-${kind}-${safe}`;
@@ -187,7 +183,7 @@ function tileHTML(kind, id, label, imgsCount, imgUrl, active){
     <div class="bucket-tile ${act}" role="button" tabindex="0" data-kind="${kind}" data-id="${id}">
       <div class="tile-img">${imgUrl ? `<img loading="lazy" src="${imgUrl}" alt="${label}">` : ""}</div>
       <span class="bucket-label">${label}</span>
-      <span class="count-badge">${imgsCount}</span>
+      <span class="count-badge">${count}</span>
       ${active ? `
         <div class="panel">
           <div class="topbar">
@@ -214,6 +210,18 @@ function tileHTML(kind, id, label, imgsCount, imgUrl, active){
   `;
 }
 
+/* ---------- Derived fallbacks ---------- */
+function derivedCoursesFromItems(items){
+  const set = new Set();
+  items.forEach(it => [it.foodCourse, it.foodCourseId, it.course, it.courseId].forEach(v => v && set.add(String(v))));
+  return Array.from(set).map(v => ({ id:v, label:v }));
+}
+function derivedCategoriesFromItems(items){
+  const set = new Set();
+  items.forEach(it => [it.category, it.categoryId].forEach(v => v && set.add(String(v))));
+  return Array.from(set).map(v => ({ id:v, label:v }));
+}
+
 /* ---------- Render buckets ---------- */
 function renderCourseBuckets(fade = false) {
   if (!courseBuckets) return;
@@ -221,7 +229,8 @@ function renderCourseBuckets(fade = false) {
   if (fade) grid.classList.add("fade-out");
 
   const filtered = applyItemFiltersBase(ITEMS);
-  const html = COURSES
+  const source = COURSES.length ? COURSES : derivedCoursesFromItems(ITEMS); // fallback
+  const html = source
     .slice().sort((a,b)=>a.label.localeCompare(b.label))
     .map(course => {
       const itemsIn = filtered.filter(it => courseMatch(it, course));
@@ -245,7 +254,8 @@ function renderCategoryBuckets(fade = false) {
   if (fade) grid.classList.add("fade-out");
 
   const filtered = applyItemFiltersBase(ITEMS);
-  const html = CATEGORIES
+  const source = CATEGORIES.length ? CATEGORIES : derivedCategoriesFromItems(ITEMS); // fallback
+  const html = source
     .slice().sort((a,b)=>a.label.localeCompare(b.label))
     .map(cat => {
       const itemsIn = filtered.filter(it => categoryMatch(it, cat));
@@ -283,14 +293,12 @@ function renderTileList(kind, id, fade = false){
     setTimeout(()=>list.classList.remove("fade-in"),260);
   });
 }
-
 function renderGlobalResults(fade = false){
   if (fade) globalList.classList.add("fade-out");
   const items = applyItemFiltersForSearch(ITEMS);
   globalList.innerHTML = items.length
     ? items.map(itemCardHTML).join("")
     : `<div class="menu-item placeholder">No items match your selection.</div>`;
-
   if (fade) requestAnimationFrame(() => {
     globalList.classList.remove("fade-out");
     globalList.classList.add("fade-in");
@@ -302,13 +310,10 @@ function renderGlobalResults(fade = false){
 function openTile(kind, id){
   mode = kind === "course" ? "open-course" : "open-category";
   openKind = kind; openId = id;
-
   renderCourseBuckets();
   renderCategoryBuckets();
-
-  if (kind === "course") coursesSection?.scrollIntoView({ behavior: "smooth", block: "start" });
-  if (kind === "category") categoriesSection?.scrollIntoView({ behavior: "smooth", block: "start" });
-
+  (kind === "course" ? coursesSection : categoriesSection)
+    ?.scrollIntoView({ behavior: "smooth", block: "start" });
   renderTileList(kind, id);
 }
 function closeTileToHome(){
@@ -316,13 +321,13 @@ function closeTileToHome(){
   globalResults.classList.add("hidden");
   renderCourseBuckets();
   renderCategoryBuckets();
-  document.getElementById("menuTitle")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  $("#menuTitle")?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 function enterSearchMode(q){
   searchQuery = q;
   mode = "search";
   globalResults.classList.remove("hidden");
-  document.getElementById("menuTitle")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  $("#menuTitle")?.scrollIntoView({ behavior: "smooth", block: "start" });
   renderGlobalResults();
 }
 function exitSearchMode(){
@@ -335,7 +340,7 @@ function exitSearchMode(){
 function listenCourses() {
   onSnapshot(collection(db, "menuCourses"), (snap) => {
     const list = [];
-    snap.forEach(d => list.push({ id: d.id, label: d.data()?.name || d.id }));
+    snap.forEach(d => list.push({ id: d.id, label: d.data()?.name || d.data()?.title || d.data()?.label || d.id }));
     COURSES = list;
     renderCourseBuckets();
   });
@@ -343,7 +348,7 @@ function listenCourses() {
 function listenCategories() {
   onSnapshot(collection(db, "menuCategories"), (snap) => {
     const list = [];
-    snap.forEach(d => list.push({ id: d.id, label: d.data()?.name || d.id }));
+    snap.forEach(d => list.push({ id: d.id, label: d.data()?.name || d.data()?.title || d.data()?.label || d.id }));
     CATEGORIES = list;
     renderCategoryBuckets();
   });
@@ -352,23 +357,13 @@ function listenItems() {
   const baseCol = collection(db, "menuItems");
   const renderFrom = (docs) => {
     ITEMS = docs.map(d => ({ id: d.id, ...d.data() }));
-    if (mode === "home") {
-      renderCourseBuckets();
-      renderCategoryBuckets();
-    } else if (mode === "open-course" || mode === "open-category") {
-      renderCourseBuckets();
-      renderCategoryBuckets();
-    } else if (mode === "search") {
-      renderGlobalResults();
-    }
+    if (mode === "home") { renderCourseBuckets(); renderCategoryBuckets(); }
+    else if (mode === "open-course" || mode === "open-category") { renderCourseBuckets(); renderCategoryBuckets(); }
+    else if (mode === "search") { renderGlobalResults(); }
   };
   try {
     const qLive = query(baseCol, orderBy("createdAt","desc"));
-    onSnapshot(
-      qLive,
-      snap => renderFrom(snap.docs),
-      () => onSnapshot(baseCol, snap => renderFrom(snap.docs))
-    );
+    onSnapshot(qLive, snap => renderFrom(snap.docs), () => onSnapshot(baseCol, snap => renderFrom(snap.docs)));
   } catch {
     onSnapshot(baseCol, snap => renderFrom(snap.docs));
   }
@@ -396,18 +391,12 @@ function syncHomeSwitches(){
   nonvegSwitch?.setAttribute("aria-checked", String(nonvegOn));
 }
 function syncAllTopbarSwitches(){
-  $$(".topbar [data-action='veg']").forEach(b=>{
-    b.classList.toggle("on", vegOn);
-    b.setAttribute("aria-checked", String(vegOn));
-  });
-  $$(".topbar [data-action='nonveg']").forEach(b=>{
-    b.classList.toggle("on", nonvegOn);
-    b.setAttribute("aria-checked", String(nonvegOn));
-  });
+  $$(".topbar [data-action='veg']").forEach(b=>{ b.classList.toggle("on", vegOn); b.setAttribute("aria-checked", String(vegOn)); });
+  $$(".topbar [data-action='nonveg']").forEach(b=>{ b.classList.toggle("on", nonvegOn); b.setAttribute("aria-checked", String(nonvegOn)); });
 }
 
 /* ---------- Event wiring ---------- */
-// Guard: clicks inside panel controls should not re-trigger tile open/close
+// keep clicks inside panel from bubbling to tile
 document.addEventListener("click", (e) => {
   if (e.target.closest(".panel")) return;
   const tile = e.target.closest(".bucket-tile");
@@ -419,46 +408,36 @@ document.addEventListener("click", (e) => {
   openTile(kind, val);
 });
 
-// Delegated actions inside any tile topbar & global search topbar
+// topbar actions (tile/global)
 document.addEventListener("click", (e) => {
   const actBtn = e.target.closest("[data-action]");
   if (!actBtn) return;
   const action = actBtn.getAttribute("data-action");
 
   if (action === "back") { if (mode === "search") exitSearchMode(); else closeTileToHome(); return; }
-
-  if (action === "veg") {
-    vegOn = !vegOn; syncHomeSwitches(); syncAllTopbarSwitches();
-    renderCourseBuckets(true); renderCategoryBuckets(true);
-    if (mode.startsWith("open") && openId) renderTileList(openKind, openId, true);
-    if (mode === "search") renderGlobalResults(true);
-    return;
-  }
-  if (action === "nonveg") {
-    nonvegOn = !nonvegOn; syncHomeSwitches(); syncAllTopbarSwitches();
-    renderCourseBuckets(true); renderCategoryBuckets(true);
-    if (mode.startsWith("open") && openId) renderTileList(openKind, openId, true);
-    if (mode === "search") renderGlobalResults(true);
-    return;
-  }
-  if (action === "nav-course") { coursesSection?.scrollIntoView({ behavior: "smooth", block: "start" }); return; }
+  if (action === "veg")    { vegOn = !vegOn; syncHomeSwitches(); syncAllTopbarSwitches();
+                             renderCourseBuckets(true); renderCategoryBuckets(true);
+                             if (mode.startsWith("open") && openId) renderTileList(openKind, openId, true);
+                             if (mode === "search") renderGlobalResults(true); return; }
+  if (action === "nonveg") { nonvegOn = !nonvegOn; syncHomeSwitches(); syncAllTopbarSwitches();
+                             renderCourseBuckets(true); renderCategoryBuckets(true);
+                             if (mode.startsWith("open") && openId) renderTileList(openKind, openId, true);
+                             if (mode === "search") renderGlobalResults(true); return; }
+  if (action === "nav-course")   { coursesSection?.scrollIntoView({ behavior: "smooth", block: "start" }); return; }
   if (action === "nav-category") { categoriesSection?.scrollIntoView({ behavior: "smooth", block: "start" }); return; }
   if (action === "search") {
     const wrap = actBtn.closest(".topbar");
     const field = wrap?.querySelector(".tile-search");
     const q = (field?.value || "").trim();
-    enterSearchMode(q);
-    if (searchInputHome) searchInputHome.value = q;
-    return;
+    enterSearchMode(q); if (searchInputHome) searchInputHome.value = q; return;
   }
 });
 
-// Home switches (opt-in)
+// home switches
 vegSwitch?.addEventListener("click", () => {
   vegOn = !vegOn; syncHomeSwitches(); syncAllTopbarSwitches();
   fadeBucketsAnd(() => {
-    renderCourseBuckets();
-    renderCategoryBuckets();
+    renderCourseBuckets(); renderCategoryBuckets();
     if (mode === "open-course" && openId) renderTileList("course", openId);
     if (mode === "open-category" && openId) renderTileList("category", openId);
     if (mode === "search") renderGlobalResults();
@@ -467,83 +446,45 @@ vegSwitch?.addEventListener("click", () => {
 nonvegSwitch?.addEventListener("click", () => {
   nonvegOn = !nonvegOn; syncHomeSwitches(); syncAllTopbarSwitches();
   fadeBucketsAnd(() => {
-    renderCourseBuckets();
-    renderCategoryBuckets();
+    renderCourseBuckets(); renderCategoryBuckets();
     if (mode === "open-course" && openId) renderTileList("course", openId);
     if (mode === "open-category" && openId) renderTileList("category", openId);
     if (mode === "search") renderGlobalResults();
   });
 });
 
-// Nav chips (home bar) — smooth scroll only
+// smooth scroll chips
 courseToggle?.addEventListener("click", () => { coursesSection?.scrollIntoView({ behavior: "smooth", block: "start" }); });
 categoryToggle?.addEventListener("click", () => { categoriesSection?.scrollIntoView({ behavior: "smooth", block: "start" }); });
 
-// Steppers (delegated)
+// quantity steppers
 document.addEventListener("click", (e) => {
-  const btn = e.target.closest(".inc, .dec");
-  if (!btn) return;
+  const btn = e.target.closest(".inc, .dec"); if (!btn) return;
   const wrap = btn.closest(".stepper");
-  const id = wrap?.dataset.item;
-  const variantKey = wrap?.dataset.variant;
-  const found = ITEMS.find(x => x.id === id);
-  if (!found) return;
-
+  const id = wrap?.dataset.item, variantKey = wrap?.dataset.variant;
+  const found = ITEMS.find(x => x.id === id); if (!found) return;
   const pm = priceModel(found.qtyType);
-  const v = (pm?.variants || []).find(x => x.key === variantKey);
-  if (!v || !v.price) return;
-
+  const v = (pm?.variants || []).find(x => x.key === variantKey); if (!v || !v.price) return;
   const key = `${id}:${variantKey}`;
   const now = getQty(key);
   const next = Math.max(0, now + (btn.classList.contains("inc") ? 1 : -1));
   setQty(found, variantKey, v.price, next);
 });
 
-/* ---------- Live data ---------- */
-function listenCourses() {
-  onSnapshot(collection(db, "menuCourses"), (snap) => {
-    const list = [];
-    snap.forEach(d => list.push({ id: d.id, label: d.data()?.name || d.id }));
-    COURSES = list;
-    renderCourseBuckets();
-  });
-}
-function listenCategories() {
-  onSnapshot(collection(db, "menuCategories"), (snap) => {
-    const list = [];
-    snap.forEach(d => list.push({ id: d.id, label: d.data()?.name || d.id }));
-    CATEGORIES = list;
-    renderCategoryBuckets();
-  });
-}
-function listenItems() {
-  const baseCol = collection(db, "menuItems");
-  const renderFrom = (docs) => {
-    ITEMS = docs.map(d => ({ id: d.id, ...d.data() }));
-    if (mode === "home") {
-      renderCourseBuckets();
-      renderCategoryBuckets();
-    } else if (mode === "open-course" || mode === "open-category") {
-      renderCourseBuckets();
-      renderCategoryBuckets();
-    } else if (mode === "search") {
-      renderGlobalResults();
-    }
-  };
-  try {
-    const qLive = query(baseCol, orderBy("createdAt","desc"));
-    onSnapshot(
-      qLive,
-      snap => renderFrom(snap.docs),
-      () => onSnapshot(baseCol, snap => renderFrom(snap.docs))
-    );
-  } catch {
-    onSnapshot(baseCol, snap => renderFrom(snap.docs));
-  }
-}
-
 /* ---------- Boot ---------- */
-syncHomeSwitches(); // reflect defaults (both off)
-listenCourses();
-listenCategories();
-listenItems();
+(function boot(){
+  // reflect default OFF state
+  syncHomeSwitches();
+
+  // Load Firebase client safely
+  import(FIREBASE_CLIENT_PATH).then(mod => {
+    db = mod?.db;
+    if (!db) { console.error("Firebase 'db' not exported from", FIREBASE_CLIENT_PATH); return; }
+    // Start live listeners
+    listenCourses();
+    listenCategories();
+    listenItems();
+  }).catch(err => {
+    console.error("Failed to load Firebase client. Expected at:", FIREBASE_CLIENT_PATH, err);
+  });
+})();
