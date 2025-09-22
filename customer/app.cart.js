@@ -1,53 +1,40 @@
-// app.cart.js — cart table wired to your existing cart.store.js (no UI changes)
-
-// NOTE: cart.store.js attaches a global `Cart` with:
-//   Cart.get() -> { [key]: { id, name, variant, price, qty, thumb? } }
-//   Cart.setQty(key, qty, meta) -> updates one line (removes if qty <= 0)
-//   Cart.clear() -> empties cart
-// It also fires: window.dispatchEvent(new CustomEvent("cart:update", { detail: { cart } }))
+// app.cart.js — wired to your existing table DOM and your Cart store (no imports, no CSS changes)
 
 (function () {
-  const $$ = (sel) => document.querySelector(sel);
+  const $ = (s) => document.querySelector(s);
 
-  const $body   = $$("#cartBody");   // <tbody>
-  const $total  = $$("#cartTotal");  // <span id="cartTotal">
-  const $count  = document.getElementById("cart-count"); // optional header badge if present
+  const $body  = $("#cartBody");   // <tbody>
+  const $total = $("#cartTotal");  // <span id="cartTotal">
+  const $count = $("#cart-count"); // header badge (if present)
 
-  function asEntries() {
-    // { key: item } -> [ [key, item], ... ]
-    const bag = (window.Cart && Cart.get && Cart.get()) || {};
-    return Object.entries(bag);
+  if (!$body || !$total) {
+    // Safety: if this page doesn't have the table layout, do nothing.
+    return;
   }
 
-  function computeSubtotal() {
-    return asEntries().reduce((sum, [, it]) => sum + (Number(it.price) || 0) * (Number(it.qty) || 0), 0);
-  }
-
-  function computeCount() {
-    return asEntries().reduce((n, [, it]) => n + (Number(it.qty) || 0), 0);
-  }
-
-  function formatINR(v) {
+  function inr(v) {
     return "₹" + Math.round(Number(v) || 0).toLocaleString("en-IN");
   }
 
-  function updateHeaderCount() {
-    if ($count) $count.textContent = String(computeCount());
+  function entries() {
+    const bag = (window.Cart && Cart.get && Cart.get()) || {};
+    return Object.entries(bag); // [ [key, item], ... ]
   }
 
-  function renderEmpty() {
-    $body.innerHTML = `<tr><td colspan="5" class="empty">Your cart is empty</td></tr>`;
-    $total.textContent = formatINR(0);
-    updateHeaderCount();
+  function lineSubtotal(it) {
+    return (Number(it.price) || 0) * (Number(it.qty) || 0);
   }
 
-  function lineRow(key, it) {
-    // builds one <tr> with image, name/variant, unit price, qty stepper, subtotal
+  function subtotal() {
+    return entries().reduce((sum, [, it]) => sum + lineSubtotal(it), 0);
+  }
+
+  function itemRow(key, it) {
     const tr = document.createElement("tr");
 
     const tdImg = document.createElement("td");
     tdImg.innerHTML = it.thumb
-      ? `<img src="${it.thumb}" alt="${it.name}" class="thumb" loading="lazy"/>`
+      ? `<img src="${it.thumb}" alt="${it.name || ""}" class="thumb" loading="lazy"/>`
       : "";
 
     const tdName = document.createElement("td");
@@ -55,32 +42,29 @@
                         <div class="muted">${it.variant || ""}</div>`;
 
     const tdPrice = document.createElement("td");
-    tdPrice.textContent = formatINR(it.price || 0);
+    tdPrice.textContent = inr(it.price || 0);
 
     const tdQty = document.createElement("td");
     tdQty.className = "qty-cell";
-    const minus = document.createElement("button");
-    const plus  = document.createElement("button");
-    const out   = document.createElement("span");
-    minus.className = "qty-btn dec";
-    plus.className  = "qty-btn inc";
-    minus.textContent = "–";
-    plus.textContent  = "+";
-    out.className     = "qty-out";
-    out.textContent   = String(it.qty || 0);
-    tdQty.append(minus, out, plus);
+    const btnMinus = document.createElement("button");
+    const qtyOut   = document.createElement("span");
+    const btnPlus  = document.createElement("button");
+    btnMinus.className = "qty-btn dec"; btnMinus.textContent = "–";
+    btnPlus.className  = "qty-btn inc"; btnPlus.textContent  = "+";
+    qtyOut.className   = "qty-out";     qtyOut.textContent   = String(it.qty || 0);
+    tdQty.append(btnMinus, qtyOut, btnPlus);
 
     const tdSub = document.createElement("td");
     tdSub.className = "subtotal";
-    tdSub.textContent = formatINR((Number(it.price) || 0) * (Number(it.qty) || 0));
+    tdSub.textContent = inr(lineSubtotal(it));
 
-    // wire actions
-    plus.addEventListener("click", () => {
+    // actions
+    btnPlus.addEventListener("click", () => {
       const next = (Number(Cart.get()?.[key]?.qty) || 0) + 1;
       Cart.setQty(key, next, it); // keep same meta (name, variant, price, thumb)
     });
 
-    minus.addEventListener("click", () => {
+    btnMinus.addEventListener("click", () => {
       const prev = Number(Cart.get()?.[key]?.qty) || 0;
       const next = Math.max(0, prev - 1);
       Cart.setQty(key, next, it);
@@ -91,27 +75,26 @@
   }
 
   function render() {
-    const entries = asEntries();
+    const es = entries();
 
-    if (!entries.length) {
-      renderEmpty();
+    if (!es.length) {
+      $body.innerHTML = `<tr><td colspan="5" class="empty">Your cart is empty</td></tr>`;
+      $total.textContent = inr(0);
+      if ($count) $count.textContent = "0";
       return;
     }
 
-    // fill rows
     $body.innerHTML = "";
-    for (const [key, it] of entries) {
-      $body.appendChild(lineRow(key, it));
-    }
+    for (const [key, it] of es) $body.appendChild(itemRow(key, it));
 
-    // totals
-    $total.textContent = formatINR(computeSubtotal());
-    updateHeaderCount();
+    $total.textContent = inr(subtotal());
+    if ($count) {
+      const n = es.reduce((acc, [, it]) => acc + (Number(it.qty) || 0), 0);
+      $count.textContent = String(n);
+    }
   }
 
-  // Initial render
+  // First paint + keep in sync with store
   document.addEventListener("DOMContentLoaded", render);
-
-  // Re-render on any cart change
   window.addEventListener("cart:update", render);
 })();
