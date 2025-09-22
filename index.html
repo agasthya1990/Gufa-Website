@@ -8,7 +8,7 @@
   <!-- Brand font for GUFA -->
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@700;800&display=swap" rel="stylesheet"/>
 
-  <!-- Global styles (customer/styles.css uses ../images/background.jpg site-wide) -->
+  <!-- Global styles (customer/styles.css uses ../images/background.jpg) -->
   <link rel="stylesheet" href="customer/styles.css"/>
 </head>
 <body>
@@ -24,7 +24,7 @@
     </nav>
   </header>
 
-  <!-- Compact promo strip (optional; populate from Firestore if desired) -->
+  <!-- Compact promo strip (optional; can be filled from Firestore) -->
   <section id="promos" aria-label="Promotions"></section>
 
   <!-- Menu -->
@@ -32,7 +32,7 @@
     <section id="menu" aria-labelledby="menuTitle">
       <h2 id="menuTitle">Our Menu</h2>
 
-      <!-- Toggles + Search (one row) -->
+      <!-- Primary toggles + Search (home bar) -->
       <div class="primary-bar" role="group" aria-label="Filters and Search">
         <div class="primary-filters">
           <button id="vegToggle" class="pill-toggle veg on" aria-pressed="true">Veg</button>
@@ -42,14 +42,13 @@
           <button id="categoryToggle" class="pill-toggle category" aria-pressed="false">Food Categories</button>
         </div>
 
-        <!-- Search (longer, soft-rect, icon on right) -->
         <div class="searchbar">
           <input type="text" id="filter-search" placeholder="Search dishes…" aria-label="Search dishes"/>
-          <button class="searchbtn" aria-label="Search"></button>
+          <button class="searchbtn" id="searchBtn" aria-label="Search"></button>
         </div>
       </div>
 
-      <!-- Bifurcations (always visible; collages clickable) -->
+      <!-- Bifurcations (collages) -->
       <div class="bucket-group" id="coursesSection">
         <div class="bucket-header">Food Courses</div>
         <div id="courseBuckets" class="bucket-grid" aria-label="Food Courses"></div>
@@ -60,13 +59,21 @@
         <div id="categoryBuckets" class="bucket-grid" aria-label="Food Categories"></div>
       </div>
 
-      <!-- Grid -->
-      <div class="menu-grid" id="menuGrid" aria-live="polite">
-        <div class="menu-item placeholder skeleton">Loading menu…</div>
-        <div class="menu-item placeholder skeleton">Loading menu…</div>
-        <div class="menu-item placeholder skeleton">Loading menu…</div>
-        <div class="menu-item placeholder skeleton">Loading menu…</div>
-      </div>
+      <!-- Global search results view (hidden until searching) -->
+      <section id="globalResults" class="results hidden" aria-label="Search Results">
+        <div class="topbar">
+          <button class="back-btn" id="backFromSearch">← Back</button>
+          <button class="pill-toggle veg" id="vegToggleSearch">Veg</button>
+          <button class="pill-toggle nonveg" id="nonvegToggleSearch">Non-Veg</button>
+          <button class="pill-toggle course nav" id="courseNavSearch">Food Course</button>
+          <button class="pill-toggle category nav" id="categoryNavSearch">Food Categories</button>
+          <div class="searchbar compact">
+            <input type="text" id="filter-search-searchView" placeholder="Search dishes…" aria-label="Search dishes"/>
+            <button class="searchbtn" id="searchBtnSearchView" aria-label="Search"></button>
+          </div>
+        </div>
+        <div id="globalResultsList" class="list-grid"></div>
+      </section>
     </section>
   </main>
 
