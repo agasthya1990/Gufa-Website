@@ -1,6 +1,4 @@
-// app.menu.js — Switch-based Veg/Non-Veg, collage-driven lists, strict scoping, fade transitions, global search
-import { db } from "./firebase.client.js";
-import { Cart } from "./app.cart.js";
+// app.menu.js — Fixes: no nested buttons, robust switches, tolerant mapping, safe Firebase boot
 import {
   collection, onSnapshot, query, orderBy
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -28,9 +26,10 @@ const globalResults = $("#globalResults");
 const globalList = $("#globalResultsList");
 
 /* ---------- State ---------- */
+let db = null;               // set after dynamic import
 let ITEMS = [];
-let COURSES = new Set();     // menuCourses IDs
-let CATEGORIES = new Set();  // menuCategories IDs
+let COURSES = [];            // [{id, label}]
+let CATEGORIES = [];         // [{id, label}]
 
 let vegOn = true;
 let nonvegOn = true;
@@ -57,21 +56,28 @@ function priceModel(qtyType) {
   return null;
 }
 function getQty(key) {
-  const bag = typeof Cart.get === "function" ? Cart.get() : {};
-  return Number(bag?.[key]?.qty || 0);
+  try {
+    const { Cart } = window;
+    const bag = typeof Cart?.get === "function" ? Cart.get() : {};
+    return Number(bag?.[key]?.qty || 0);
+  } catch { return 0; }
 }
 function setQty(found, variantKey, price, nextQty) {
   const key = `${found.id}:${variantKey}`;
   const next = Math.max(0, Number(nextQty || 0));
-  Cart.setQty(key, next, { id: found.id, name: found.name, variant: variantKey, price });
+  try {
+    const { Cart } = window;
+    Cart?.setQty?.(key, next, { id: found.id, name: found.name, variant: variantKey, price });
+  } catch {}
   const badge = $(`.qty[data-key="${key}"] .num`);
   if (badge) badge.textContent = String(next);
 }
 
 function dietSpan(t){
-  const v = (t||"").toLowerCase();
-  if (v === "veg") return `<span class="diet diet-veg">Veg</span>`;
-  if (v === "non-veg") return `<span class="diet diet-nonveg">Non-Veg</span>`;
+  const raw = (t||"").toLowerCase();
+  const v = raw.replace(/\s+/g, "-"); // tolerate "Non Veg", "nonveg", etc
+  if (v.startsWith("veg")) return `<span class="diet diet-veg">Veg</span>`;
+  if (v.startsWith("non-veg") || v.startsWith("nonveg")) return `<span class="diet diet-nonveg">Non-Veg</span>`;
   return "";
 }
 
@@ -117,19 +123,31 @@ function itemCardHTML(m) {
 
 /* ---------- Filtering ---------- */
 function matchesVeg(it){
-  const t = (it.foodType||"").toLowerCase();
+  const v = (it.foodType||"").toLowerCase().replace(/\s+/g,"-");
   if (!vegOn && !nonvegOn) return false;
-  if (vegOn && !nonvegOn) return t === "veg";
-  if (!vegOn && nonvegOn) return t === "non-veg";
+  if (vegOn && !nonvegOn) return v.startsWith("veg");
+  if (!vegOn && nonvegOn) return v.startsWith("non-veg") || v.startsWith("nonveg");
   return true; // both on
 }
 function applyItemFiltersBase(items){
   return items.filter(it => it.inStock !== false && matchesVeg(it));
 }
+function courseMatch(it, course){ // accept by id OR label
+  return it.foodCourse === course.id || it.foodCourse === course.label;
+}
+function categoryMatch(it, cat){
+  return it.category === cat.id || it.category === cat.label;
+}
 function applyItemFiltersForOpen(items){
   let arr = applyItemFiltersBase(items);
-  if (openKind === "course" && openId) arr = arr.filter(it => it.foodCourse === openId);
-  if (openKind === "category" && openId) arr = arr.filter(it => it.category === openId);
+  if (openKind === "course" && openId) {
+    const course = COURSES.find(c => c.id === openId) || {id:openId, label:openId};
+    arr = arr.filter(it => courseMatch(it, course));
+  }
+  if (openKind === "category" && openId) {
+    const cat = CATEGORIES.find(c => c.id === openId) || {id:openId, label:openId};
+    arr = arr.filter(it => categoryMatch(it, cat));
+  }
   return arr;
 }
 function applyItemFiltersForSearch(items){
@@ -158,8 +176,7 @@ function collageHTML(imgs) {
       ${d ? `<img loading="lazy" src="${d}" alt="">` : `<div class="ph"></div>`}
     </div>`;
 }
-
-function cssSafe(s){ return String(s).replace(/[^a-zA-Z0-9_-]/g, "_"); }
+const cssSafe = (s) => String(s).replace(/[^a-zA-Z0-9_-]/g, "_");
 
 function topbarHTML(){
   // Order: ← Back, Veg switch, Non-Veg switch, Food Course, Food Categories, Search
@@ -184,33 +201,29 @@ function topbarHTML(){
     </div>`;
 }
 
-/* Render buckets; if a tile is open, include panel with list inside */
+/* Render buckets; if a tile is open, include panel with list inside
+   NOTE: .bucket-tile is now a DIV (no nested button issues) */
 function renderCourseBuckets(fade = false) {
   if (!courseBuckets) return;
   const grid = courseBuckets;
   if (fade) grid.classList.add("fade-out");
 
   const filtered = applyItemFiltersBase(ITEMS);
-  const byCourse = new Map();
-  for (const it of filtered) {
-    if (!it.foodCourse) continue;
-    if (!byCourse.has(it.foodCourse)) byCourse.set(it.foodCourse, []);
-    if (it.imageUrl) byCourse.get(it.foodCourse).push(it.imageUrl);
-  }
-  const crs = Array.from(COURSES).sort((a,b)=>a.localeCompare(b));
-  grid.innerHTML = crs.map(name => {
-    const imgs = (byCourse.get(name) || []).slice(0,4);
-    const active = (mode.startsWith("open") && openKind==="course" && openId===name) ? "active tile-open" : "";
-    return `
-      <button class="bucket-tile ${active}" data-kind="course" data-id="${name}">
-        ${collageHTML(imgs)}
-        <span class="bucket-label">${name}</span>
-        ${active ? `<div class="panel">
-          ${topbarHTML()}
-          <div class="list-grid" id="tileList-course-${cssSafe(name)}"></div>
-        </div>` : ``}
-      </button>`;
-  }).join("");
+  grid.innerHTML = COURSES
+    .slice().sort((a,b)=>a.label.localeCompare(b.label))
+    .map(course => {
+      const imgs = filtered.filter(it => courseMatch(it, course) && it.imageUrl).slice(0,4).map(x=>x.imageUrl);
+      const active = (mode.startsWith("open") && openKind==="course" && openId===course.id) ? "active tile-open" : "";
+      return `
+        <div class="bucket-tile ${active}" role="button" tabindex="0" data-kind="course" data-id="${course.id}">
+          ${collageHTML(imgs)}
+          <span class="bucket-label">${course.label}</span>
+          ${active ? `<div class="panel">
+            ${topbarHTML()}
+            <div class="list-grid" id="tileList-course-${cssSafe(course.id)}"></div>
+          </div>` : ``}
+        </div>`;
+    }).join("");
 
   if (fade) requestAnimationFrame(() => {
     grid.classList.remove("fade-out");
@@ -227,26 +240,21 @@ function renderCategoryBuckets(fade = false) {
   if (fade) grid.classList.add("fade-out");
 
   const filtered = applyItemFiltersBase(ITEMS);
-  const byCat = new Map();
-  for (const it of filtered) {
-    if (!it.category) continue;
-    if (!byCat.has(it.category)) byCat.set(it.category, []);
-    if (it.imageUrl) byCat.get(it.category).push(it.imageUrl);
-  }
-  const cats = Array.from(CATEGORIES).sort((a,b)=>a.localeCompare(b));
-  grid.innerHTML = cats.map(name => {
-    const imgs = (byCat.get(name) || []).slice(0,4);
-    const active = (mode.startsWith("open") && openKind==="category" && openId===name) ? "active tile-open" : "";
-    return `
-      <button class="bucket-tile ${active}" data-kind="category" data-id="${name}">
-        ${collageHTML(imgs)}
-        <span class="bucket-label">${name}</span>
-        ${active ? `<div class="panel">
-          ${topbarHTML()}
-          <div class="list-grid" id="tileList-category-${cssSafe(name)}"></div>
-        </div>` : ``}
-      </button>`;
-  }).join("");
+  grid.innerHTML = CATEGORIES
+    .slice().sort((a,b)=>a.label.localeCompare(b.label))
+    .map(cat => {
+      const imgs = filtered.filter(it => categoryMatch(it, cat) && it.imageUrl).slice(0,4).map(x=>x.imageUrl);
+      const active = (mode.startsWith("open") && openKind==="category" && openId===cat.id) ? "active tile-open" : "";
+      return `
+        <div class="bucket-tile ${active}" role="button" tabindex="0" data-kind="category" data-id="${cat.id}">
+          ${collageHTML(imgs)}
+          <span class="bucket-label">${cat.label}</span>
+          ${active ? `<div class="panel">
+            ${topbarHTML()}
+            <div class="list-grid" id="tileList-category-${cssSafe(cat.id)}"></div>
+          </div>` : ``}
+        </div>`;
+    }).join("");
 
   if (fade) requestAnimationFrame(() => {
     grid.classList.remove("fade-out");
@@ -304,7 +312,6 @@ function openTile(kind, id){
 
   renderTileList(kind, id);
 }
-
 function closeTileToHome(){
   mode = "home"; openKind = ""; openId = "";
   globalResults.classList.add("hidden");
@@ -312,7 +319,6 @@ function closeTileToHome(){
   renderCategoryBuckets();
   document.getElementById("menuTitle")?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
-
 function enterSearchMode(q){
   searchQuery = q;
   mode = "search";
@@ -320,25 +326,26 @@ function enterSearchMode(q){
   document.getElementById("menuTitle")?.scrollIntoView({ behavior: "smooth", block: "start" });
   renderGlobalResults();
 }
-
 function exitSearchMode(){
   searchQuery = "";
   globalResults.classList.add("hidden");
   closeTileToHome();
 }
 
-/* ---------- Live data ---------- */
+/* ---------- Live data (start only after Firebase loads) ---------- */
 function listenCourses() {
   onSnapshot(collection(db, "menuCourses"), (snap) => {
-    COURSES = new Set();
-    snap.forEach(d => COURSES.add(d.id));
+    const list = [];
+    snap.forEach(d => list.push({ id: d.id, label: d.data()?.name || d.id }));
+    COURSES = list;
     renderCourseBuckets();
   });
 }
 function listenCategories() {
   onSnapshot(collection(db, "menuCategories"), (snap) => {
-    CATEGORIES = new Set();
-    snap.forEach(d => CATEGORIES.add(d.id));
+    const list = [];
+    snap.forEach(d => list.push({ id: d.id, label: d.data()?.name || d.id }));
+    CATEGORIES = list;
     renderCategoryBuckets();
   });
 }
@@ -383,49 +390,12 @@ function fadeBucketsAnd(fn){
 }
 
 /* ---------- Event wiring ---------- */
-// Switch helpers (home bar)
-function toggleVeg(on) {
-  vegOn = typeof on === "boolean" ? on : !vegOn;
-  vegSwitch?.classList.toggle("on", vegOn);
-  vegSwitch?.setAttribute("aria-checked", String(vegOn));
-}
-function toggleNonVeg(on) {
-  nonvegOn = typeof on === "boolean" ? on : !nonvegOn;
-  nonvegSwitch?.classList.toggle("on", nonvegOn);
-  nonvegSwitch?.setAttribute("aria-checked", String(nonvegOn));
-}
-
-vegSwitch?.addEventListener("click", () => {
-  toggleVeg();
-  fadeBucketsAnd(() => {
-    renderCourseBuckets();
-    renderCategoryBuckets();
-    if (mode === "open-course" && openId) renderTileList("course", openId);
-    if (mode === "open-category" && openId) renderTileList("category", openId);
-    if (mode === "search") renderGlobalResults();
-  });
-});
-nonvegSwitch?.addEventListener("click", () => {
-  toggleNonVeg();
-  fadeBucketsAnd(() => {
-    renderCourseBuckets();
-    renderCategoryBuckets();
-    if (mode === "open-course" && openId) renderTileList("course", openId);
-    if (mode === "open-category" && openId) renderTileList("category", openId);
-    if (mode === "search") renderGlobalResults();
-  });
-});
-
-// Nav chips (home bar) — smooth scroll only
-courseToggle?.addEventListener("click", () => {
-  coursesSection?.scrollIntoView({ behavior: "smooth", block: "start" });
-});
-categoryToggle?.addEventListener("click", () => {
-  categoriesSection?.scrollIntoView({ behavior: "smooth", block: "start" });
-});
-
-// Collage clicks → open list inside that collage
+// Guard: ignore clicks inside an open panel’s controls
 document.addEventListener("click", (e) => {
+  if (e.target.closest(".panel")) {
+    // panel has its own handlers below
+    return;
+  }
   const tile = e.target.closest(".bucket-tile");
   if (!tile) return;
   const kind = tile.dataset.kind;
@@ -443,33 +413,28 @@ document.addEventListener("click", (e) => {
   const action = actBtn.getAttribute("data-action");
 
   if (action === "back") {
-    // From tile panel or from global search
-    if (mode === "search") exitSearchMode();
-    else closeTileToHome();
+    if (mode === "search") exitSearchMode(); else closeTileToHome();
     return;
   }
   if (action === "veg") {
-    toggleVeg();
-    // reflect on switch in this topbar
+    vegOn = !vegOn;
+    // reflect switches
     actBtn.classList.toggle("on", vegOn);
     actBtn.setAttribute("aria-checked", String(vegOn));
-    // reflect on home bar too
     vegSwitch?.classList.toggle("on", vegOn);
     vegSwitch?.setAttribute("aria-checked", String(vegOn));
-    renderCourseBuckets(true);
-    renderCategoryBuckets(true);
+    renderCourseBuckets(true); renderCategoryBuckets(true);
     if (mode.startsWith("open") && openId) renderTileList(openKind, openId, true);
     if (mode === "search") renderGlobalResults(true);
     return;
   }
   if (action === "nonveg") {
-    toggleNonVeg();
+    nonvegOn = !nonvegOn;
     actBtn.classList.toggle("on", nonvegOn);
     actBtn.setAttribute("aria-checked", String(nonvegOn));
     nonvegSwitch?.classList.toggle("on", nonvegOn);
     nonvegSwitch?.setAttribute("aria-checked", String(nonvegOn));
-    renderCourseBuckets(true);
-    renderCategoryBuckets(true);
+    renderCourseBuckets(true); renderCategoryBuckets(true);
     if (mode.startsWith("open") && openId) renderTileList(openKind, openId, true);
     if (mode === "search") renderGlobalResults(true);
     return;
@@ -487,103 +452,64 @@ document.addEventListener("click", (e) => {
     const field = wrap?.querySelector(".tile-search");
     const q = (field?.value || "").trim();
     enterSearchMode(q);
-    // sync home search input
     if (searchInputHome) searchInputHome.value = q;
     return;
   }
 });
 
-// Tile search enter key
-document.addEventListener("keydown", (e) => {
-  if (e.key !== "Enter") return;
-  const field = e.target.closest(".tile-search");
-  if (field) {
-    const q = field.value.trim();
-    enterSearchMode(q);
-    if (searchInputHome) searchInputHome.value = q;
-  }
+// Home switches (always work, even before Firebase loads)
+function updateVegVisual(on){ vegOn = on; vegSwitch?.classList.toggle("on", on); vegSwitch?.setAttribute("aria-checked", String(on)); }
+function updateNonVegVisual(on){ nonvegOn = on; nonvegSwitch?.classList.toggle("on", on); nonvegSwitch?.setAttribute("aria-checked", String(on)); }
+
+vegSwitch?.addEventListener("click", () => {
+  updateVegVisual(!vegOn);
+  fadeBucketsAnd(() => { renderCourseBuckets(); renderCategoryBuckets(); if (mode==="open-course"&&openId) renderTileList("course",openId); if (mode==="open-category"&&openId) renderTileList("category",openId); if (mode==="search") renderGlobalResults(); });
+});
+nonvegSwitch?.addEventListener("click", () => {
+  updateNonVegVisual(!nonvegOn);
+  fadeBucketsAnd(() => { renderCourseBuckets(); renderCategoryBuckets(); if (mode==="open-course"&&openId) renderTileList("course",openId); if (mode==="open-category"&&openId) renderTileList("category",openId); if (mode==="search") renderGlobalResults(); });
 });
 
-// Home search
-searchBtnHome?.addEventListener("click", () => {
-  const q = (searchInputHome?.value || "").trim();
-  enterSearchMode(q);
+// Nav chips (home bar) — smooth scroll only
+courseToggle?.addEventListener("click", () => { coursesSection?.scrollIntoView({ behavior: "smooth", block: "start" }); });
+categoryToggle?.addEventListener("click", () => { categoriesSection?.scrollIntoView({ behavior: "smooth", block: "start" }); });
+
+// Steppers (delegated)
+document.addEventListener("click", (e) => {
+  const btn = e.target.closest(".inc, .dec");
+  if (!btn) return;
+  const wrap = btn.closest(".stepper");
+  const id = wrap?.dataset.item;
+  const variantKey = wrap?.dataset.variant;
+  const found = ITEMS.find(x => x.id === id);
+  if (!found) return;
+
+  const pm = priceModel(found.qtyType);
+  const v = (pm?.variants || []).find(x => x.key === variantKey);
+  if (!v || !v.price) return;
+
+  const key = `${id}:${variantKey}`;
+  const now = getQty(key);
+  const next = Math.max(0, now + (btn.classList.contains("inc") ? 1 : -1));
+  setQty(found, variantKey, v.price, next);
 });
-searchInputHome?.addEventListener("keydown", (e) => {
-  if (e.key === "Enter") {
-    const q = (searchInputHome?.value || "").trim();
-    enterSearchMode(q);
-  }
-});
-
-/* ---------- Steppers (delegated) ---------- */
-let gridHandlerBound = false;
-function bindStepperHandlers() {
-  if (gridHandlerBound) return;
-  gridHandlerBound = true;
-  document.addEventListener("click", (e) => {
-    const btn = e.target.closest(".inc, .dec");
-    if (!btn) return;
-    const wrap = btn.closest(".stepper");
-    const id = wrap?.dataset.item;
-    const variantKey = wrap?.dataset.variant;
-    const found = ITEMS.find(x => x.id === id);
-    if (!found) return;
-
-    const pm = priceModel(found.qtyType);
-    const v = (pm?.variants || []).find(x => x.key === variantKey);
-    if (!v || !v.price) return;
-
-    const key = `${id}:${variantKey}`;
-    const now = getQty(key);
-    const next = Math.max(0, now + (btn.classList.contains("inc") ? 1 : -1));
-    setQty(found, variantKey, v.price, next);
-  });
-}
-
-/* ---------- Live data ---------- */
-function listenCourses() {
-  onSnapshot(collection(db, "menuCourses"), (snap) => {
-    COURSES = new Set();
-    snap.forEach(d => COURSES.add(d.id));
-    renderCourseBuckets();
-  });
-}
-function listenCategories() {
-  onSnapshot(collection(db, "menuCategories"), (snap) => {
-    CATEGORIES = new Set();
-    snap.forEach(d => CATEGORIES.add(d.id));
-    renderCategoryBuckets();
-  });
-}
-function listenItems() {
-  const baseCol = collection(db, "menuItems");
-  const renderFrom = (docs) => {
-    ITEMS = docs.map(d => ({ id: d.id, ...d.data() }));
-    if (mode === "home") {
-      renderCourseBuckets();
-      renderCategoryBuckets();
-    } else if (mode === "open-course" || mode === "open-category") {
-      renderCourseBuckets();
-      renderCategoryBuckets();
-    } else if (mode === "search") {
-      renderGlobalResults();
-    }
-  };
-  try {
-    const qLive = query(baseCol, orderBy("createdAt","desc"));
-    onSnapshot(
-      qLive,
-      snap => renderFrom(snap.docs),
-      () => onSnapshot(baseCol, snap => renderFrom(snap.docs))
-    );
-  } catch {
-    onSnapshot(baseCol, snap => renderFrom(snap.docs));
-  }
-}
 
 /* ---------- Boot ---------- */
-bindStepperHandlers();
-listenCourses();
-listenCategories();
-listenItems();
+// 1) Bind UI immediately
+updateVegVisual(vegOn);
+updateNonVegVisual(nonvegOn);
+
+// 2) Load Firebase lazily; start listeners only when ready
+(async () => {
+  try {
+    const mod = await import("./firebase.client.js");
+    db = mod?.db || null;
+  } catch (e) {
+    console.error("Firebase init failed:", e);
+  }
+  if (!db) return; // UI still usable (switches animate), data won’t load without db
+
+  listenCourses();
+  listenCategories();
+  listenItems();
+})();
