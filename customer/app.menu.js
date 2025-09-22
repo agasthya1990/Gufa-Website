@@ -2,6 +2,7 @@
 //  • Read current quantity from DOM first (so + always increments).
 //  • Still call Cart.setQty underneath; re-sync badges and header count.
 //  • Tiles grid is centered by CSS; logic unchanged.
+import { Cart } from "./cart.store.js";
 import { db } from "./firebase.client.js";
 import {
   collection, onSnapshot, query, orderBy
