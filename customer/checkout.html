@@ -2,61 +2,29 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>GUFA – Checkout</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Cart & Checkout</title>
   <link rel="stylesheet" href="styles.css"/>
 </head>
 <body>
-  <header class="site-header">
-    <div class="logo">GUFA</div>
-    <nav class="nav-links">
-      <a href="index.html">Home</a>
-      <a href="checkout.html" id="cartLink" class="active cart-link">Cart (0)</a>
-    </nav>
-  </header>
+  <h2>Your Cart</h2>
+  <div class="cart-container">
+    <table class="cart-table">
+      <thead>
+        <tr>
+          <th></th><th>Item</th><th>Price</th><th>Qty</th><th>Subtotal</th>
+        </tr>
+      </thead>
+      <tbody id="cartBody"></tbody>
+    </table>
+    <div class="cart-summary">
+      <strong>Total: <span id="cartTotal">₹0</span></strong>
+      <button class="checkout-btn">Proceed to Payment</button>
+    </div>
+  </div>
 
-  <main>
-    <section id="summary" class="menu-item" style="max-width:720px;margin:20px auto;">
-      <h2>Order Summary</h2>
-      <div id="cartList" style="margin-top:10px;"></div>
-      <hr style="margin:12px 0;">
-      <div id="totals"></div>
-      <!-- Coupon -->
-<div class="row" style="gap:8px; align-items:center; margin:8px 0;">
-  <input id="couponCode" type="text" placeholder="Coupon code" class="adm-input" style="flex:1" />
-  <button id="applyCouponBtn" class="adm-btn" type="button">Apply</button>
-</div>
-<small id="couponMsg" class="adm-muted"></small>
-    </section>
-    
-    <section class="menu-item" style="max-width:720px;margin:20px auto;">
-      <h2>Delivery Details</h2>
-      <form id="checkoutForm" class="grid2" style="gap:10px;">
-        <input id="cName" placeholder="Name" required />
-        <input id="cPhone" placeholder="Phone" required />
-        <input id="cAddress" class="full" placeholder="Address" required />
-        <div class="full" style="display:flex;gap:12px;align-items:center;">
-          <label><input type="radio" name="pay" value="COD" checked /> Cash on Delivery</label>
-        </div>
-        <div class="full" style="display:flex;justify-content:flex-end;">
-          <button class="btn primary" type="submit">Place Order</button>
-        </div>
-        <div id="placeMsg" class="muted full"></div>
-      </form>
-    </section>
-  </main>
-
-  <footer id="contact">
-    <p>&copy; 2025 GUFA</p>
-  </footer>
-
-  <!-- logic -->
   <script type="module" src="firebase.client.js"></script>
+  <script type="module" src="cart.store.js"></script>
   <script type="module" src="app.cart.js"></script>
-  <script type="module" src="app.checkout.js"></script>
 </body>
 </html>
-
-
-
-
