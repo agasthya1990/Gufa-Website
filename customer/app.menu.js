@@ -1,4 +1,4 @@
-// app.menu.js — live menu with Category/Course tiles (auto-collages) + − qty + steppers
+// app.menu.js — Course collages + Veg/Non-Veg toggles (both can be OFF) + live Firestore
 import { db } from "./firebase.client.js";
 import { Cart } from "./app.cart.js";
 import {
@@ -8,35 +8,23 @@ import {
 const $  = (s, r=document) => r.querySelector(s);
 const $$ = (s, r=document) => Array.from(r.querySelectorAll(s));
 
-/* ---------- containers ---------- */
+/* ---------- DOM ---------- */
 const menuSection = $("#menu");
 const grid = $("#menu .menu-grid") || $(".menu-grid");
 const filtersEl = $(".filters");
+const courseBuckets = $("#courseBuckets");
 if (!menuSection || !grid) console.error("[menu] Missing #menu or .menu-grid");
 
-let bucketsWrap = $("#menuBuckets");
-if (!bucketsWrap) {
-  bucketsWrap = document.createElement("div");
-  bucketsWrap.id = "menuBuckets";
-  bucketsWrap.innerHTML = `
-    <div class="bucket-group">
-      <h3 class="bucket-title">Browse by Category</h3>
-      <div id="catBuckets" class="bucket-grid"></div>
-    </div>
-    <div class="bucket-group">
-      <h3 class="bucket-title">Browse by Food Course</h3>
-      <div id="courseBuckets" class="bucket-grid"></div>
-    </div>
-  `;
-  menuSection.insertBefore(bucketsWrap, filtersEl || grid);
-}
+const vegBtn = $("#vegToggle");
+const nonvegBtn = $("#nonvegToggle");
 
-/* ---------- state ---------- */
-let ITEMS = [];
-let CATS = new Set();
-let COURSES = new Set();
+/* ---------- State ---------- */
+let ITEMS = [];               // menu items
+let COURSES = new Set();      // menuCourses doc.id values
+let vegOn = true;             // both can be toggled freely; both OFF = show none
+let nonvegOn = true;
 
-/* ---------- helpers ---------- */
+/* ---------- Helpers ---------- */
 function priceModel(qtyType) {
   if (!qtyType) return null;
   if (qtyType.type === "Not Applicable") {
@@ -64,7 +52,7 @@ function setQty(found, variantKey, price, nextQty) {
   if (badge) badge.textContent = String(next);
 }
 
-/* ---------- item cards with steppers ---------- */
+/* ---------- Item card ---------- */
 function stepperHTML(found, variant) {
   const key = `${found.id}:${variant.key}`;
   const qty = getQty(key);
@@ -83,7 +71,7 @@ function stepperHTML(found, variant) {
 function itemCardHTML(m) {
   const pm = priceModel(m.qtyType);
   const variants = (pm?.variants || []).filter(v => v.price > 0);
-  const tags = [m.category||"", m.foodCourse||"", m.foodType||""].filter(Boolean).join(" • ");
+  const tags = [m.foodCourse||"", m.foodType||"", m.category||""].filter(Boolean).join(" • ");
   const addons = Array.isArray(m.addons) && m.addons.length
     ? `<small class="muted">Add-ons: ${m.addons.join(", ")}</small>` : "";
   const steppers = variants.map(v => stepperHTML(m, v)).join("");
@@ -100,25 +88,52 @@ function itemCardHTML(m) {
   `;
 }
 
-/* ---------- filters ---------- */
+/* ---------- Filters (kept) ---------- */
 const selCat = $("#filter-category");
 const selCourse = $("#filter-course");
 const selType = $("#filter-type");
 const inpSearch = $("#filter-search");
 
+/* Sync select based on toggles (includes both-OFF -> __none) */
+function syncSelectFromToggles() {
+  if (!selType) return;
+  if (vegOn && nonvegOn) { selType.value = ""; return; }
+  if (vegOn && !nonvegOn) { selType.value = "Veg"; return; }
+  if (!vegOn && nonvegOn) { selType.value = "Non-Veg"; return; }
+  // Both OFF → use hidden sentinel
+  selType.value = "__none";
+}
+/* Sync toggles based on select */
+function syncTogglesFromSelect() {
+  const v = selType?.value || "";
+  if (v === "") { vegOn = true; nonvegOn = true; }
+  else if (v === "Veg") { vegOn = true; nonvegOn = false; }
+  else if (v === "Non-Veg") { vegOn = false; nonvegOn = true; }
+  else if (v === "__none") { vegOn = false; nonvegOn = false; }
+  vegBtn?.classList.toggle("on", vegOn);
+  nonvegBtn?.classList.toggle("on", nonvegOn);
+  vegBtn?.setAttribute("aria-pressed", String(vegOn));
+  nonvegBtn?.setAttribute("aria-pressed", String(nonvegOn));
+}
+
 function applyFilters(items) {
   const q = (inpSearch?.value || "").toLowerCase().trim();
-  const cat = selCat?.value || "";
   const crs = selCourse?.value || "";
-  const typ = selType?.value || "";
+  const cat = selCat?.value || "";
 
   return items.filter((it) => {
-    if (cat && it.category !== cat) return false;
     if (crs && it.foodCourse !== crs) return false;
-    if (typ && it.foodType !== typ) return false;
+    if (cat && it.category !== cat) return false;
+
+    // Primary type filter via toggles
+    const t = (it.foodType || "").toLowerCase(); // "veg" | "non-veg"
+    if (!vegOn && !nonvegOn) return false; // both OFF => show none
+    if (vegOn && !nonvegOn && t !== "veg") return false;
+    if (!vegOn && nonvegOn && t !== "non-veg") return false;
+
     if (q) {
       const hay = [
-        it.name, it.description, it.category, it.foodCourse,
+        it.name, it.description, it.foodCourse, it.category,
         ...(Array.isArray(it.addons) ? it.addons : [])
       ].filter(Boolean).join(" ").toLowerCase();
       if (!hay.includes(q)) return false;
@@ -127,7 +142,7 @@ function applyFilters(items) {
   });
 }
 
-/* ---------- renderers ---------- */
+/* ---------- Renderers ---------- */
 function renderGrid() {
   if (!grid) return;
   const filtered = applyFilters(ITEMS);
@@ -136,6 +151,7 @@ function renderGrid() {
     : `<div class="menu-item placeholder">No items match your selection.</div>`;
 }
 
+/* Course tiles (auto-collages) */
 function collageHTML(imgs) {
   const a = imgs[0] || "", b = imgs[1] || "", c = imgs[2] || "", d = imgs[3] || "";
   return `
@@ -146,74 +162,36 @@ function collageHTML(imgs) {
       ${d ? `<img loading="lazy" src="${d}" alt="">` : `<div class="ph"></div>`}
     </div>`;
 }
+function renderCourseBuckets() {
+  if (!courseBuckets) return;
 
-function renderBuckets() {
-  const catEl = $("#catBuckets");
-  const courseEl = $("#courseBuckets");
-  if (!catEl || !courseEl) return;
-
-  const byCat = new Map(); const byCourse = new Map();
+  const byCourse = new Map();
   for (const it of ITEMS) {
-    if (it.category) {
-      if (!byCat.has(it.category)) byCat.set(it.category, []);
-      if (it.imageUrl) byCat.get(it.category).push(it.imageUrl);
-    }
     if (it.foodCourse) {
       if (!byCourse.has(it.foodCourse)) byCourse.set(it.foodCourse, []);
       if (it.imageUrl) byCourse.get(it.foodCourse).push(it.imageUrl);
     }
   }
 
-  const cats = Array.from(CATS).sort((a,b)=>a.localeCompare(b));
-  catEl.innerHTML = cats.map(name => {
-    const imgs = (byCat.get(name) || []).slice(0,4);
-    const count = (byCat.get(name) || []).length;
-    return `
-      <button class="bucket-tile" data-kind="category" data-id="${name}" ${count? "":"disabled"}>
-        ${collageHTML(imgs)}
-        <div class="bucket-meta">
-          <div class="bucket-name">${name}</div>
-          <div class="bucket-count">${count} item${count===1?"":"s"}</div>
-        </div>
-      </button>`;
-  }).join("");
-
   const crs = Array.from(COURSES).sort((a,b)=>a.localeCompare(b));
-  courseEl.innerHTML = crs.map(name => {
+  courseBuckets.innerHTML = crs.map(name => {
     const imgs = (byCourse.get(name) || []).slice(0,4);
     const count = (byCourse.get(name) || []).length;
+    const disabled = count ? "" : "aria-disabled='true'";
     return `
-      <button class="bucket-tile" data-kind="course" data-id="${name}" ${count? "":"disabled"}>
+      <button class="bucket-tile" data-kind="course" data-id="${name}" ${disabled}>
         ${collageHTML(imgs)}
-        <div class="bucket-meta">
-          <div class="bucket-name">${name}</div>
-          <div class="bucket-count">${count} item${count===1?"":"s"}</div>
-        </div>
+        <span class="bucket-label">${name}</span>
       </button>`;
   }).join("");
 }
 
-/* ---------- live data ---------- */
-function listenCategories() {
-  onSnapshot(collection(db, "menuCategories"), (snap) => {
-    const prev = new Set(CATS);
-    CATS = new Set();
-    snap.forEach(d => CATS.add(d.id)); // use doc.id to match Admin “Rename” flow
-    if (selCat) {
-      const selected = selCat.value;
-      selCat.innerHTML = `<option value="">All Categories</option>` +
-        Array.from(CATS).sort().map(c => `<option>${c}</option>`).join("");
-      if (selected && CATS.has(selected)) selCat.value = selected;
-      if (selected && !CATS.has(selected)) selCat.value = "";
-    }
-    if (prev.size !== CATS.size) renderBuckets();
-  });
-}
+/* ---------- Live data ---------- */
 function listenCourses() {
   onSnapshot(collection(db, "menuCourses"), (snap) => {
-    const prev = new Set(COURSES);
     COURSES = new Set();
-    snap.forEach(d => COURSES.add(d.id));
+    snap.forEach(d => COURSES.add(d.id)); // match Admin doc.id
+    // keep dropdown in sync (kept for users who prefer it)
     if (selCourse) {
       const selected = selCourse.value;
       selCourse.innerHTML = `<option value="">All Courses</option>` +
@@ -221,15 +199,15 @@ function listenCourses() {
       if (selected && COURSES.has(selected)) selCourse.value = selected;
       if (selected && !COURSES.has(selected)) selCourse.value = "";
     }
-    if (prev.size !== COURSES.size) renderBuckets();
+    renderCourseBuckets();
   });
 }
 function listenItems() {
   const baseCol = collection(db, "menuItems");
   const renderFrom = (docs) => {
-    // Hide only explicit false; legacy docs without field still show
-    ITEMS = docs.map(d => ({ id: d.id, ...d.data() })).filter(v => v.inStock !== false);
-    renderBuckets();
+    ITEMS = docs.map(d => ({ id: d.id, ...d.data() }))
+                .filter(v => v.inStock !== false); // legacy items show unless explicitly false
+    renderCourseBuckets();
     renderGrid();
   };
   try {
@@ -237,25 +215,26 @@ function listenItems() {
     onSnapshot(
       qLive,
       snap => renderFrom(snap.docs),
-      () => onSnapshot(baseCol, snap => renderFrom(snap.docs)) // fallback: no index needed
+      () => onSnapshot(baseCol, snap => renderFrom(snap.docs)) // fallback (no index)
     );
   } catch {
     onSnapshot(baseCol, snap => renderFrom(snap.docs));
   }
 }
 
-/* ---------- events ---------- */
-bucketsWrap.addEventListener("click", (e) => {
+/* ---------- Events ---------- */
+// Tile click → set course filter and scroll to grid
+document.addEventListener("click", (e) => {
   const tile = e.target.closest(".bucket-tile");
-  if (!tile) return;
-  const kind = tile.dataset.kind;
+  if (!tile || tile.getAttribute("aria-disabled")==="true") return;
+  if (tile.dataset.kind !== "course") return;
   const val = tile.dataset.id;
-  if (kind === "category" && selCat) { selCat.value = val; if (selCourse) selCourse.value=""; }
-  if (kind === "course" && selCourse){ selCourse.value = val; if (selCat) selCat.value=""; }
+  if (selCourse) selCourse.value = val;
   renderGrid();
   grid.scrollIntoView({ behavior: "smooth", block: "start" });
 });
 
+// Grid steppers (delegated)
 let gridHandlerBound = false;
 function bindGridHandlers() {
   if (gridHandlerBound || !grid) return;
@@ -280,8 +259,33 @@ function bindGridHandlers() {
   });
 }
 
-/* ---------- boot ---------- */
+// Primary toggles — both can be OFF (no auto re-enable)
+vegBtn?.addEventListener("click", () => {
+  vegOn = !vegOn;
+  vegBtn.classList.toggle("on", vegOn);
+  vegBtn.setAttribute("aria-pressed", String(vegOn));
+  syncSelectFromToggles();
+  renderGrid();
+});
+nonvegBtn?.addEventListener("click", () => {
+  nonvegOn = !nonvegOn;
+  nonvegBtn.classList.toggle("on", nonvegOn);
+  nonvegBtn.setAttribute("aria-pressed", String(nonvegOn));
+  syncSelectFromToggles();
+  renderGrid();
+});
+
+// Keep legacy select in sync if user uses it
+selType?.addEventListener("change", () => { syncTogglesFromSelect(); renderGrid(); });
+
+// Other filters/search
+[selCourse, selCat, inpSearch].forEach(el => {
+  el && el.addEventListener("input", renderGrid);
+  el && el.addEventListener("change", renderGrid);
+});
+
+/* ---------- Boot ---------- */
 bindGridHandlers();
-listenCategories();
 listenCourses();
 listenItems();
+syncTogglesFromSelect();  // init toggle UI from current select state
