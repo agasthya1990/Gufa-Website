@@ -144,7 +144,6 @@ main { max-width:1200px; margin:18px auto 32px; padding:0 16px; }
   transition: transform .15s ease, box-shadow .2s ease;
 }
 .bucket-tile:hover{ transform: translateY(-2px); box-shadow: 0 10px 18px rgba(0,0,0,.10); }
-.bucket-tile.active{ outline: 3px solid rgba(0,198,251,.35); }
 
 .tile-img{ width:100%; aspect-ratio: 1 / 1; background:#f3f4f6; }
 .tile-img img{ width:100%; height:100%; object-fit:cover; display:block; }
@@ -153,35 +152,19 @@ main { max-width:1200px; margin:18px auto 32px; padding:0 16px; }
   background: rgba(0,0,0,.55); color: #fff; padding: 6px 10px; border-radius: 999px;
   font-weight: 700; font-size: 13px; letter-spacing: .2px;
 }
-.count-badge{
-  position:absolute; right:10px; top:10px;
-  background: rgba(0,0,0,.65); color:#fff; padding:4px 8px; border-radius:999px; font-size:12px; font-weight:800;
-}
 
-/* Tile OPEN panel (list inside the collage/tile) */
-.tile-open .panel{ padding: 10px 10px 14px; background: #fff; }
+/* Full-page content view (used for List view & Search view) */
+.hidden{ display:none !important; }
 
-.tile-open .topbar{
-  display:flex; gap:10px; align-items:center; justify-content:flex-start; flex-wrap:wrap;
-  margin-bottom: 10px;
+.results{ /* we reuse #globalResults as a "content view" */
+  margin-top: 6px;
+  animation: fadeIn .22s ease both;
 }
-.topbar .back-btn{
-  border:1px solid var(--line); background:#fff; border-radius:999px; padding:8px 12px; cursor:pointer; font-weight:800;
-}
-.topbar .searchbar{ margin-left:auto; }
+@keyframes fadeIn { from{opacity:.01; transform: translateY(2px);} to{opacity:1; transform:none;} }
 
-.tile-open .list-grid{
-  display:grid; grid-template-columns: 1fr; gap: 12px;
-  transition: opacity .25s ease, transform .25s ease;
-}
-.tile-open .list-grid.fade-out{ opacity:.15; transform: scale(0.99); }
-.tile-open .list-grid.fade-in{ opacity:1; transform: scale(1); }
-
-/* Global search results view */
-.results.hidden{ display:none; }
 .results .topbar{
   display:flex; gap:10px; align-items:center; justify-content:flex-start; flex-wrap:wrap;
-  margin: 8px 0 12px;
+  margin: 4px 0 12px;
 }
 .results .topbar .searchbar{ margin-left:auto; }
 .results .list-grid{
@@ -190,6 +173,10 @@ main { max-width:1200px; margin:18px auto 32px; padding:0 16px; }
 }
 .results .list-grid.fade-out{ opacity:.15; transform: scale(0.99); }
 .results .list-grid.fade-in{ opacity:1; transform: scale(1); }
+
+.back-btn{
+  border:1px solid var(--line); background:#fff; border-radius:999px; padding:8px 12px; cursor:pointer; font-weight:800;
+}
 
 /* Menu item cards */
 .menu-item{
