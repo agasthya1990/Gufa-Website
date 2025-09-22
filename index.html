@@ -8,7 +8,7 @@
   <!-- Brand font for GUFA -->
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@700;800&display=swap" rel="stylesheet"/>
 
-  <!-- Global styles (uses ../images/background.jpg site-wide) -->
+  <!-- Global styles (customer/styles.css uses ../images/background.jpg site-wide) -->
   <link rel="stylesheet" href="customer/styles.css"/>
 </head>
 <body>
@@ -24,7 +24,7 @@
     </nav>
   </header>
 
-  <!-- Compact promo strip (can be filled from Firestore promotions) -->
+  <!-- Compact promo strip (optional; populate from Firestore if desired) -->
   <section id="promos" aria-label="Promotions"></section>
 
   <!-- Menu -->
@@ -32,29 +32,32 @@
     <section id="menu" aria-labelledby="menuTitle">
       <h2 id="menuTitle">Our Menu</h2>
 
-      <!-- Primary toggles (both Veg & Non-Veg can be OFF) -->
-      <div class="primary-filters" role="group" aria-label="Primary Filters">
-        <button id="vegToggle" class="pill-toggle veg on" aria-pressed="true">Veg</button>
-        <button id="nonvegToggle" class="pill-toggle nonveg on" aria-pressed="true">Non-Veg</button>
-        <span class="spacer"></span>
-        <button id="courseToggle" class="pill-toggle course on" aria-pressed="true">Food Course</button>
-        <button id="categoryToggle" class="pill-toggle category on" aria-pressed="true">Food Categories</button>
+      <!-- Toggles + Search (one row) -->
+      <div class="primary-bar" role="group" aria-label="Filters and Search">
+        <div class="primary-filters">
+          <button id="vegToggle" class="pill-toggle veg on" aria-pressed="true">Veg</button>
+          <button id="nonvegToggle" class="pill-toggle nonveg on" aria-pressed="true">Non-Veg</button>
+          <span class="divider" aria-hidden="true"></span>
+          <button id="courseToggle" class="pill-toggle course" aria-pressed="false">Food Course</button>
+          <button id="categoryToggle" class="pill-toggle category" aria-pressed="false">Food Categories</button>
+        </div>
+
+        <!-- Search (longer, soft-rect, icon on right) -->
+        <div class="searchbar">
+          <input type="text" id="filter-search" placeholder="Search dishes…" aria-label="Search dishes"/>
+          <button class="searchbtn" aria-label="Search"></button>
+        </div>
       </div>
 
       <!-- Bifurcations (always visible; collages clickable) -->
-      <div class="bucket-group">
+      <div class="bucket-group" id="coursesSection">
         <div class="bucket-header">Food Courses</div>
         <div id="courseBuckets" class="bucket-grid" aria-label="Food Courses"></div>
       </div>
 
-      <div class="bucket-group">
+      <div class="bucket-group" id="categoriesSection">
         <div class="bucket-header">Food Categories</div>
         <div id="categoryBuckets" class="bucket-grid" aria-label="Food Categories"></div>
-      </div>
-
-      <!-- Search only (dropdowns removed as requested) -->
-      <div class="filters" aria-label="Search">
-        <input type="text" id="filter-search" placeholder="Search dishes..."/>
       </div>
 
       <!-- Grid -->
@@ -74,7 +77,7 @@
     <p>&copy; 2025 GUFA – All Rights Reserved</p>
   </footer>
 
-  <!-- Progressive enhancement: message if JS disabled -->
+  <!-- No-JS message -->
   <noscript>
     <style>.menu-grid .placeholder{display:none}</style>
     <div style="max-width:1200px;margin:16px auto;padding:12px;background:#fff;border:1px solid #e5e7eb;border-radius:8px;">
@@ -82,7 +85,7 @@
     </div>
   </noscript>
 
-  <!-- Customer UI logic (order matters) -->
+  <!-- Scripts (order matters) -->
   <script type="module" src="customer/firebase.client.js"></script>
   <script type="module" src="customer/app.cart.js"></script>
   <script type="module" src="customer/app.menu.js"></script>
