@@ -1,54 +1,127 @@
-// customer/cart.store.js
-// LocalStorage-backed cart used by menu, drawer, and checkout.
-// Single source of truth. Also attaches to window.Cart for legacy code.
+/* cart.store.js — global Cart (no exports). Works in plain <script> tags.
 
-const STORAGE_KEY = "gufa_cart_v1";
-
-function read() {
-  try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}; }
-  catch { return {}; }
+Schema saved in localStorage:
+{
+  items: {
+    [key]: { id, name, variant, price, qty, thumb? }
+  }
 }
-function write(obj) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(obj));
-  try {
-    window.dispatchEvent(new CustomEvent("cart:update", { detail: { cart: obj } }));
-  } catch {}
-}
+- key format is up to callers (we usually use "itemId:variant")
+- price is the chosen unit price at add time
+*/
 
-export const Cart = {
-  get() {
-    return read(); // { [itemId:variantKey]: { id, name, variant, price, qty } }
-  },
-  set(obj) {
-    write(obj || {});
-  },
-  setQty(key, qty, meta = {}) {
-    const bag = read();
-    const q = Math.max(0, Number(qty || 0));
+(function (window, document) {
+  const LS_KEY = "gufa_cart_v1";
+
+  // ---- internal helpers ----
+  function readState() {
+    try {
+      const raw = localStorage.getItem(LS_KEY);
+      const parsed = raw ? JSON.parse(raw) : null;
+      if (!parsed || typeof parsed !== "object") return { items: {} };
+      if (!parsed.items || typeof parsed.items !== "object") parsed.items = {};
+      return parsed;
+    } catch {
+      return { items: {} };
+    }
+  }
+
+  function writeState(state) {
+    try {
+      localStorage.setItem(LS_KEY, JSON.stringify(state));
+    } catch {}
+    dispatch();
+  }
+
+  function dispatch() {
+    try {
+      const state = readState();
+      const ev = new CustomEvent("cart:update", { detail: { cart: state } });
+      window.dispatchEvent(ev);
+    } catch {}
+  }
+
+  // ---- public API ----
+  function get() {
+    return readState().items;
+  }
+
+  // setQty(key, qty, meta) — qty <= 0 removes the line
+  // meta may include: { id, name, variant, price, thumb }
+  function setQty(key, qty, meta) {
+    if (!key) return;
+    const q = Math.max(0, Number(qty) || 0);
+    const state = readState();
 
     if (q <= 0) {
-      delete bag[key];
-      write(bag);
-      return;
+      delete state.items[key];
+    } else {
+      const prev = state.items[key] || {};
+      state.items[key] = {
+        id: meta?.id ?? prev.id ?? "",
+        name: meta?.name ?? prev.name ?? "",
+        variant: meta?.variant ?? prev.variant ?? "",
+        price: Number(meta?.price ?? prev.price ?? 0) || 0,
+        thumb: meta?.thumb ?? prev.thumb ?? "",
+        qty: q
+      };
     }
+    writeState(state);
+  }
 
-    const prev = bag[key] || {};
-    // Normalize and persist numbers
-    bag[key] = {
-      id: meta.id ?? prev.id,
-      name: meta.name ?? prev.name,
-      variant: meta.variant ?? prev.variant,
-      price: Number(meta.price ?? prev.price ?? 0),
-      qty: Number(q),
+  function clear() {
+    writeState({ items: {} });
+  }
+
+  // convenience (used by some headers/pages)
+  function count() {
+    const items = get();
+    return Object.values(items).reduce((n, it) => n + (Number(it.qty) || 0), 0);
+  }
+
+  function subtotal() {
+    const items = get();
+    return Object.values(items).reduce(
+      (sum, it) => sum + (Number(it.price) || 0) * (Number(it.qty) || 0),
+      0
+    );
+  }
+
+  // simple pub/sub if you prefer callbacks instead of window event
+  const listeners = new Set();
+  function subscribe(fn) {
+    if (typeof fn !== "function") return () => {};
+    listeners.add(fn);
+    // call immediately with current state
+    try { fn(readState()); } catch {}
+    const off = () => listeners.delete(fn);
+    // also mirror window event
+    const onWin = (e) => fn(e.detail?.cart || readState());
+    window.addEventListener("cart:update", onWin);
+    return () => {
+      off();
+      window.removeEventListener("cart:update", onWin);
     };
-    write(bag);
-  },
-  clear() {
-    write({});
-  },
-};
+  }
 
-// Legacy global for any existing code using window.Cart
-if (typeof window !== "undefined") {
-  window.Cart = Cart;
-}
+  // keep callbacks in sync with window event
+  window.addEventListener("cart:update", () => {
+    const state = readState();
+    listeners.forEach(fn => {
+      try { fn(state); } catch {}
+    });
+  });
+
+  // expose globally
+  window.Cart = {
+    // core
+    get, setQty, clear,
+    // helpers
+    count, subtotal,
+    // optional
+    subscribe
+  };
+
+  // fire once on load so pages can paint immediately
+  dispatch();
+})(window, document);
