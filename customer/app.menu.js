@@ -2,7 +2,46 @@
 //  • Read current quantity from DOM first (so + always increments).
 //  • Still call Cart.setQty underneath; re-sync badges and header count.
 //  • Tiles grid is centered by CSS; logic unchanged.
+// app.menu.js
 import { Cart } from "./cart.store.js";
+
+document.addEventListener("DOMContentLoaded", () => {
+  const menuContainer = document.getElementById("menuContainer");
+
+  // Render each menu item card (assumes you’re already fetching menu items elsewhere)
+  function renderMenuItem(item) {
+    const card = document.createElement("div");
+    card.className = "menu-card";
+
+    card.innerHTML = `
+      <img src="${item.imageUrl}" alt="${item.name}" class="menu-card__img"/>
+      <div class="menu-card__info">
+        <h4>${item.name}</h4>
+        <p>${item.description}</p>
+        <p class="price">₹${item.qtyType?.itemPrice || item.qtyType?.halfPrice || 0}</p>
+      </div>
+      <button class="cart-icon ${Cart.has(item.id) ? "active" : ""}" data-id="${item.id}">
+        <span class="material-icons">shopping_cart</span>
+      </button>
+    `;
+
+    // Click cart icon → add to cart + redirect
+    const btn = card.querySelector(".cart-icon");
+    btn.addEventListener("click", () => {
+      Cart.add(item.id, { ...item, qty: 1 });
+      btn.classList.add("active");
+      window.location.href = "/checkout.html"; // redirect to cart page
+    });
+
+    menuContainer.appendChild(card);
+  }
+
+  // Example: assuming `window.menuItems` is set elsewhere
+  if (Array.isArray(window.menuItems)) {
+    window.menuItems.forEach(renderMenuItem);
+  }
+});
+
 import { db } from "./firebase.client.js";
 import {
   collection, onSnapshot, query, orderBy
