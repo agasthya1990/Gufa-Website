@@ -1,33 +1,45 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8"/>
+  <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>GUFA – Track Order</title>
-  <link rel="stylesheet" href="styles.css"/>
+  <title>GUFA — Track Order</title>
+  <link rel="stylesheet" href="../styles.css"/>
 </head>
 <body>
   <header class="site-header">
-    <div class="logo">GUFA</div>
-    <nav class="nav-links">
-      <a href="index.html">Home</a>
+    <div class="brand">
+      <span class="brand-mark">GUFA</span>
+      <span class="brand-tagline">Track Order</span>
+    </div>
+    <nav class="top-nav">
+      <a href="../index.html" class="nav-link">Our Menu</a>
+      <a href="./track.html" class="nav-link is-active">Track Order</a>
+      <button class="cart-button" onclick="location.href='./checkout.html'">
+        <span class="cart-icon" aria-hidden="true">🧺</span>
+        <span>Cart</span>
+        <span id="cart-count" class="cart-count-badge">0</span>
+      </button>
     </nav>
   </header>
 
-  <main>
-    <section class="menu-item" style="max-width:720px;margin:20px auto;">
-      <h2>Track Order</h2>
-      <div id="trackHeader" style="margin-top:8px;"></div>
-      <div id="timeline" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;"></div>
+  <main class="page-wrap">
+    <section class="track-box">
+      <h1 class="section-title">Find your order</h1>
+      <div class="track-form">
+        <input id="order-id" class="search-input" placeholder="Enter Order ID"/>
+        <button id="track-btn" class="button primary">Track</button>
+      </div>
+      <ol id="timeline" class="timeline"></ol>
+      <p id="track-note" class="tiny muted"></p>
     </section>
   </main>
 
-  <footer id="contact">
-    <p>&copy; 2025 GUFA</p>
-  </footer>
+  <footer class="site-footer"><small>© <span id="year"></span> GUFA</small></footer>
 
-  <script type="module" src="firebase.client.js"></script>
-  <script type="module" src="app.track.js"></script>
+  <script src="../firebase.client.js"></script>
+  <script src="../cart.store.js"></script>
+  <script src="../app.track.js"></script>
+  <script>document.getElementById('year').textContent = new Date().getFullYear();</script>
 </body>
 </html>
-
