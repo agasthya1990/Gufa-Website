@@ -8,7 +8,7 @@
   <!-- Brand font for GUFA -->
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@700;800&display=swap" rel="stylesheet"/>
 
-  <!-- Global styles (uses /images/background.jpg site-wide via customer/styles.css) -->
+  <!-- Global styles (uses ../images/background.jpg site-wide) -->
   <link rel="stylesheet" href="customer/styles.css"/>
 </head>
 <body>
@@ -24,42 +24,37 @@
     </nav>
   </header>
 
-  <!-- Compact promo strip (pulled from Firestore if you wire it; can stay empty) -->
-  <section id="promos" aria-label="Promotions">
-    <!-- Example (optional):
-      <a class="promo-card" href="#menu">FLAT 20% OFF – Use GUFA20</a>
-    -->
-  </section>
+  <!-- Compact promo strip (can be filled from Firestore promotions) -->
+  <section id="promos" aria-label="Promotions"></section>
 
   <!-- Menu -->
   <main>
     <section id="menu" aria-labelledby="menuTitle">
       <h2 id="menuTitle">Our Menu</h2>
 
-      <!-- Primary Veg/Non-Veg toggles (both can be OFF) -->
-      <div class="primary-filters" role="group" aria-label="Veg & Non-Veg">
-        <button id="vegToggle" class="pill-toggle veg on" aria-pressed="true" aria-label="Veg filter">Veg</button>
-        <button id="nonvegToggle" class="pill-toggle nonveg on" aria-pressed="true" aria-label="Non-Veg filter">Non-Veg</button>
+      <!-- Primary toggles (both Veg & Non-Veg can be OFF) -->
+      <div class="primary-filters" role="group" aria-label="Primary Filters">
+        <button id="vegToggle" class="pill-toggle veg on" aria-pressed="true">Veg</button>
+        <button id="nonvegToggle" class="pill-toggle nonveg on" aria-pressed="true">Non-Veg</button>
+        <span class="spacer"></span>
+        <button id="courseToggle" class="pill-toggle course on" aria-pressed="true">Food Course</button>
+        <button id="categoryToggle" class="pill-toggle category on" aria-pressed="true">Food Categories</button>
       </div>
 
-      <!-- Course tiles (square collages with smooth edges; each shows the course name) -->
-      <div class="bucket-grid" id="courseBuckets" aria-label="Food Courses"></div>
+      <!-- Bifurcations (always visible; collages clickable) -->
+      <div class="bucket-group">
+        <div class="bucket-header">Food Courses</div>
+        <div id="courseBuckets" class="bucket-grid" aria-label="Food Courses"></div>
+      </div>
 
-      <!-- Existing filters (kept). Hidden “None” supports both toggles OFF -->
-      <div class="filters" aria-label="Filters">
-        <select id="filter-category" aria-label="Category">
-          <option value="">All Categories</option>
-        </select>
-        <select id="filter-course" aria-label="Food Course">
-          <option value="">All Courses</option>
-        </select>
-        <select id="filter-type" aria-label="Food Type">
-          <option value="">All Types</option>
-          <option>Veg</option>
-          <option>Non-Veg</option>
-          <option value="__none" hidden>None</option>
-        </select>
-        <input type="text" id="filter-search" placeholder="Search dishes..." aria-label="Search"/>
+      <div class="bucket-group">
+        <div class="bucket-header">Food Categories</div>
+        <div id="categoryBuckets" class="bucket-grid" aria-label="Food Categories"></div>
+      </div>
+
+      <!-- Search only (dropdowns removed as requested) -->
+      <div class="filters" aria-label="Search">
+        <input type="text" id="filter-search" placeholder="Search dishes..."/>
       </div>
 
       <!-- Grid -->
@@ -87,7 +82,7 @@
     </div>
   </noscript>
 
-  <!-- Customer UI logic (order matters; adjust paths if your files live elsewhere) -->
+  <!-- Customer UI logic (order matters) -->
   <script type="module" src="customer/firebase.client.js"></script>
   <script type="module" src="customer/app.cart.js"></script>
   <script type="module" src="customer/app.menu.js"></script>
