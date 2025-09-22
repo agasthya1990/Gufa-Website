@@ -1,4 +1,4 @@
-// app.menu.js — Collage-driven lists, strict scoping, fade transitions, global search, Veg/Non-Veg colored text
+// app.menu.js — Switch-based Veg/Non-Veg, collage-driven lists, strict scoping, fade transitions, global search
 import { db } from "./firebase.client.js";
 import { Cart } from "./app.cart.js";
 import {
@@ -10,8 +10,8 @@ const $$ = (s, r=document) => Array.from(r.querySelectorAll(s));
 
 /* ---------- DOM ---------- */
 // Home (primary) controls
-const vegBtn = $("#vegToggle");
-const nonvegBtn = $("#nonvegToggle");
+const vegSwitch = $("#vegSwitch");
+const nonvegSwitch = $("#nonvegSwitch");
 const courseToggle = $("#courseToggle");
 const categoryToggle = $("#categoryToggle");
 const searchInputHome = $("#filter-search");
@@ -26,13 +26,6 @@ const categoryBuckets = $("#categoryBuckets");
 // Global search view
 const globalResults = $("#globalResults");
 const globalList = $("#globalResultsList");
-const backFromSearch = $("#backFromSearch");
-const vegToggleSearch = $("#vegToggleSearch");
-const nonvegToggleSearch = $("#nonvegToggleSearch");
-const courseNavSearch = $("#courseNavSearch");
-const categoryNavSearch = $("#categoryNavSearch");
-const searchInputSearchView = $("#filter-search-searchView");
-const searchBtnSearchView = $("#searchBtnSearchView");
 
 /* ---------- State ---------- */
 let ITEMS = [];
@@ -154,7 +147,7 @@ function applyItemFiltersForSearch(items){
   return arr;
 }
 
-/* ---------- Buckets rendering (apply Veg/Non-Veg to images & counts) ---------- */
+/* ---------- Buckets rendering (Veg/Non-Veg affects images) ---------- */
 function collageHTML(imgs) {
   const a = imgs[0] || "", b = imgs[1] || "", c = imgs[2] || "", d = imgs[3] || "";
   return `
@@ -166,6 +159,32 @@ function collageHTML(imgs) {
     </div>`;
 }
 
+function cssSafe(s){ return String(s).replace(/[^a-zA-Z0-9_-]/g, "_"); }
+
+function topbarHTML(){
+  // Order: ← Back, Veg switch, Non-Veg switch, Food Course, Food Categories, Search
+  return `
+    <div class="topbar">
+      <button class="back-btn" data-action="back">← Back</button>
+
+      <button class="switch veg ${vegOn ? "on": ""}" role="switch" aria-checked="${vegOn}" data-action="veg">
+        <span class="track"></span><span class="knob"></span><span class="label">Veg</span>
+      </button>
+      <button class="switch nonveg ${nonvegOn ? "on": ""}" role="switch" aria-checked="${nonvegOn}" data-action="nonveg">
+        <span class="track"></span><span class="knob"></span><span class="label">Non-Veg</span>
+      </button>
+
+      <button class="pill-toggle course nav" data-action="nav-course">Food Course</button>
+      <button class="pill-toggle category nav" data-action="nav-category">Food Categories</button>
+
+      <div class="searchbar compact">
+        <input type="text" class="tile-search" placeholder="Search dishes…" aria-label="Search dishes"/>
+        <button class="searchbtn" data-action="search" aria-label="Search"></button>
+      </div>
+    </div>`;
+}
+
+/* Render buckets; if a tile is open, include panel with list inside */
 function renderCourseBuckets(fade = false) {
   if (!courseBuckets) return;
   const grid = courseBuckets;
@@ -181,7 +200,7 @@ function renderCourseBuckets(fade = false) {
   const crs = Array.from(COURSES).sort((a,b)=>a.localeCompare(b));
   grid.innerHTML = crs.map(name => {
     const imgs = (byCourse.get(name) || []).slice(0,4);
-    const active = (mode.startsWith("open") && openKind==="course" && openId===name) ? "active" : "";
+    const active = (mode.startsWith("open") && openKind==="course" && openId===name) ? "active tile-open" : "";
     return `
       <button class="bucket-tile ${active}" data-kind="course" data-id="${name}">
         ${collageHTML(imgs)}
@@ -199,10 +218,7 @@ function renderCourseBuckets(fade = false) {
     setTimeout(()=>grid.classList.remove("fade-in"),260);
   });
 
-  // If a course is open, render its list inside the tile
-  if (mode === "open-course" && openId) {
-    renderTileList("course", openId);
-  }
+  if (mode === "open-course" && openId) renderTileList("course", openId);
 }
 
 function renderCategoryBuckets(fade = false) {
@@ -220,7 +236,7 @@ function renderCategoryBuckets(fade = false) {
   const cats = Array.from(CATEGORIES).sort((a,b)=>a.localeCompare(b));
   grid.innerHTML = cats.map(name => {
     const imgs = (byCat.get(name) || []).slice(0,4);
-    const active = (mode.startsWith("open") && openKind==="category" && openId===name) ? "active" : "";
+    const active = (mode.startsWith("open") && openKind==="category" && openId===name) ? "active tile-open" : "";
     return `
       <button class="bucket-tile ${active}" data-kind="category" data-id="${name}">
         ${collageHTML(imgs)}
@@ -238,28 +254,7 @@ function renderCategoryBuckets(fade = false) {
     setTimeout(()=>grid.classList.remove("fade-in"),260);
   });
 
-  // If a category is open, render its list inside the tile
-  if (mode === "open-category" && openId) {
-    renderTileList("category", openId);
-  }
-}
-
-function cssSafe(s){ return String(s).replace(/[^a-zA-Z0-9_-]/g, "_"); }
-
-/* ---------- Topbar (inside opened tile and in global search) ---------- */
-function topbarHTML(){
-  return `
-    <div class="topbar">
-      <button class="back-btn" data-action="back">← Back</button>
-      <button class="pill-toggle veg ${vegOn ? "on": ""}" data-action="veg">Veg</button>
-      <button class="pill-toggle nonveg ${nonvegOn ? "on": ""}" data-action="nonveg">Non-Veg</button>
-      <button class="pill-toggle course nav" data-action="nav-course">Food Course</button>
-      <button class="pill-toggle category nav" data-action="nav-category">Food Categories</button>
-      <div class="searchbar compact">
-        <input type="text" class="tile-search" placeholder="Search dishes…" aria-label="Search dishes"/>
-        <button class="searchbtn" data-action="search"></button>
-      </div>
-    </div>`;
+  if (mode === "open-category" && openId) renderTileList("category", openId);
 }
 
 /* ---------- Lists (inside tiles & global search) ---------- */
@@ -301,26 +296,20 @@ function openTile(kind, id){
   mode = kind === "course" ? "open-course" : "open-category";
   openKind = kind; openId = id;
 
-  // Close any other open state by re-rendering both sections
   renderCourseBuckets();
   renderCategoryBuckets();
 
-  // Ensure the relevant section scrolls into view
   if (kind === "course") coursesSection?.scrollIntoView({ behavior: "smooth", block: "start" });
   if (kind === "category") categoriesSection?.scrollIntoView({ behavior: "smooth", block: "start" });
 
-  // After DOM is ready, render list inside tile
   renderTileList(kind, id);
 }
 
 function closeTileToHome(){
   mode = "home"; openKind = ""; openId = "";
-  // Hide global search if visible
   globalResults.classList.add("hidden");
-  // Repaint collages (no active tiles)
   renderCourseBuckets();
   renderCategoryBuckets();
-  // Scroll back to top of Menu
   document.getElementById("menuTitle")?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
@@ -328,7 +317,6 @@ function enterSearchMode(q){
   searchQuery = q;
   mode = "search";
   globalResults.classList.remove("hidden");
-  // Hide bifurcations visually by scrolling to results; buckets remain in DOM but out of view
   document.getElementById("menuTitle")?.scrollIntoView({ behavior: "smooth", block: "start" });
   renderGlobalResults();
 }
@@ -358,7 +346,6 @@ function listenItems() {
   const baseCol = collection(db, "menuItems");
   const renderFrom = (docs) => {
     ITEMS = docs.map(d => ({ id: d.id, ...d.data() }));
-    // Rebuild UI per mode
     if (mode === "home") {
       renderCourseBuckets();
       renderCategoryBuckets();
@@ -396,10 +383,20 @@ function fadeBucketsAnd(fn){
 }
 
 /* ---------- Event wiring ---------- */
-// Home toggles → filter collages (and open lists) with fade
-vegBtn?.addEventListener("click", () => {
-  vegOn = !vegOn;
-  vegBtn.classList.toggle("on", vegOn);
+// Switch helpers (home bar)
+function toggleVeg(on) {
+  vegOn = typeof on === "boolean" ? on : !vegOn;
+  vegSwitch?.classList.toggle("on", vegOn);
+  vegSwitch?.setAttribute("aria-checked", String(vegOn));
+}
+function toggleNonVeg(on) {
+  nonvegOn = typeof on === "boolean" ? on : !nonvegOn;
+  nonvegSwitch?.classList.toggle("on", nonvegOn);
+  nonvegSwitch?.setAttribute("aria-checked", String(nonvegOn));
+}
+
+vegSwitch?.addEventListener("click", () => {
+  toggleVeg();
   fadeBucketsAnd(() => {
     renderCourseBuckets();
     renderCategoryBuckets();
@@ -408,9 +405,8 @@ vegBtn?.addEventListener("click", () => {
     if (mode === "search") renderGlobalResults();
   });
 });
-nonvegBtn?.addEventListener("click", () => {
-  nonvegOn = !nonvegOn;
-  nonvegBtn.classList.toggle("on", nonvegOn);
+nonvegSwitch?.addEventListener("click", () => {
+  toggleNonVeg();
   fadeBucketsAnd(() => {
     renderCourseBuckets();
     renderCategoryBuckets();
@@ -434,30 +430,32 @@ document.addEventListener("click", (e) => {
   if (!tile) return;
   const kind = tile.dataset.kind;
   const val = tile.dataset.id;
-  // Toggle open/close
   if (mode === "open-course" && kind==="course" && openId===val) { closeTileToHome(); return; }
   if (mode === "open-category" && kind==="category" && openId===val) { closeTileToHome(); return; }
   openTile(kind, val);
-  // After opening, ensure list is rendered
   renderTileList(kind, val);
-  // Attach delegated handlers for that tile's topbar actions
 });
 
-// Delegated actions inside any tile topbar
+// Delegated actions inside any tile topbar & global search topbar
 document.addEventListener("click", (e) => {
   const actBtn = e.target.closest("[data-action]");
   if (!actBtn) return;
   const action = actBtn.getAttribute("data-action");
 
   if (action === "back") {
-    closeTileToHome();
+    // From tile panel or from global search
+    if (mode === "search") exitSearchMode();
+    else closeTileToHome();
     return;
   }
   if (action === "veg") {
-    vegOn = !vegOn;
-    // reflect on both home & tile buttons
-    vegBtn?.classList.toggle("on", vegOn);
+    toggleVeg();
+    // reflect on switch in this topbar
     actBtn.classList.toggle("on", vegOn);
+    actBtn.setAttribute("aria-checked", String(vegOn));
+    // reflect on home bar too
+    vegSwitch?.classList.toggle("on", vegOn);
+    vegSwitch?.setAttribute("aria-checked", String(vegOn));
     renderCourseBuckets(true);
     renderCategoryBuckets(true);
     if (mode.startsWith("open") && openId) renderTileList(openKind, openId, true);
@@ -465,9 +463,11 @@ document.addEventListener("click", (e) => {
     return;
   }
   if (action === "nonveg") {
-    nonvegOn = !nonvegOn;
-    nonvegBtn?.classList.toggle("on", nonvegOn);
+    toggleNonVeg();
     actBtn.classList.toggle("on", nonvegOn);
+    actBtn.setAttribute("aria-checked", String(nonvegOn));
+    nonvegSwitch?.classList.toggle("on", nonvegOn);
+    nonvegSwitch?.setAttribute("aria-checked", String(nonvegOn));
     renderCourseBuckets(true);
     renderCategoryBuckets(true);
     if (mode.startsWith("open") && openId) renderTileList(openKind, openId, true);
@@ -487,9 +487,8 @@ document.addEventListener("click", (e) => {
     const field = wrap?.querySelector(".tile-search");
     const q = (field?.value || "").trim();
     enterSearchMode(q);
-    // Sync both search inputs
+    // sync home search input
     if (searchInputHome) searchInputHome.value = q;
-    if (searchInputSearchView) searchInputSearchView.value = q;
     return;
   }
 });
@@ -502,7 +501,6 @@ document.addEventListener("keydown", (e) => {
     const q = field.value.trim();
     enterSearchMode(q);
     if (searchInputHome) searchInputHome.value = q;
-    if (searchInputSearchView) searchInputSearchView.value = q;
   }
 });
 
@@ -510,50 +508,15 @@ document.addEventListener("keydown", (e) => {
 searchBtnHome?.addEventListener("click", () => {
   const q = (searchInputHome?.value || "").trim();
   enterSearchMode(q);
-  if (searchInputSearchView) searchInputSearchView.value = q;
 });
 searchInputHome?.addEventListener("keydown", (e) => {
   if (e.key === "Enter") {
     const q = (searchInputHome?.value || "").trim();
     enterSearchMode(q);
-    if (searchInputSearchView) searchInputSearchView.value = q;
   }
 });
 
-// Search view controls
-backFromSearch?.addEventListener("click", () => exitSearchMode());
-vegToggleSearch?.addEventListener("click", () => {
-  vegOn = !vegOn;
-  vegBtn?.classList.toggle("on", vegOn); vegToggleSearch.classList.toggle("on", vegOn);
-  renderGlobalResults(true);
-  renderCourseBuckets(true); renderCategoryBuckets(true);
-});
-nonvegToggleSearch?.addEventListener("click", () => {
-  nonvegOn = !nonvegOn;
-  nonvegBtn?.classList.toggle("on", nonvegOn); nonvegToggleSearch.classList.toggle("on", nonvegOn);
-  renderGlobalResults(true);
-  renderCourseBuckets(true); renderCategoryBuckets(true);
-});
-courseNavSearch?.addEventListener("click", () => {
-  exitSearchMode();
-  coursesSection?.scrollIntoView({ behavior: "smooth", block: "start" });
-});
-categoryNavSearch?.addEventListener("click", () => {
-  exitSearchMode();
-  categoriesSection?.scrollIntoView({ behavior: "smooth", block: "start" });
-});
-searchBtnSearchView?.addEventListener("click", () => {
-  const q = (searchInputSearchView?.value || "").trim();
-  searchQuery = q; renderGlobalResults(true);
-});
-searchInputSearchView?.addEventListener("keydown", (e) => {
-  if (e.key === "Enter") {
-    const q = (searchInputSearchView?.value || "").trim();
-    searchQuery = q; renderGlobalResults(true);
-  }
-});
-
-// Steppers (delegated)
+/* ---------- Steppers (delegated) ---------- */
 let gridHandlerBound = false;
 function bindStepperHandlers() {
   if (gridHandlerBound) return;
@@ -576,6 +539,47 @@ function bindStepperHandlers() {
     const next = Math.max(0, now + (btn.classList.contains("inc") ? 1 : -1));
     setQty(found, variantKey, v.price, next);
   });
+}
+
+/* ---------- Live data ---------- */
+function listenCourses() {
+  onSnapshot(collection(db, "menuCourses"), (snap) => {
+    COURSES = new Set();
+    snap.forEach(d => COURSES.add(d.id));
+    renderCourseBuckets();
+  });
+}
+function listenCategories() {
+  onSnapshot(collection(db, "menuCategories"), (snap) => {
+    CATEGORIES = new Set();
+    snap.forEach(d => CATEGORIES.add(d.id));
+    renderCategoryBuckets();
+  });
+}
+function listenItems() {
+  const baseCol = collection(db, "menuItems");
+  const renderFrom = (docs) => {
+    ITEMS = docs.map(d => ({ id: d.id, ...d.data() }));
+    if (mode === "home") {
+      renderCourseBuckets();
+      renderCategoryBuckets();
+    } else if (mode === "open-course" || mode === "open-category") {
+      renderCourseBuckets();
+      renderCategoryBuckets();
+    } else if (mode === "search") {
+      renderGlobalResults();
+    }
+  };
+  try {
+    const qLive = query(baseCol, orderBy("createdAt","desc"));
+    onSnapshot(
+      qLive,
+      snap => renderFrom(snap.docs),
+      () => onSnapshot(baseCol, snap => renderFrom(snap.docs))
+    );
+  } catch {
+    onSnapshot(baseCol, snap => renderFrom(snap.docs));
+  }
 }
 
 /* ---------- Boot ---------- */
