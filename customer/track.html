@@ -4,7 +4,22 @@
   <meta charset="utf-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>GUFA — Track Order</title>
-  <link rel="stylesheet" href="styles.css"/>
+  <link rel="stylesheet" href="./styles.css"/>
+
+  <!-- page-local polish for Track only -->
+  <style>
+    :root{ --muted:#6b7280; --line:#e5e7eb; --card:#fff; --ink:#1f2937; --shadow:0 6px 18px rgba(0,0,0,.08) }
+    .track-wrap{max-width:900px;margin:0 auto}
+    .track-box{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px;box-shadow:var(--shadow)}
+    .track-form{display:flex;gap:8px;margin:8px 0 12px}
+    .track-form .search-input{flex:1}
+    .timeline{list-style:none;margin:0;padding:0;display:flex;gap:10px;flex-wrap:wrap}
+    .timeline li{
+      padding:8px 10px;border:1px solid var(--line);border-radius:999px;background:#fff;color:var(--muted);font-size:14px
+    }
+    .timeline li.active{border-color:#111827;color:#111827;background:#f9fafb;font-weight:700}
+    .muted{color:var(--muted)}
+  </style>
 </head>
 <body>
   <header class="site-header">
@@ -23,7 +38,7 @@
     </nav>
   </header>
 
-  <main class="page-wrap">
+  <main class="page-wrap track-wrap">
     <section class="track-box">
       <h1 class="section-title">Find your order</h1>
       <div class="track-form">
@@ -37,9 +52,9 @@
 
   <footer class="site-footer"><small>© <span id="year"></span> GUFA</small></footer>
 
-  <script src="firebase.client.js"></script>
-  <script src="cart.store.js"></script>
-  <script src="app.track.js"></script>
+  <script src="./firebase.client.js"></script>
+  <script src="./cart.store.js"></script>
+  <script src="./app.track.js"></script>
   <script>document.getElementById('year').textContent = new Date().getFullYear();</script>
 </body>
 </html>
