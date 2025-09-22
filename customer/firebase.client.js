@@ -14,3 +14,8 @@ export const app = initializeApp({
 
 export const db = getFirestore(app);
 
+// ALSO expose to window so non-module scripts can use window.db / window.app
+if (typeof window !== "undefined") {
+  window.app = app;
+  window.db = db;
+}
