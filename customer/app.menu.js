@@ -1,4 +1,4 @@
-// app.menu.js — Four toggles, strict filtering, fade transitions, collage navigation, Veg/Non-Veg colored text
+// app.menu.js — Collage-driven lists, strict scoping, fade transitions, global search, Veg/Non-Veg colored text
 import { db } from "./firebase.client.js";
 import { Cart } from "./app.cart.js";
 import {
@@ -9,29 +9,43 @@ const $  = (s, r=document) => r.querySelector(s);
 const $$ = (s, r=document) => Array.from(r.querySelectorAll(s));
 
 /* ---------- DOM ---------- */
-const grid = $("#menuGrid");
-const coursesSection = $("#coursesSection");
-const categoriesSection = $("#categoriesSection");
-const courseBuckets = $("#courseBuckets");
-const categoryBuckets = $("#categoryBuckets");
-const inpSearch = $("#filter-search");
-
+// Home (primary) controls
 const vegBtn = $("#vegToggle");
 const nonvegBtn = $("#nonvegToggle");
 const courseToggle = $("#courseToggle");
 const categoryToggle = $("#categoryToggle");
+const searchInputHome = $("#filter-search");
+const searchBtnHome = $("#searchBtn");
+
+// Buckets
+const coursesSection = $("#coursesSection");
+const categoriesSection = $("#categoriesSection");
+const courseBuckets = $("#courseBuckets");
+const categoryBuckets = $("#categoryBuckets");
+
+// Global search view
+const globalResults = $("#globalResults");
+const globalList = $("#globalResultsList");
+const backFromSearch = $("#backFromSearch");
+const vegToggleSearch = $("#vegToggleSearch");
+const nonvegToggleSearch = $("#nonvegToggleSearch");
+const courseNavSearch = $("#courseNavSearch");
+const categoryNavSearch = $("#categoryNavSearch");
+const searchInputSearchView = $("#filter-search-searchView");
+const searchBtnSearchView = $("#searchBtnSearchView");
 
 /* ---------- State ---------- */
 let ITEMS = [];
-let COURSES = new Set();     // menuCourses doc.id
-let CATEGORIES = new Set();  // menuCategories doc.id
+let COURSES = new Set();     // menuCourses IDs
+let CATEGORIES = new Set();  // menuCategories IDs
 
 let vegOn = true;
 let nonvegOn = true;
 
-// current chosen course/category (click collage to select/deselect)
-let selectedCourse = "";
-let selectedCategory = "";
+let mode = "home";           // 'home' | 'open-course' | 'open-category' | 'search'
+let openKind = "";           // 'course' | 'category'
+let openId = "";             // selected course/category id
+let searchQuery = "";        // global search query
 
 /* ---------- Helpers ---------- */
 function priceModel(qtyType) {
@@ -61,13 +75,14 @@ function setQty(found, variantKey, price, nextQty) {
   if (badge) badge.textContent = String(next);
 }
 
-/* ---------- Item card ---------- */
 function dietSpan(t){
   const v = (t||"").toLowerCase();
   if (v === "veg") return `<span class="diet diet-veg">Veg</span>`;
   if (v === "non-veg") return `<span class="diet diet-nonveg">Non-Veg</span>`;
   return "";
 }
+
+/* ---------- Cards ---------- */
 function stepperHTML(found, variant) {
   const key = `${found.id}:${variant.key}`;
   const qty = getQty(key);
@@ -108,42 +123,38 @@ function itemCardHTML(m) {
 }
 
 /* ---------- Filtering ---------- */
-function applyFilters(items) {
-  const q = (inpSearch?.value || "").toLowerCase().trim();
-
-  return items.filter((it) => {
-    if (it.inStock === false) return false;
-
-    // Veg/Non-Veg strict (both OFF => show none)
-    const t = (it.foodType || "").toLowerCase(); // "veg" | "non-veg"
-    if (!vegOn && !nonvegOn) return false;
-    if (vegOn && !nonvegOn && t !== "veg") return false;
-    if (!vegOn && nonvegOn && t !== "non-veg") return false;
-
-    // Course/Category filters (selected via collages)
-    if (selectedCourse && it.foodCourse !== selectedCourse) return false;
-    if (selectedCategory && it.category !== selectedCategory) return false;
-
-    // Search
-    if (q) {
+function matchesVeg(it){
+  const t = (it.foodType||"").toLowerCase();
+  if (!vegOn && !nonvegOn) return false;
+  if (vegOn && !nonvegOn) return t === "veg";
+  if (!vegOn && nonvegOn) return t === "non-veg";
+  return true; // both on
+}
+function applyItemFiltersBase(items){
+  return items.filter(it => it.inStock !== false && matchesVeg(it));
+}
+function applyItemFiltersForOpen(items){
+  let arr = applyItemFiltersBase(items);
+  if (openKind === "course" && openId) arr = arr.filter(it => it.foodCourse === openId);
+  if (openKind === "category" && openId) arr = arr.filter(it => it.category === openId);
+  return arr;
+}
+function applyItemFiltersForSearch(items){
+  const q = (searchQuery||"").toLowerCase().trim();
+  let arr = applyItemFiltersBase(items);
+  if (q) {
+    arr = arr.filter(it => {
       const hay = [
         it.name, it.description, it.foodCourse, it.category,
         ...(Array.isArray(it.addons) ? it.addons : [])
       ].filter(Boolean).join(" ").toLowerCase();
-      if (!hay.includes(q)) return false;
-    }
-    return true;
-  });
+      return hay.includes(q);
+    });
+  }
+  return arr;
 }
 
-/* ---------- Renderers ---------- */
-function renderGrid() {
-  const filtered = applyFilters(ITEMS);
-  grid.innerHTML = filtered.length
-    ? filtered.map(itemCardHTML).join("")
-    : `<div class="menu-item placeholder">No items match your selection.</div>`;
-}
-
+/* ---------- Buckets rendering (apply Veg/Non-Veg to images & counts) ---------- */
 function collageHTML(imgs) {
   const a = imgs[0] || "", b = imgs[1] || "", c = imgs[2] || "", d = imgs[3] || "";
   return `
@@ -154,48 +165,185 @@ function collageHTML(imgs) {
       ${d ? `<img loading="lazy" src="${d}" alt="">` : `<div class="ph"></div>`}
     </div>`;
 }
-function renderCourseBuckets() {
+
+function renderCourseBuckets(fade = false) {
+  if (!courseBuckets) return;
+  const grid = courseBuckets;
+  if (fade) grid.classList.add("fade-out");
+
+  const filtered = applyItemFiltersBase(ITEMS);
   const byCourse = new Map();
-  for (const it of ITEMS) {
+  for (const it of filtered) {
     if (!it.foodCourse) continue;
     if (!byCourse.has(it.foodCourse)) byCourse.set(it.foodCourse, []);
     if (it.imageUrl) byCourse.get(it.foodCourse).push(it.imageUrl);
   }
   const crs = Array.from(COURSES).sort((a,b)=>a.localeCompare(b));
-  courseBuckets.innerHTML = crs.map(name => {
+  grid.innerHTML = crs.map(name => {
     const imgs = (byCourse.get(name) || []).slice(0,4);
-    const active = selectedCourse === name ? "active" : "";
+    const active = (mode.startsWith("open") && openKind==="course" && openId===name) ? "active" : "";
     return `
       <button class="bucket-tile ${active}" data-kind="course" data-id="${name}">
         ${collageHTML(imgs)}
         <span class="bucket-label">${name}</span>
+        ${active ? `<div class="panel">
+          ${topbarHTML()}
+          <div class="list-grid" id="tileList-course-${cssSafe(name)}"></div>
+        </div>` : ``}
       </button>`;
   }).join("");
+
+  if (fade) requestAnimationFrame(() => {
+    grid.classList.remove("fade-out");
+    grid.classList.add("fade-in");
+    setTimeout(()=>grid.classList.remove("fade-in"),260);
+  });
+
+  // If a course is open, render its list inside the tile
+  if (mode === "open-course" && openId) {
+    renderTileList("course", openId);
+  }
 }
-function renderCategoryBuckets() {
+
+function renderCategoryBuckets(fade = false) {
+  if (!categoryBuckets) return;
+  const grid = categoryBuckets;
+  if (fade) grid.classList.add("fade-out");
+
+  const filtered = applyItemFiltersBase(ITEMS);
   const byCat = new Map();
-  for (const it of ITEMS) {
+  for (const it of filtered) {
     if (!it.category) continue;
     if (!byCat.has(it.category)) byCat.set(it.category, []);
     if (it.imageUrl) byCat.get(it.category).push(it.imageUrl);
   }
   const cats = Array.from(CATEGORIES).sort((a,b)=>a.localeCompare(b));
-  categoryBuckets.innerHTML = cats.map(name => {
+  grid.innerHTML = cats.map(name => {
     const imgs = (byCat.get(name) || []).slice(0,4);
-    const active = selectedCategory === name ? "active" : "";
+    const active = (mode.startsWith("open") && openKind==="category" && openId===name) ? "active" : "";
     return `
       <button class="bucket-tile ${active}" data-kind="category" data-id="${name}">
         ${collageHTML(imgs)}
         <span class="bucket-label">${name}</span>
+        ${active ? `<div class="panel">
+          ${topbarHTML()}
+          <div class="list-grid" id="tileList-category-${cssSafe(name)}"></div>
+        </div>` : ``}
       </button>`;
   }).join("");
+
+  if (fade) requestAnimationFrame(() => {
+    grid.classList.remove("fade-out");
+    grid.classList.add("fade-in");
+    setTimeout(()=>grid.classList.remove("fade-in"),260);
+  });
+
+  // If a category is open, render its list inside the tile
+  if (mode === "open-category" && openId) {
+    renderTileList("category", openId);
+  }
+}
+
+function cssSafe(s){ return String(s).replace(/[^a-zA-Z0-9_-]/g, "_"); }
+
+/* ---------- Topbar (inside opened tile and in global search) ---------- */
+function topbarHTML(){
+  return `
+    <div class="topbar">
+      <button class="back-btn" data-action="back">← Back</button>
+      <button class="pill-toggle veg ${vegOn ? "on": ""}" data-action="veg">Veg</button>
+      <button class="pill-toggle nonveg ${nonvegOn ? "on": ""}" data-action="nonveg">Non-Veg</button>
+      <button class="pill-toggle course nav" data-action="nav-course">Food Course</button>
+      <button class="pill-toggle category nav" data-action="nav-category">Food Categories</button>
+      <div class="searchbar compact">
+        <input type="text" class="tile-search" placeholder="Search dishes…" aria-label="Search dishes"/>
+        <button class="searchbtn" data-action="search"></button>
+      </div>
+    </div>`;
+}
+
+/* ---------- Lists (inside tiles & global search) ---------- */
+function renderTileList(kind, id, fade = false){
+  const listId = `tileList-${kind}-${cssSafe(id)}`;
+  const list = document.getElementById(listId);
+  if (!list) return;
+  if (fade) list.classList.add("fade-out");
+
+  openKind = kind; openId = id;
+  const items = applyItemFiltersForOpen(ITEMS);
+  list.innerHTML = items.length
+    ? items.map(itemCardHTML).join("")
+    : `<div class="menu-item placeholder">No items match your selection.</div>`;
+
+  if (fade) requestAnimationFrame(() => {
+    list.classList.remove("fade-out");
+    list.classList.add("fade-in");
+    setTimeout(()=>list.classList.remove("fade-in"),260);
+  });
+}
+
+function renderGlobalResults(fade = false){
+  if (fade) globalList.classList.add("fade-out");
+  const items = applyItemFiltersForSearch(ITEMS);
+  globalList.innerHTML = items.length
+    ? items.map(itemCardHTML).join("")
+    : `<div class="menu-item placeholder">No items match your selection.</div>`;
+
+  if (fade) requestAnimationFrame(() => {
+    globalList.classList.remove("fade-out");
+    globalList.classList.add("fade-in");
+    setTimeout(()=>globalList.classList.remove("fade-in"),260);
+  });
+}
+
+/* ---------- Mode switches ---------- */
+function openTile(kind, id){
+  mode = kind === "course" ? "open-course" : "open-category";
+  openKind = kind; openId = id;
+
+  // Close any other open state by re-rendering both sections
+  renderCourseBuckets();
+  renderCategoryBuckets();
+
+  // Ensure the relevant section scrolls into view
+  if (kind === "course") coursesSection?.scrollIntoView({ behavior: "smooth", block: "start" });
+  if (kind === "category") categoriesSection?.scrollIntoView({ behavior: "smooth", block: "start" });
+
+  // After DOM is ready, render list inside tile
+  renderTileList(kind, id);
+}
+
+function closeTileToHome(){
+  mode = "home"; openKind = ""; openId = "";
+  // Hide global search if visible
+  globalResults.classList.add("hidden");
+  // Repaint collages (no active tiles)
+  renderCourseBuckets();
+  renderCategoryBuckets();
+  // Scroll back to top of Menu
+  document.getElementById("menuTitle")?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function enterSearchMode(q){
+  searchQuery = q;
+  mode = "search";
+  globalResults.classList.remove("hidden");
+  // Hide bifurcations visually by scrolling to results; buckets remain in DOM but out of view
+  document.getElementById("menuTitle")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  renderGlobalResults();
+}
+
+function exitSearchMode(){
+  searchQuery = "";
+  globalResults.classList.add("hidden");
+  closeTileToHome();
 }
 
 /* ---------- Live data ---------- */
 function listenCourses() {
   onSnapshot(collection(db, "menuCourses"), (snap) => {
     COURSES = new Set();
-    snap.forEach(d => COURSES.add(d.id));  // use doc.id
+    snap.forEach(d => COURSES.add(d.id));
     renderCourseBuckets();
   });
 }
@@ -210,9 +358,16 @@ function listenItems() {
   const baseCol = collection(db, "menuItems");
   const renderFrom = (docs) => {
     ITEMS = docs.map(d => ({ id: d.id, ...d.data() }));
-    renderCourseBuckets();
-    renderCategoryBuckets();
-    renderGrid();
+    // Rebuild UI per mode
+    if (mode === "home") {
+      renderCourseBuckets();
+      renderCategoryBuckets();
+    } else if (mode === "open-course" || mode === "open-category") {
+      renderCourseBuckets();
+      renderCategoryBuckets();
+    } else if (mode === "search") {
+      renderGlobalResults();
+    }
   };
   try {
     const qLive = query(baseCol, orderBy("createdAt","desc"));
@@ -226,67 +381,184 @@ function listenItems() {
   }
 }
 
-/* ---------- Animations ---------- */
-function animateGridRender(renderFn) {
-  // Respect reduced motion via CSS; still safe
-  grid.classList.add("fade-out");
-  window.setTimeout(() => {
-    renderFn();
-    grid.classList.remove("fade-out");
-    grid.classList.add("fade-in");
-    window.setTimeout(() => grid.classList.remove("fade-in"), 260);
+/* ---------- Anim utilities ---------- */
+function fadeBucketsAnd(fn){
+  courseBuckets.classList.add("fade-out");
+  categoryBuckets.classList.add("fade-out");
+  setTimeout(() => {
+    fn();
+    courseBuckets.classList.remove("fade-out");
+    categoryBuckets.classList.remove("fade-out");
+    courseBuckets.classList.add("fade-in");
+    categoryBuckets.classList.add("fade-in");
+    setTimeout(()=>{ courseBuckets.classList.remove("fade-in"); categoryBuckets.classList.remove("fade-in"); }, 260);
   }, 180);
 }
 
-/* ---------- Events ---------- */
-// Veg/Non-Veg toggles (both may be OFF). Re-render with fade.
+/* ---------- Event wiring ---------- */
+// Home toggles → filter collages (and open lists) with fade
 vegBtn?.addEventListener("click", () => {
   vegOn = !vegOn;
   vegBtn.classList.toggle("on", vegOn);
-  vegBtn.setAttribute("aria-pressed", String(vegOn));
-  animateGridRender(renderGrid);
+  fadeBucketsAnd(() => {
+    renderCourseBuckets();
+    renderCategoryBuckets();
+    if (mode === "open-course" && openId) renderTileList("course", openId);
+    if (mode === "open-category" && openId) renderTileList("category", openId);
+    if (mode === "search") renderGlobalResults();
+  });
 });
 nonvegBtn?.addEventListener("click", () => {
   nonvegOn = !nonvegOn;
   nonvegBtn.classList.toggle("on", nonvegOn);
-  nonvegBtn.setAttribute("aria-pressed", String(nonvegOn));
-  animateGridRender(renderGrid);
+  fadeBucketsAnd(() => {
+    renderCourseBuckets();
+    renderCategoryBuckets();
+    if (mode === "open-course" && openId) renderTileList("course", openId);
+    if (mode === "open-category" && openId) renderTileList("category", openId);
+    if (mode === "search") renderGlobalResults();
+  });
 });
 
-// Course/Category nav chips — smooth scroll to sections
+// Nav chips (home bar) — smooth scroll only
 courseToggle?.addEventListener("click", () => {
-  courseToggle.classList.add("is-nav");
   coursesSection?.scrollIntoView({ behavior: "smooth", block: "start" });
 });
 categoryToggle?.addEventListener("click", () => {
-  categoryToggle.classList.add("is-nav");
   categoriesSection?.scrollIntoView({ behavior: "smooth", block: "start" });
 });
 
-// Collage clicks (select/deselect; then scroll back to grid)
+// Collage clicks → open list inside that collage
 document.addEventListener("click", (e) => {
   const tile = e.target.closest(".bucket-tile");
   if (!tile) return;
   const kind = tile.dataset.kind;
   const val = tile.dataset.id;
-
-  if (kind === "course") {
-    selectedCourse = (selectedCourse === val) ? "" : val;
-    renderCourseBuckets();
-  } else if (kind === "category") {
-    selectedCategory = (selectedCategory === val) ? "" : val;
-    renderCategoryBuckets();
-  }
-  animateGridRender(renderGrid);
-  grid.scrollIntoView({ behavior: "smooth", block: "start" });
+  // Toggle open/close
+  if (mode === "open-course" && kind==="course" && openId===val) { closeTileToHome(); return; }
+  if (mode === "open-category" && kind==="category" && openId===val) { closeTileToHome(); return; }
+  openTile(kind, val);
+  // After opening, ensure list is rendered
+  renderTileList(kind, val);
+  // Attach delegated handlers for that tile's topbar actions
 });
 
-// Grid steppers (delegated)
+// Delegated actions inside any tile topbar
+document.addEventListener("click", (e) => {
+  const actBtn = e.target.closest("[data-action]");
+  if (!actBtn) return;
+  const action = actBtn.getAttribute("data-action");
+
+  if (action === "back") {
+    closeTileToHome();
+    return;
+  }
+  if (action === "veg") {
+    vegOn = !vegOn;
+    // reflect on both home & tile buttons
+    vegBtn?.classList.toggle("on", vegOn);
+    actBtn.classList.toggle("on", vegOn);
+    renderCourseBuckets(true);
+    renderCategoryBuckets(true);
+    if (mode.startsWith("open") && openId) renderTileList(openKind, openId, true);
+    if (mode === "search") renderGlobalResults(true);
+    return;
+  }
+  if (action === "nonveg") {
+    nonvegOn = !nonvegOn;
+    nonvegBtn?.classList.toggle("on", nonvegOn);
+    actBtn.classList.toggle("on", nonvegOn);
+    renderCourseBuckets(true);
+    renderCategoryBuckets(true);
+    if (mode.startsWith("open") && openId) renderTileList(openKind, openId, true);
+    if (mode === "search") renderGlobalResults(true);
+    return;
+  }
+  if (action === "nav-course") {
+    coursesSection?.scrollIntoView({ behavior: "smooth", block: "start" });
+    return;
+  }
+  if (action === "nav-category") {
+    categoriesSection?.scrollIntoView({ behavior: "smooth", block: "start" });
+    return;
+  }
+  if (action === "search") {
+    const wrap = actBtn.closest(".topbar");
+    const field = wrap?.querySelector(".tile-search");
+    const q = (field?.value || "").trim();
+    enterSearchMode(q);
+    // Sync both search inputs
+    if (searchInputHome) searchInputHome.value = q;
+    if (searchInputSearchView) searchInputSearchView.value = q;
+    return;
+  }
+});
+
+// Tile search enter key
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Enter") return;
+  const field = e.target.closest(".tile-search");
+  if (field) {
+    const q = field.value.trim();
+    enterSearchMode(q);
+    if (searchInputHome) searchInputHome.value = q;
+    if (searchInputSearchView) searchInputSearchView.value = q;
+  }
+});
+
+// Home search
+searchBtnHome?.addEventListener("click", () => {
+  const q = (searchInputHome?.value || "").trim();
+  enterSearchMode(q);
+  if (searchInputSearchView) searchInputSearchView.value = q;
+});
+searchInputHome?.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    const q = (searchInputHome?.value || "").trim();
+    enterSearchMode(q);
+    if (searchInputSearchView) searchInputSearchView.value = q;
+  }
+});
+
+// Search view controls
+backFromSearch?.addEventListener("click", () => exitSearchMode());
+vegToggleSearch?.addEventListener("click", () => {
+  vegOn = !vegOn;
+  vegBtn?.classList.toggle("on", vegOn); vegToggleSearch.classList.toggle("on", vegOn);
+  renderGlobalResults(true);
+  renderCourseBuckets(true); renderCategoryBuckets(true);
+});
+nonvegToggleSearch?.addEventListener("click", () => {
+  nonvegOn = !nonvegOn;
+  nonvegBtn?.classList.toggle("on", nonvegOn); nonvegToggleSearch.classList.toggle("on", nonvegOn);
+  renderGlobalResults(true);
+  renderCourseBuckets(true); renderCategoryBuckets(true);
+});
+courseNavSearch?.addEventListener("click", () => {
+  exitSearchMode();
+  coursesSection?.scrollIntoView({ behavior: "smooth", block: "start" });
+});
+categoryNavSearch?.addEventListener("click", () => {
+  exitSearchMode();
+  categoriesSection?.scrollIntoView({ behavior: "smooth", block: "start" });
+});
+searchBtnSearchView?.addEventListener("click", () => {
+  const q = (searchInputSearchView?.value || "").trim();
+  searchQuery = q; renderGlobalResults(true);
+});
+searchInputSearchView?.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") {
+    const q = (searchInputSearchView?.value || "").trim();
+    searchQuery = q; renderGlobalResults(true);
+  }
+});
+
+// Steppers (delegated)
 let gridHandlerBound = false;
-function bindGridHandlers() {
-  if (gridHandlerBound || !grid) return;
+function bindStepperHandlers() {
+  if (gridHandlerBound) return;
   gridHandlerBound = true;
-  grid.addEventListener("click", (e) => {
+  document.addEventListener("click", (e) => {
     const btn = e.target.closest(".inc, .dec");
     if (!btn) return;
     const wrap = btn.closest(".stepper");
@@ -306,11 +578,8 @@ function bindGridHandlers() {
   });
 }
 
-// Search
-inpSearch?.addEventListener("input", () => animateGridRender(renderGrid));
-
 /* ---------- Boot ---------- */
-bindGridHandlers();
+bindStepperHandlers();
 listenCourses();
 listenCategories();
 listenItems();
