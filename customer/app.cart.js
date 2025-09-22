@@ -1,101 +1,100 @@
-// app.cart.js — cart renderer with selector adapter.
-// Uses window.CART_UI to find the right elements on YOUR page.
-// Falls back to default IDs if no config is provided.
+// app.cart.js — resolves layout AFTER DOM is ready, then renders.
+// Works with window.CART_UI (list or table). Uses global window.Cart.
 
 (function () {
-  const $ = (s) => s ? document.querySelector(s) : null;
-
-  // ---- 1) Read mapping (list OR table) ----
-  const CFG = (window.CART_UI || {});
-  const LIST = CFG.list || null;
-  const TABLE = CFG.table || null;
-
-  // DEFAULTS if no config is given (you can remove these if you want it strict)
-  const defaultsList = {
-    items: '#cart-items',
-    empty: '#cart-empty',
-    count: '#cart-items-count',
-    addonsNote: '#addons-note',
-    subtotal: '#subtotal-amt',
-    gst: '#gst-amt',
-    delivery: '#delivery-amt',
-    total: '#total-amt',
-    proceed: '#proceed-btn'
-  };
-  const defaultsTable = {
-    body: '#cartBody',
-    total: '#cartTotal'
-  };
-
-  const USE_LIST = LIST ? true : (TABLE ? false : !!document.querySelector(defaultsList.items));
-  const useListCfg = LIST || (USE_LIST ? defaultsList : null);
-  const useTableCfg = TABLE || (!USE_LIST ? defaultsTable : null);
-
-  // ---- 2) Grab elements based on chosen mapping ----
-  // header badge is optional and common
-  const $countTop = $('#cart-count');
-
-  // List layout refs
-  const $list       = USE_LIST ? $(useListCfg.items)      : null;
-  const $empty      = USE_LIST ? $(useListCfg.empty)      : null;
-  const $itemsCount = USE_LIST ? $(useListCfg.count)      : null;
-  const $addonsNote = USE_LIST ? $(useListCfg.addonsNote) : null;
-  const $subtotal   = USE_LIST ? $(useListCfg.subtotal)   : null;
-  const $gst        = USE_LIST ? $(useListCfg.gst)        : null;
-  const $delivery   = USE_LIST ? $(useListCfg.delivery)   : null;
-  const $total      = USE_LIST ? $(useListCfg.total)      : null;
-  const $proceed    = USE_LIST ? $(useListCfg.proceed)    : null;
-
-  // Table layout refs
-  const $tableBody  = !USE_LIST ? $(useTableCfg.body)  : null;
-  const $tableTotal = !USE_LIST ? $(useTableCfg.total) : null;
-
-  // If neither layout is found, log once and stop
-  const listOk = USE_LIST && $list && ($subtotal || $tableTotal || $total);
-  const tableOk = !USE_LIST && $tableBody && $tableTotal;
-  if (!listOk && !tableOk) {
-    console.warn("[cart] No usable layout found. Provide window.CART_UI with your selectors.");
-    return;
-  }
-
-  // ---- 3) Helpers ----
+  const INR = (v) => "₹" + Math.round(Number(v) || 0).toLocaleString("en-IN");
   const GST_PERCENT = 5;
   const DELIVERY_TEXT = "Shown at payment";
-  const INR = (v) => "₹" + Math.round(Number(v) || 0).toLocaleString("en-IN");
 
+  // helpers
   const entries = () => {
-    try { return Object.entries(window.Cart?.get?.() || {}); }
-    catch { return []; }
+    try { return Object.entries(window.Cart?.get?.() || {}); } catch { return []; }
   };
   const count = () => entries().reduce((n, [, it]) => n + (Number(it.qty) || 0), 0);
   const subtotal = () => entries().reduce((s, [, it]) => s + (Number(it.price)||0)*(Number(it.qty)||0), 0);
   const gst = (s) => Math.max(0, (s * GST_PERCENT) / 100);
 
-  // ---- 4) Renderers ----
+  // runtime refs (filled after DOMContentLoaded)
+  let mode = null; // 'list' | 'table'
+  let R = {};      // resolved elements
+  let $countTop = null;
+
+  function resolveLayout() {
+    const CFG = window.CART_UI || {};
+    $countTop = document.querySelector('#cart-count');
+
+    // prefer explicit config; otherwise try defaults
+    const listCfg = CFG.list || {
+      items:'#cart-items', empty:'#cart-empty', count:'#cart-items-count',
+      addonsNote:'#addons-note', subtotal:'#subtotal-amt', gst:'#gst-amt',
+      delivery:'#delivery-amt', total:'#total-amt', proceed:'#proceed-btn'
+    };
+    const tableCfg = CFG.table || { body:'#cartBody', total:'#cartTotal' };
+
+    // try list first
+    const listEls = {
+      items: document.querySelector(listCfg.items),
+      empty: document.querySelector(listCfg.empty || null),
+      count: document.querySelector(listCfg.count || null),
+      addonsNote: document.querySelector(listCfg.addonsNote || null),
+      subtotal: document.querySelector(listCfg.subtotal),
+      gst: document.querySelector(listCfg.gst),
+      delivery: document.querySelector(listCfg.delivery),
+      total: document.querySelector(listCfg.total),
+      proceed: document.querySelector(listCfg.proceed || null),
+    };
+    const listOK = !!(listEls.items && listEls.subtotal && listEls.gst && listEls.delivery && listEls.total);
+
+    if (listOK) {
+      mode = 'list';
+      R = listEls;
+      return true;
+    }
+
+    // fallback: table
+    const tableEls = {
+      body: document.querySelector(tableCfg.body),
+      total: document.querySelector(tableCfg.total)
+    };
+    const tableOK = !!(tableEls.body && tableEls.total);
+    if (tableOK) {
+      mode = 'table';
+      R = tableEls;
+      return true;
+    }
+
+    // neither found
+    mode = null;
+    R = {};
+    console.warn("[cart] No usable layout found. Make sure window.CART_UI is set before app.cart.js and IDs exist in checkout.html.");
+    return false;
+  }
+
+  // ----- renderers -----
   function renderList() {
     const es = entries();
     const n = count();
 
-    if ($empty) $empty.hidden = n > 0;
-    if ($list)  $list.hidden  = n === 0;
-    if ($itemsCount) $itemsCount.textContent = `(${n} ${n === 1 ? "item" : "items"})`;
+    if (R.empty) R.empty.hidden = n > 0;
+    if (R.items) R.items.hidden = n === 0;
     if ($countTop) $countTop.textContent = String(n);
-    if ($proceed) $proceed.disabled = n === 0;
-    if ($addonsNote) $addonsNote.style.display = n > 0 ? "block" : "none";
+    if (R.count) R.count.textContent = `(${n} ${n === 1 ? "item" : "items"})`;
+    if (R.proceed) R.proceed.disabled = n === 0;
+    if (R.addonsNote) R.addonsNote.style.display = n > 0 ? "block" : "none";
 
-    if ($list) {
-      $list.innerHTML = "";
-      for (const [key, it] of es) $list.appendChild(lineItem(key, it));
+    // list items
+    if (R.items) {
+      R.items.innerHTML = "";
+      for (const [key, it] of es) R.items.appendChild(lineItem(key, it));
     }
 
-    if ($subtotal && $gst && $delivery && $total) {
-      const sub = subtotal();
-      const g   = gst(sub);
-      $subtotal.textContent = INR(sub);
-      $gst.textContent      = INR(g);
-      $delivery.textContent = DELIVERY_TEXT;
-      $total.textContent    = INR(sub + g);
-    }
+    // totals
+    const sub = subtotal();
+    const g   = gst(sub);
+    if (R.subtotal) R.subtotal.textContent = INR(sub);
+    if (R.gst)      R.gst.textContent      = INR(g);
+    if (R.delivery) R.delivery.textContent = DELIVERY_TEXT;
+    if (R.total)    R.total.textContent    = INR(sub + g);
   }
 
   function lineItem(key, it) {
@@ -157,16 +156,18 @@
 
   function renderTable() {
     const es = entries();
-    if ($tableBody) {
+    if (R.body) {
       if (!es.length) {
-        $tableBody.innerHTML = `<tr><td colspan="5" class="empty">Your cart is empty</td></tr>`;
+        R.body.innerHTML = `<tr><td colspan="5" class="empty">Your cart is empty</td></tr>`;
       } else {
-        $tableBody.innerHTML = "";
-        for (const [key, it] of es) $tableBody.appendChild(rowB(key, it));
+        R.body.innerHTML = "";
+        for (const [key, it] of es) R.body.appendChild(rowB(key, it));
       }
     }
-    if ($tableTotal) $tableTotal.textContent = INR(subtotal());
-    if ($countTop)   $countTop.textContent   = String(count());
+    if (R.total) R.total.textContent = INR(subtotal());
+    const n = count();
+    const badge = document.querySelector('#cart-count');
+    if (badge) badge.textContent = String(n);
   }
 
   function rowB(key, it) {
@@ -209,18 +210,25 @@
     return tr;
   }
 
-  // ---- 5) Unified render & hooks ----
+  // unified render
   function render() {
-    if (USE_LIST) renderList();
-    else          renderTable();
+    if (mode === 'list') renderList();
+    else if (mode === 'table') renderTable();
   }
 
-  document.addEventListener("DOMContentLoaded", render);
-  window.addEventListener("cart:update", render);
-
-  // proceed placeholder
-  (USE_LIST ? $proceed : null)?.addEventListener("click", () => {
-    if (count() === 0) return;
-    alert("Cart confirmed. Payment step will be added next.");
+  // init after DOM is ready
+  document.addEventListener("DOMContentLoaded", () => {
+    if (!resolveLayout()) return; // logs once if nothing found
+    render();
   });
+
+  // keep in sync with store
+  window.addEventListener("cart:update", () => {
+    if (!mode) {
+      // late-mount safety: try resolving again
+      if (!resolveLayout()) return;
+    }
+    render();
+  });
+
 })();
