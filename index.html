@@ -32,17 +32,26 @@
     <section id="menu" aria-labelledby="menuTitle">
       <h2 id="menuTitle">Our Menu</h2>
 
-      <!-- Primary toggles + Search (home bar) -->
+      <!-- Primary bar (home): Veg/Non-Veg switches + nav chips + search -->
       <div class="primary-bar" role="group" aria-label="Filters and Search">
         <div class="primary-filters">
-          <button id="vegToggle" class="pill-toggle veg on" aria-pressed="true">Veg</button>
-          <button id="nonvegToggle" class="pill-toggle nonveg on" aria-pressed="true">Non-Veg</button>
+          <!-- Switches (both may be OFF) -->
+          <button id="vegSwitch" class="switch veg on" role="switch" aria-checked="true" aria-label="Veg">
+            <span class="track"></span><span class="knob"></span><span class="label">Veg</span>
+          </button>
+          <button id="nonvegSwitch" class="switch nonveg on" role="switch" aria-checked="true" aria-label="Non-Veg">
+            <span class="track"></span><span class="knob"></span><span class="label">Non-Veg</span>
+          </button>
+
           <span class="divider" aria-hidden="true"></span>
-          <button id="courseToggle" class="pill-toggle course" aria-pressed="false">Food Course</button>
-          <button id="categoryToggle" class="pill-toggle category" aria-pressed="false">Food Categories</button>
+
+          <!-- Navigation chips (smooth scroll only) -->
+          <button id="courseToggle" class="pill-toggle course" aria-label="Go to Food Course">Food Course</button>
+          <button id="categoryToggle" class="pill-toggle category" aria-label="Go to Food Categories">Food Categories</button>
         </div>
 
-        <div class="searchbar">
+        <!-- Search (shorter, soft-rect, icon on right) -->
+        <div class="searchbar home">
           <input type="text" id="filter-search" placeholder="Search dishes…" aria-label="Search dishes"/>
           <button class="searchbtn" id="searchBtn" aria-label="Search"></button>
         </div>
@@ -62,14 +71,19 @@
       <!-- Global search results view (hidden until searching) -->
       <section id="globalResults" class="results hidden" aria-label="Search Results">
         <div class="topbar">
-          <button class="back-btn" id="backFromSearch">← Back</button>
-          <button class="pill-toggle veg" id="vegToggleSearch">Veg</button>
-          <button class="pill-toggle nonveg" id="nonvegToggleSearch">Non-Veg</button>
-          <button class="pill-toggle course nav" id="courseNavSearch">Food Course</button>
-          <button class="pill-toggle category nav" id="categoryNavSearch">Food Categories</button>
+          <!-- Back + switches + nav chips + search (same order as tile panel) -->
+          <button class="back-btn" data-action="back">← Back</button>
+          <button class="switch veg on" role="switch" aria-checked="true" data-action="veg">
+            <span class="track"></span><span class="knob"></span><span class="label">Veg</span>
+          </button>
+          <button class="switch nonveg on" role="switch" aria-checked="true" data-action="nonveg">
+            <span class="track"></span><span class="knob"></span><span class="label">Non-Veg</span>
+          </button>
+          <button class="pill-toggle course nav" data-action="nav-course">Food Course</button>
+          <button class="pill-toggle category nav" data-action="nav-category">Food Categories</button>
           <div class="searchbar compact">
-            <input type="text" id="filter-search-searchView" placeholder="Search dishes…" aria-label="Search dishes"/>
-            <button class="searchbtn" id="searchBtnSearchView" aria-label="Search"></button>
+            <input type="text" class="tile-search" placeholder="Search dishes…" aria-label="Search dishes"/>
+            <button class="searchbtn" data-action="search" aria-label="Search"></button>
           </div>
         </div>
         <div id="globalResultsList" class="list-grid"></div>
