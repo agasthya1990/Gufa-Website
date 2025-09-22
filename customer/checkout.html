@@ -108,8 +108,35 @@
   <script type="module" src="./firebase.client.js"></script>
   <!-- ✅ Cart store defines window.Cart -->
   <script src="./cart.store.js"></script>
-  <!-- ✅ Cart UI script renders into the IDs above -->
+<!-- put this BEFORE app.cart.js -->
+<script>
+  // Tell the cart script where to render on THIS page.
+  window.CART_UI = {
+    // Set exactly ONE of these blocks. Leave the other null.
+
+    // If you have a list + summary layout:
+    list: {
+      items: '#YOUR_LIST_ID',           // e.g. '#cartList'
+      empty: '#YOUR_EMPTY_ID',          // (optional) e.g. '#emptyCart'
+      count: '#YOUR_ITEMS_COUNT_ID',    // (optional) e.g. '#itemsCount'
+      addonsNote: '#YOUR_ADDONS_NOTE',  // (optional)
+      subtotal: '#YOUR_SUBTOTAL_ID',
+      gst: '#YOUR_GST_ID',
+      delivery: '#YOUR_DELIVERY_ID',
+      total: '#YOUR_TOTAL_ID',
+      proceed: '#YOUR_PROCEED_BTN_ID'   // (optional)
+    },
+
+    // OR, if you have a table layout:
+    table: {
+      body:  '#YOUR_TBODY_ID',          // e.g. '#cartBody'
+      total: '#YOUR_TOTALSPAN_ID'       // e.g. '#cartTotal'
+    }
+  };
+</script>
+<script src="./app.cart.js"></script>
   <script src="./app.cart.js"></script>
   <script>document.getElementById('year').textContent = new Date().getFullYear();</script>
 </body>
 </html>
+
