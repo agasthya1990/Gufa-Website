@@ -1,4 +1,4 @@
-// app.menu.js — Courses & Categories collages + 4 toggles + Veg/Non-Veg badges + live Firestore
+// app.menu.js — Four toggles, strict filtering, fade transitions, collage navigation, Veg/Non-Veg colored text
 import { db } from "./firebase.client.js";
 import { Cart } from "./app.cart.js";
 import {
@@ -9,7 +9,9 @@ const $  = (s, r=document) => r.querySelector(s);
 const $$ = (s, r=document) => Array.from(r.querySelectorAll(s));
 
 /* ---------- DOM ---------- */
-const grid = $("#menu .menu-grid");
+const grid = $("#menuGrid");
+const coursesSection = $("#coursesSection");
+const categoriesSection = $("#categoriesSection");
 const courseBuckets = $("#courseBuckets");
 const categoryBuckets = $("#categoryBuckets");
 const inpSearch = $("#filter-search");
@@ -24,13 +26,10 @@ let ITEMS = [];
 let COURSES = new Set();     // menuCourses doc.id
 let CATEGORIES = new Set();  // menuCategories doc.id
 
-// Toggles (both Veg & Non-Veg may be OFF; Course/Category toggle enable applying the chosen selection)
 let vegOn = true;
 let nonvegOn = true;
-let courseFilterOn = true;
-let categoryFilterOn = true;
 
-// Current chosen course/category from collages
+// current chosen course/category (click collage to select/deselect)
 let selectedCourse = "";
 let selectedCategory = "";
 
@@ -63,9 +62,12 @@ function setQty(found, variantKey, price, nextQty) {
 }
 
 /* ---------- Item card ---------- */
-function dietClass(t){ const v = (t||"").toLowerCase(); return v==="veg" ? "veg" : (v==="non-veg" ? "nonveg" : ""); }
-function dietLabel(t){ const v = (t||"").toLowerCase(); return v==="veg" ? "Veg" : (v==="non-veg" ? "Non-Veg" : ""); }
-
+function dietSpan(t){
+  const v = (t||"").toLowerCase();
+  if (v === "veg") return `<span class="diet diet-veg">Veg</span>`;
+  if (v === "non-veg") return `<span class="diet diet-nonveg">Non-Veg</span>`;
+  return "";
+}
 function stepperHTML(found, variant) {
   const key = `${found.id}:${variant.key}`;
   const qty = getQty(key);
@@ -84,22 +86,22 @@ function stepperHTML(found, variant) {
 function itemCardHTML(m) {
   const pm = priceModel(m.qtyType);
   const variants = (pm?.variants || []).filter(v => v.price > 0);
-  const tags = [m.foodCourse||"", m.foodType||"", m.category||""].filter(Boolean).join(" • ");
+  const tagsLeft = [m.foodCourse||"", m.category||""].filter(Boolean).join(" • ");
+  const diet = dietSpan(m.foodType);
   const addons = Array.isArray(m.addons) && m.addons.length
     ? `<small class="muted">Add-ons: ${m.addons.join(", ")}</small>` : "";
   const steppers = variants.map(v => stepperHTML(m, v)).join("");
 
-  const dc = dietClass(m.foodType);
-  const dl = dietLabel(m.foodType);
-
   return `
-    <article class="menu-item ${dc}" data-id="${m.id}">
-      ${dl ? `<span class="diet-badge ${dc}">${dl}</span>` : ""}
+    <article class="menu-item" data-id="${m.id}">
       ${m.imageUrl ? `<img loading="lazy" src="${m.imageUrl}" alt="${m.name||""}" class="menu-img"/>` : ""}
       <h4 class="menu-name">${m.name || ""}</h4>
       <p class="menu-desc">${m.description || ""}</p>
       ${addons}
-      <div class="row meta"><small class="muted">${tags}</small></div>
+      <div class="row meta">
+        <small class="muted">${tagsLeft}</small>
+        ${diet}
+      </div>
       <div class="steppers">${steppers}</div>
     </article>
   `;
@@ -110,18 +112,17 @@ function applyFilters(items) {
   const q = (inpSearch?.value || "").toLowerCase().trim();
 
   return items.filter((it) => {
-    // Stock
     if (it.inStock === false) return false;
 
-    // Veg/Non-Veg logic (both OFF => show none)
+    // Veg/Non-Veg strict (both OFF => show none)
     const t = (it.foodType || "").toLowerCase(); // "veg" | "non-veg"
     if (!vegOn && !nonvegOn) return false;
     if (vegOn && !nonvegOn && t !== "veg") return false;
     if (!vegOn && nonvegOn && t !== "non-veg") return false;
 
-    // Course/Category toggles apply the chosen selection if any
-    if (courseFilterOn && selectedCourse && it.foodCourse !== selectedCourse) return false;
-    if (categoryFilterOn && selectedCategory && it.category !== selectedCategory) return false;
+    // Course/Category filters (selected via collages)
+    if (selectedCourse && it.foodCourse !== selectedCourse) return false;
+    if (selectedCategory && it.category !== selectedCategory) return false;
 
     // Search
     if (q) {
@@ -137,7 +138,6 @@ function applyFilters(items) {
 
 /* ---------- Renderers ---------- */
 function renderGrid() {
-  if (!grid) return;
   const filtered = applyFilters(ITEMS);
   grid.innerHTML = filtered.length
     ? filtered.map(itemCardHTML).join("")
@@ -155,15 +155,12 @@ function collageHTML(imgs) {
     </div>`;
 }
 function renderCourseBuckets() {
-  if (!courseBuckets) return;
-
   const byCourse = new Map();
   for (const it of ITEMS) {
     if (!it.foodCourse) continue;
     if (!byCourse.has(it.foodCourse)) byCourse.set(it.foodCourse, []);
     if (it.imageUrl) byCourse.get(it.foodCourse).push(it.imageUrl);
   }
-
   const crs = Array.from(COURSES).sort((a,b)=>a.localeCompare(b));
   courseBuckets.innerHTML = crs.map(name => {
     const imgs = (byCourse.get(name) || []).slice(0,4);
@@ -176,15 +173,12 @@ function renderCourseBuckets() {
   }).join("");
 }
 function renderCategoryBuckets() {
-  if (!categoryBuckets) return;
-
   const byCat = new Map();
   for (const it of ITEMS) {
     if (!it.category) continue;
     if (!byCat.has(it.category)) byCat.set(it.category, []);
     if (it.imageUrl) byCat.get(it.category).push(it.imageUrl);
   }
-
   const cats = Array.from(CATEGORIES).sort((a,b)=>a.localeCompare(b));
   categoryBuckets.innerHTML = cats.map(name => {
     const imgs = (byCat.get(name) || []).slice(0,4);
@@ -201,7 +195,7 @@ function renderCategoryBuckets() {
 function listenCourses() {
   onSnapshot(collection(db, "menuCourses"), (snap) => {
     COURSES = new Set();
-    snap.forEach(d => COURSES.add(d.id));
+    snap.forEach(d => COURSES.add(d.id));  // use doc.id
     renderCourseBuckets();
   });
 }
@@ -232,21 +226,59 @@ function listenItems() {
   }
 }
 
+/* ---------- Animations ---------- */
+function animateGridRender(renderFn) {
+  // Respect reduced motion via CSS; still safe
+  grid.classList.add("fade-out");
+  window.setTimeout(() => {
+    renderFn();
+    grid.classList.remove("fade-out");
+    grid.classList.add("fade-in");
+    window.setTimeout(() => grid.classList.remove("fade-in"), 260);
+  }, 180);
+}
+
 /* ---------- Events ---------- */
-// Collage clicks (store selection; filtering depends on toggles)
+// Veg/Non-Veg toggles (both may be OFF). Re-render with fade.
+vegBtn?.addEventListener("click", () => {
+  vegOn = !vegOn;
+  vegBtn.classList.toggle("on", vegOn);
+  vegBtn.setAttribute("aria-pressed", String(vegOn));
+  animateGridRender(renderGrid);
+});
+nonvegBtn?.addEventListener("click", () => {
+  nonvegOn = !nonvegOn;
+  nonvegBtn.classList.toggle("on", nonvegOn);
+  nonvegBtn.setAttribute("aria-pressed", String(nonvegOn));
+  animateGridRender(renderGrid);
+});
+
+// Course/Category nav chips — smooth scroll to sections
+courseToggle?.addEventListener("click", () => {
+  courseToggle.classList.add("is-nav");
+  coursesSection?.scrollIntoView({ behavior: "smooth", block: "start" });
+});
+categoryToggle?.addEventListener("click", () => {
+  categoryToggle.classList.add("is-nav");
+  categoriesSection?.scrollIntoView({ behavior: "smooth", block: "start" });
+});
+
+// Collage clicks (select/deselect; then scroll back to grid)
 document.addEventListener("click", (e) => {
   const tile = e.target.closest(".bucket-tile");
   if (!tile) return;
   const kind = tile.dataset.kind;
   const val = tile.dataset.id;
+
   if (kind === "course") {
-    selectedCourse = (selectedCourse === val) ? "" : val; // toggle select
+    selectedCourse = (selectedCourse === val) ? "" : val;
     renderCourseBuckets();
   } else if (kind === "category") {
     selectedCategory = (selectedCategory === val) ? "" : val;
     renderCategoryBuckets();
   }
-  renderGrid();
+  animateGridRender(renderGrid);
+  grid.scrollIntoView({ behavior: "smooth", block: "start" });
 });
 
 // Grid steppers (delegated)
@@ -274,34 +306,8 @@ function bindGridHandlers() {
   });
 }
 
-// Toggles (Veg/Non-Veg can be OFF; Course/Category toggles control application)
-vegBtn?.addEventListener("click", () => {
-  vegOn = !vegOn;
-  vegBtn.classList.toggle("on", vegOn);
-  vegBtn.setAttribute("aria-pressed", String(vegOn));
-  renderGrid();
-});
-nonvegBtn?.addEventListener("click", () => {
-  nonvegOn = !nonvegOn;
-  nonvegBtn.classList.toggle("on", nonvegOn);
-  nonvegBtn.setAttribute("aria-pressed", String(nonvegOn));
-  renderGrid();
-});
-courseToggle?.addEventListener("click", () => {
-  courseFilterOn = !courseFilterOn;
-  courseToggle.classList.toggle("on", courseFilterOn);
-  courseToggle.setAttribute("aria-pressed", String(courseFilterOn));
-  renderGrid();
-});
-categoryToggle?.addEventListener("click", () => {
-  categoryFilterOn = !categoryFilterOn;
-  categoryToggle.classList.toggle("on", categoryFilterOn);
-  categoryToggle.setAttribute("aria-pressed", String(categoryFilterOn));
-  renderGrid();
-});
-
 // Search
-inpSearch?.addEventListener("input", renderGrid);
+inpSearch?.addEventListener("input", () => animateGridRender(renderGrid));
 
 /* ---------- Boot ---------- */
 bindGridHandlers();
