@@ -1,4 +1,6 @@
-// app.menu.js — Fixes: no nested buttons, robust switches, tolerant mapping, safe Firebase boot
+// app.menu.js — Swiggy/Zomato-style switches (opt-in), single-image tiles, latest image per group,
+// strict in-bounds lists, smooth fades, global search, robust matching
+import { db } from "./firebase.client.js";
 import {
   collection, onSnapshot, query, orderBy
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
@@ -26,20 +28,32 @@ const globalResults = $("#globalResults");
 const globalList = $("#globalResultsList");
 
 /* ---------- State ---------- */
-let db = null;               // set after dynamic import
 let ITEMS = [];
 let COURSES = [];            // [{id, label}]
 let CATEGORIES = [];         // [{id, label}]
 
-let vegOn = true;
-let nonvegOn = true;
+let vegOn = false;           // both OFF by default (opt-in)
+let nonvegOn = false;
 
 let mode = "home";           // 'home' | 'open-course' | 'open-category' | 'search'
 let openKind = "";           // 'course' | 'category'
 let openId = "";             // selected course/category id
 let searchQuery = "";        // global search query
 
-/* ---------- Helpers ---------- */
+/* ---------- Utils ---------- */
+const cssSafe = (s) => String(s).replace(/[^a-zA-Z0-9_-]/g, "_");
+const normDiet = (t="") => t.toLowerCase().replace(/\s+/g,"-"); // "non veg" -> "non-veg"
+function tsToMs(v){
+  if (!v) return 0;
+  if (v instanceof Date) return v.getTime();
+  if (typeof v === "number") return v;
+  if (typeof v === "object" && typeof v.seconds === "number") return v.seconds * 1000 + (v.nanoseconds||0)/1e6;
+  // string or unknown
+  const d = new Date(v);
+  return isNaN(d.getTime()) ? 0 : d.getTime();
+}
+
+/* ---------- Price & Cart helpers ---------- */
 function priceModel(qtyType) {
   if (!qtyType) return null;
   if (qtyType.type === "Not Applicable") {
@@ -56,32 +70,23 @@ function priceModel(qtyType) {
   return null;
 }
 function getQty(key) {
-  try {
-    const { Cart } = window;
-    const bag = typeof Cart?.get === "function" ? Cart.get() : {};
-    return Number(bag?.[key]?.qty || 0);
-  } catch { return 0; }
+  try { return Number(window?.Cart?.get?.()?.[key]?.qty || 0); } catch { return 0; }
 }
 function setQty(found, variantKey, price, nextQty) {
   const key = `${found.id}:${variantKey}`;
   const next = Math.max(0, Number(nextQty || 0));
-  try {
-    const { Cart } = window;
-    Cart?.setQty?.(key, next, { id: found.id, name: found.name, variant: variantKey, price });
-  } catch {}
+  try { window?.Cart?.setQty?.(key, next, { id: found.id, name: found.name, variant: variantKey, price }); } catch {}
   const badge = $(`.qty[data-key="${key}"] .num`);
   if (badge) badge.textContent = String(next);
 }
 
+/* ---------- Cards ---------- */
 function dietSpan(t){
-  const raw = (t||"").toLowerCase();
-  const v = raw.replace(/\s+/g, "-"); // tolerate "Non Veg", "nonveg", etc
+  const v = normDiet(t);
   if (v.startsWith("veg")) return `<span class="diet diet-veg">Veg</span>`;
   if (v.startsWith("non-veg") || v.startsWith("nonveg")) return `<span class="diet diet-nonveg">Non-Veg</span>`;
   return "";
 }
-
-/* ---------- Cards ---------- */
 function stepperHTML(found, variant) {
   const key = `${found.id}:${variant.key}`;
   const qty = getQty(key);
@@ -121,16 +126,16 @@ function itemCardHTML(m) {
   `;
 }
 
-/* ---------- Filtering ---------- */
-function matchesVeg(it){
-  const v = (it.foodType||"").toLowerCase().replace(/\s+/g,"-");
-  if (!vegOn && !nonvegOn) return false;
-  if (vegOn && !nonvegOn) return v.startsWith("veg");
-  if (!vegOn && nonvegOn) return v.startsWith("non-veg") || v.startsWith("nonveg");
-  return true; // both on
+/* ---------- Filtering (opt-in logic like Swiggy/Zomato) ---------- */
+function matchesDiet(it){
+  const t = normDiet(it.foodType || "");
+  if (vegOn && !nonvegOn) return t.startsWith("veg");
+  if (!vegOn && nonvegOn) return t.startsWith("non-veg") || t.startsWith("nonveg");
+  // both ON or both OFF -> all items
+  return true;
 }
 function applyItemFiltersBase(items){
-  return items.filter(it => it.inStock !== false && matchesVeg(it));
+  return items.filter(it => it.inStock !== false && matchesDiet(it));
 }
 function courseMatch(it, course){ // accept by id OR label
   return it.foodCourse === course.id || it.foodCourse === course.label;
@@ -165,65 +170,66 @@ function applyItemFiltersForSearch(items){
   return arr;
 }
 
-/* ---------- Buckets rendering (Veg/Non-Veg affects images) ---------- */
-function collageHTML(imgs) {
-  const a = imgs[0] || "", b = imgs[1] || "", c = imgs[2] || "", d = imgs[3] || "";
-  return `
-    <div class="collage">
-      ${a ? `<img loading="lazy" src="${a}" alt="">` : `<div class="ph"></div>`}
-      ${b ? `<img loading="lazy" src="${b}" alt="">` : `<div class="ph"></div>`}
-      ${c ? `<img loading="lazy" src="${c}" alt="">` : `<div class="ph"></div>`}
-      ${d ? `<img loading="lazy" src="${d}" alt="">` : `<div class="ph"></div>`}
-    </div>`;
+/* ---------- Tiles (single-image) ---------- */
+function latestImageForGroup(items){
+  if (!items.length) return "";
+  // prefer updatedAt, fallback to createdAt
+  const withTs = items.map(i => ({ ...i, _ts: Math.max(tsToMs(i.updatedAt), tsToMs(i.createdAt)) }));
+  withTs.sort((a,b)=> b._ts - a._ts);
+  const hit = withTs.find(x => x.imageUrl);
+  return hit?.imageUrl || "";
 }
-const cssSafe = (s) => String(s).replace(/[^a-zA-Z0-9_-]/g, "_");
-
-function topbarHTML(){
-  // Order: ← Back, Veg switch, Non-Veg switch, Food Course, Food Categories, Search
+function tileHTML(kind, id, label, imgsCount, imgUrl, active){
+  const act = active ? "active tile-open" : "";
+  const safe = cssSafe(id);
+  const listId = `tileList-${kind}-${safe}`;
   return `
-    <div class="topbar">
-      <button class="back-btn" data-action="back">← Back</button>
+    <div class="bucket-tile ${act}" role="button" tabindex="0" data-kind="${kind}" data-id="${id}">
+      <div class="tile-img">${imgUrl ? `<img loading="lazy" src="${imgUrl}" alt="${label}">` : ""}</div>
+      <span class="bucket-label">${label}</span>
+      <span class="count-badge">${imgsCount}</span>
+      ${active ? `
+        <div class="panel">
+          <div class="topbar">
+            <button class="back-btn" data-action="back">← Back</button>
 
-      <button class="switch veg ${vegOn ? "on": ""}" role="switch" aria-checked="${vegOn}" data-action="veg">
-        <span class="track"></span><span class="knob"></span><span class="label">Veg</span>
-      </button>
-      <button class="switch nonveg ${nonvegOn ? "on": ""}" role="switch" aria-checked="${nonvegOn}" data-action="nonveg">
-        <span class="track"></span><span class="knob"></span><span class="label">Non-Veg</span>
-      </button>
+            <button class="switch veg ${vegOn ? "on": ""}" role="switch" aria-checked="${vegOn}" data-action="veg">
+              <span class="track"></span><span class="knob"></span><span class="label">Veg</span>
+            </button>
+            <button class="switch nonveg ${nonvegOn ? "on": ""}" role="switch" aria-checked="${nonvegOn}" data-action="nonveg">
+              <span class="track"></span><span class="knob"></span><span class="label">Non-Veg</span>
+            </button>
 
-      <button class="pill-toggle course nav" data-action="nav-course">Food Course</button>
-      <button class="pill-toggle category nav" data-action="nav-category">Food Categories</button>
+            <button class="pill-toggle course nav" data-action="nav-course">Food Course</button>
+            <button class="pill-toggle category nav" data-action="nav-category">Food Categories</button>
 
-      <div class="searchbar compact">
-        <input type="text" class="tile-search" placeholder="Search dishes…" aria-label="Search dishes"/>
-        <button class="searchbtn" data-action="search" aria-label="Search"></button>
-      </div>
-    </div>`;
+            <div class="searchbar compact">
+              <input type="text" class="tile-search" placeholder="Search dishes…" aria-label="Search dishes"/>
+              <button class="searchbtn" data-action="search" aria-label="Search"></button>
+            </div>
+          </div>
+          <div class="list-grid" id="${listId}"></div>
+        </div>` : ``}
+    </div>
+  `;
 }
 
-/* Render buckets; if a tile is open, include panel with list inside
-   NOTE: .bucket-tile is now a DIV (no nested button issues) */
+/* ---------- Render buckets ---------- */
 function renderCourseBuckets(fade = false) {
   if (!courseBuckets) return;
   const grid = courseBuckets;
   if (fade) grid.classList.add("fade-out");
 
   const filtered = applyItemFiltersBase(ITEMS);
-  grid.innerHTML = COURSES
+  const html = COURSES
     .slice().sort((a,b)=>a.label.localeCompare(b.label))
     .map(course => {
-      const imgs = filtered.filter(it => courseMatch(it, course) && it.imageUrl).slice(0,4).map(x=>x.imageUrl);
-      const active = (mode.startsWith("open") && openKind==="course" && openId===course.id) ? "active tile-open" : "";
-      return `
-        <div class="bucket-tile ${active}" role="button" tabindex="0" data-kind="course" data-id="${course.id}">
-          ${collageHTML(imgs)}
-          <span class="bucket-label">${course.label}</span>
-          ${active ? `<div class="panel">
-            ${topbarHTML()}
-            <div class="list-grid" id="tileList-course-${cssSafe(course.id)}"></div>
-          </div>` : ``}
-        </div>`;
+      const itemsIn = filtered.filter(it => courseMatch(it, course));
+      const imgUrl = latestImageForGroup(itemsIn);
+      const active = (mode.startsWith("open") && openKind==="course" && openId===course.id);
+      return tileHTML("course", course.id, course.label, itemsIn.length, imgUrl, active);
     }).join("");
+  grid.innerHTML = html;
 
   if (fade) requestAnimationFrame(() => {
     grid.classList.remove("fade-out");
@@ -233,28 +239,21 @@ function renderCourseBuckets(fade = false) {
 
   if (mode === "open-course" && openId) renderTileList("course", openId);
 }
-
 function renderCategoryBuckets(fade = false) {
   if (!categoryBuckets) return;
   const grid = categoryBuckets;
   if (fade) grid.classList.add("fade-out");
 
   const filtered = applyItemFiltersBase(ITEMS);
-  grid.innerHTML = CATEGORIES
+  const html = CATEGORIES
     .slice().sort((a,b)=>a.label.localeCompare(b.label))
     .map(cat => {
-      const imgs = filtered.filter(it => categoryMatch(it, cat) && it.imageUrl).slice(0,4).map(x=>x.imageUrl);
-      const active = (mode.startsWith("open") && openKind==="category" && openId===cat.id) ? "active tile-open" : "";
-      return `
-        <div class="bucket-tile ${active}" role="button" tabindex="0" data-kind="category" data-id="${cat.id}">
-          ${collageHTML(imgs)}
-          <span class="bucket-label">${cat.label}</span>
-          ${active ? `<div class="panel">
-            ${topbarHTML()}
-            <div class="list-grid" id="tileList-category-${cssSafe(cat.id)}"></div>
-          </div>` : ``}
-        </div>`;
+      const itemsIn = filtered.filter(it => categoryMatch(it, cat));
+      const imgUrl = latestImageForGroup(itemsIn);
+      const active = (mode.startsWith("open") && openKind==="category" && openId===cat.id);
+      return tileHTML("category", cat.id, cat.label, itemsIn.length, imgUrl, active);
     }).join("");
+  grid.innerHTML = html;
 
   if (fade) requestAnimationFrame(() => {
     grid.classList.remove("fade-out");
@@ -332,7 +331,7 @@ function exitSearchMode(){
   closeTileToHome();
 }
 
-/* ---------- Live data (start only after Firebase loads) ---------- */
+/* ---------- Live data ---------- */
 function listenCourses() {
   onSnapshot(collection(db, "menuCourses"), (snap) => {
     const list = [];
@@ -389,13 +388,28 @@ function fadeBucketsAnd(fn){
   }, 180);
 }
 
+/* ---------- Switch syncing ---------- */
+function syncHomeSwitches(){
+  vegSwitch?.classList.toggle("on", vegOn);
+  vegSwitch?.setAttribute("aria-checked", String(vegOn));
+  nonvegSwitch?.classList.toggle("on", nonvegOn);
+  nonvegSwitch?.setAttribute("aria-checked", String(nonvegOn));
+}
+function syncAllTopbarSwitches(){
+  $$(".topbar [data-action='veg']").forEach(b=>{
+    b.classList.toggle("on", vegOn);
+    b.setAttribute("aria-checked", String(vegOn));
+  });
+  $$(".topbar [data-action='nonveg']").forEach(b=>{
+    b.classList.toggle("on", nonvegOn);
+    b.setAttribute("aria-checked", String(nonvegOn));
+  });
+}
+
 /* ---------- Event wiring ---------- */
-// Guard: ignore clicks inside an open panel’s controls
+// Guard: clicks inside panel controls should not re-trigger tile open/close
 document.addEventListener("click", (e) => {
-  if (e.target.closest(".panel")) {
-    // panel has its own handlers below
-    return;
-  }
+  if (e.target.closest(".panel")) return;
   const tile = e.target.closest(".bucket-tile");
   if (!tile) return;
   const kind = tile.dataset.kind;
@@ -403,7 +417,6 @@ document.addEventListener("click", (e) => {
   if (mode === "open-course" && kind==="course" && openId===val) { closeTileToHome(); return; }
   if (mode === "open-category" && kind==="category" && openId===val) { closeTileToHome(); return; }
   openTile(kind, val);
-  renderTileList(kind, val);
 });
 
 // Delegated actions inside any tile topbar & global search topbar
@@ -412,41 +425,24 @@ document.addEventListener("click", (e) => {
   if (!actBtn) return;
   const action = actBtn.getAttribute("data-action");
 
-  if (action === "back") {
-    if (mode === "search") exitSearchMode(); else closeTileToHome();
-    return;
-  }
+  if (action === "back") { if (mode === "search") exitSearchMode(); else closeTileToHome(); return; }
+
   if (action === "veg") {
-    vegOn = !vegOn;
-    // reflect switches
-    actBtn.classList.toggle("on", vegOn);
-    actBtn.setAttribute("aria-checked", String(vegOn));
-    vegSwitch?.classList.toggle("on", vegOn);
-    vegSwitch?.setAttribute("aria-checked", String(vegOn));
+    vegOn = !vegOn; syncHomeSwitches(); syncAllTopbarSwitches();
     renderCourseBuckets(true); renderCategoryBuckets(true);
     if (mode.startsWith("open") && openId) renderTileList(openKind, openId, true);
     if (mode === "search") renderGlobalResults(true);
     return;
   }
   if (action === "nonveg") {
-    nonvegOn = !nonvegOn;
-    actBtn.classList.toggle("on", nonvegOn);
-    actBtn.setAttribute("aria-checked", String(nonvegOn));
-    nonvegSwitch?.classList.toggle("on", nonvegOn);
-    nonvegSwitch?.setAttribute("aria-checked", String(nonvegOn));
+    nonvegOn = !nonvegOn; syncHomeSwitches(); syncAllTopbarSwitches();
     renderCourseBuckets(true); renderCategoryBuckets(true);
     if (mode.startsWith("open") && openId) renderTileList(openKind, openId, true);
     if (mode === "search") renderGlobalResults(true);
     return;
   }
-  if (action === "nav-course") {
-    coursesSection?.scrollIntoView({ behavior: "smooth", block: "start" });
-    return;
-  }
-  if (action === "nav-category") {
-    categoriesSection?.scrollIntoView({ behavior: "smooth", block: "start" });
-    return;
-  }
+  if (action === "nav-course") { coursesSection?.scrollIntoView({ behavior: "smooth", block: "start" }); return; }
+  if (action === "nav-category") { categoriesSection?.scrollIntoView({ behavior: "smooth", block: "start" }); return; }
   if (action === "search") {
     const wrap = actBtn.closest(".topbar");
     const field = wrap?.querySelector(".tile-search");
@@ -457,17 +453,26 @@ document.addEventListener("click", (e) => {
   }
 });
 
-// Home switches (always work, even before Firebase loads)
-function updateVegVisual(on){ vegOn = on; vegSwitch?.classList.toggle("on", on); vegSwitch?.setAttribute("aria-checked", String(on)); }
-function updateNonVegVisual(on){ nonvegOn = on; nonvegSwitch?.classList.toggle("on", on); nonvegSwitch?.setAttribute("aria-checked", String(on)); }
-
+// Home switches (opt-in)
 vegSwitch?.addEventListener("click", () => {
-  updateVegVisual(!vegOn);
-  fadeBucketsAnd(() => { renderCourseBuckets(); renderCategoryBuckets(); if (mode==="open-course"&&openId) renderTileList("course",openId); if (mode==="open-category"&&openId) renderTileList("category",openId); if (mode==="search") renderGlobalResults(); });
+  vegOn = !vegOn; syncHomeSwitches(); syncAllTopbarSwitches();
+  fadeBucketsAnd(() => {
+    renderCourseBuckets();
+    renderCategoryBuckets();
+    if (mode === "open-course" && openId) renderTileList("course", openId);
+    if (mode === "open-category" && openId) renderTileList("category", openId);
+    if (mode === "search") renderGlobalResults();
+  });
 });
 nonvegSwitch?.addEventListener("click", () => {
-  updateNonVegVisual(!nonvegOn);
-  fadeBucketsAnd(() => { renderCourseBuckets(); renderCategoryBuckets(); if (mode==="open-course"&&openId) renderTileList("course",openId); if (mode==="open-category"&&openId) renderTileList("category",openId); if (mode==="search") renderGlobalResults(); });
+  nonvegOn = !nonvegOn; syncHomeSwitches(); syncAllTopbarSwitches();
+  fadeBucketsAnd(() => {
+    renderCourseBuckets();
+    renderCategoryBuckets();
+    if (mode === "open-course" && openId) renderTileList("course", openId);
+    if (mode === "open-category" && openId) renderTileList("category", openId);
+    if (mode === "search") renderGlobalResults();
+  });
 });
 
 // Nav chips (home bar) — smooth scroll only
@@ -494,22 +499,51 @@ document.addEventListener("click", (e) => {
   setQty(found, variantKey, v.price, next);
 });
 
-/* ---------- Boot ---------- */
-// 1) Bind UI immediately
-updateVegVisual(vegOn);
-updateNonVegVisual(nonvegOn);
-
-// 2) Load Firebase lazily; start listeners only when ready
-(async () => {
+/* ---------- Live data ---------- */
+function listenCourses() {
+  onSnapshot(collection(db, "menuCourses"), (snap) => {
+    const list = [];
+    snap.forEach(d => list.push({ id: d.id, label: d.data()?.name || d.id }));
+    COURSES = list;
+    renderCourseBuckets();
+  });
+}
+function listenCategories() {
+  onSnapshot(collection(db, "menuCategories"), (snap) => {
+    const list = [];
+    snap.forEach(d => list.push({ id: d.id, label: d.data()?.name || d.id }));
+    CATEGORIES = list;
+    renderCategoryBuckets();
+  });
+}
+function listenItems() {
+  const baseCol = collection(db, "menuItems");
+  const renderFrom = (docs) => {
+    ITEMS = docs.map(d => ({ id: d.id, ...d.data() }));
+    if (mode === "home") {
+      renderCourseBuckets();
+      renderCategoryBuckets();
+    } else if (mode === "open-course" || mode === "open-category") {
+      renderCourseBuckets();
+      renderCategoryBuckets();
+    } else if (mode === "search") {
+      renderGlobalResults();
+    }
+  };
   try {
-    const mod = await import("./firebase.client.js");
-    db = mod?.db || null;
-  } catch (e) {
-    console.error("Firebase init failed:", e);
+    const qLive = query(baseCol, orderBy("createdAt","desc"));
+    onSnapshot(
+      qLive,
+      snap => renderFrom(snap.docs),
+      () => onSnapshot(baseCol, snap => renderFrom(snap.docs))
+    );
+  } catch {
+    onSnapshot(baseCol, snap => renderFrom(snap.docs));
   }
-  if (!db) return; // UI still usable (switches animate), data won’t load without db
+}
 
-  listenCourses();
-  listenCategories();
-  listenItems();
-})();
+/* ---------- Boot ---------- */
+syncHomeSwitches(); // reflect defaults (both off)
+listenCourses();
+listenCategories();
+listenItems();
