@@ -24,7 +24,7 @@
     </nav>
   </header>
 
-  <!-- Compact promo strip (optional; can be filled from Firestore) -->
+  <!-- Optional promo strip -->
   <section id="promos" aria-label="Promotions"></section>
 
   <!-- Menu -->
@@ -35,11 +35,11 @@
       <!-- Primary bar (home): Veg/Non-Veg switches + nav chips + search -->
       <div class="primary-bar" role="group" aria-label="Filters and Search">
         <div class="primary-filters">
-          <!-- Switches (both may be OFF) -->
-          <button id="vegSwitch" class="switch veg on" role="switch" aria-checked="true" aria-label="Veg">
+          <!-- Switches (both OFF by default; opt-in filters) -->
+          <button id="vegSwitch" class="switch veg" role="switch" aria-checked="false" aria-label="Veg">
             <span class="track"></span><span class="knob"></span><span class="label">Veg</span>
           </button>
-          <button id="nonvegSwitch" class="switch nonveg on" role="switch" aria-checked="true" aria-label="Non-Veg">
+          <button id="nonvegSwitch" class="switch nonveg" role="switch" aria-checked="false" aria-label="Non-Veg">
             <span class="track"></span><span class="knob"></span><span class="label">Non-Veg</span>
           </button>
 
@@ -50,14 +50,14 @@
           <button id="categoryToggle" class="pill-toggle category" aria-label="Go to Food Categories">Food Categories</button>
         </div>
 
-        <!-- Search (shorter, soft-rect, icon on right) -->
+        <!-- Search (slightly shorter, soft-rect, icon on right) -->
         <div class="searchbar home">
           <input type="text" id="filter-search" placeholder="Search dishes…" aria-label="Search dishes"/>
           <button class="searchbtn" id="searchBtn" aria-label="Search"></button>
         </div>
       </div>
 
-      <!-- Bifurcations (collages) -->
+      <!-- Bifurcations (single-image square tiles) -->
       <div class="bucket-group" id="coursesSection">
         <div class="bucket-header">Food Courses</div>
         <div id="courseBuckets" class="bucket-grid" aria-label="Food Courses"></div>
@@ -71,12 +71,12 @@
       <!-- Global search results view (hidden until searching) -->
       <section id="globalResults" class="results hidden" aria-label="Search Results">
         <div class="topbar">
-          <!-- Back + switches + nav chips + search (same order as tile panel) -->
+          <!-- Order: ← Back · Veg switch · Non-Veg switch · Food Course · Food Categories · Search -->
           <button class="back-btn" data-action="back">← Back</button>
-          <button class="switch veg on" role="switch" aria-checked="true" data-action="veg">
+          <button class="switch veg" role="switch" aria-checked="false" data-action="veg">
             <span class="track"></span><span class="knob"></span><span class="label">Veg</span>
           </button>
-          <button class="switch nonveg on" role="switch" aria-checked="true" data-action="nonveg">
+          <button class="switch nonveg" role="switch" aria-checked="false" data-action="nonveg">
             <span class="track"></span><span class="knob"></span><span class="label">Non-Veg</span>
           </button>
           <button class="pill-toggle course nav" data-action="nav-course">Food Course</button>
