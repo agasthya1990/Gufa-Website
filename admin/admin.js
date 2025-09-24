@@ -217,7 +217,15 @@ form.onsubmit = async (e) => {
   const foodType = foodTypeSelect.value;
   const qtyTypeValue = qtyTypeSelect.value;
   const imageFile = itemImage.files[0];
-  const addons = Array.from(addonsSelect.selectedOptions).map(o => o.value);
+  
+// save {name, price} objects
+  
+const addonNames = Array.from(addonsSelect.selectedOptions).map(o => o.value);
+const addons = await Promise.all(addonNames.map(async (nm) => {
+  const snap = await getDoc(doc(db, "menuAddons", nm));
+  const v = snap.exists() ? snap.data() : { name: nm, price: 0 };
+  return { name: v.name || nm, price: Number(v.price || 0) };
+}));
 
   if (!name || !description || !category || !foodCourse || !foodType || !qtyTypeValue || !imageFile) {
     statusMsg.innerText = "❌ Fill all fields"; return;
@@ -299,7 +307,6 @@ function renderTable() {
 const addonsText = Array.isArray(d.addons)
   ? d.addons.map(a => (typeof a === "string" ? a : `${a.name} (₹${a.price})`)).join(", ")
   : "";
-
 
     const row = document.createElement("tr");
     row.innerHTML = `
@@ -662,7 +669,7 @@ function applyFilters(items) {
     if (fo && (d.foodCourse || "") !== fo) return false;
     if (ft && d.foodType !== ft) return false;
     if (q) {
-      const addonHay = Array.isArray(d.addons)
+const addonHay = Array.isArray(d.addons)
   ? d.addons.map(a => (typeof a === "string" ? a : a.name)).join(" ")
   : "";
 const hay = `${d.name} ${d.description} ${d.category || ""} ${d.foodCourse || ""} ${addonHay}`.toLowerCase();
