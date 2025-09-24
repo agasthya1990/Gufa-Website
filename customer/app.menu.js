@@ -162,8 +162,8 @@ if (q>0){
   }
 } else {
   if (b) b.remove();
-}
-    
+ }
+}  
   function updateAllMiniCartBadges(){
     document.querySelectorAll(".menu-item").forEach(card=>{
       const id = card.getAttribute("data-id");
