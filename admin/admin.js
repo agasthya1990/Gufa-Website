@@ -13,6 +13,7 @@ import {
   updateDoc,
   deleteDoc,
   getDoc,
+  setDoc
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 import {
   getStorage,
@@ -74,6 +75,7 @@ const foodTypeSelect = document.getElementById("foodType");
 // Add-ons (hidden multi-select + custom dropdown)
 const addonsSelect = document.getElementById("addonsSelect");
 const newAddonInput = document.getElementById("newAddonInput");
+const newAddonInput = document.getElementById("newAddonPrice");
 const addAddonBtn = document.getElementById("addAddonBtn");
 const addonBtn = document.getElementById("addonDropdownBtn");
 const addonPanel = document.getElementById("addonDropdownPanel");
@@ -172,18 +174,29 @@ addCourseBtn.onclick = async () => {
   await renderCustomCourseDropdown();
   await populateFilterDropdowns();
 };
+
+// Add-ons
+
 addAddonBtn.onclick = async () => {
-  const name = (newAddonInput.value || "").trim();
+  const name  = (newAddonInput.value || "").trim();
   const price = parseFloat(newAddonPrice.value);
+
   if (!name || isNaN(price) || price <= 0) {
     return alert("Enter valid add-on name & price");
   }
+
+  // Keep the add-on NAME as the document ID (simple to read/change in Console)
   await setDoc(doc(db, "menuAddons", name), { name, price });
+
+  // Reset inputs
   newAddonInput.value = "";
   newAddonPrice.value = "";
-  await loadAddons(addonsSelect);
-  await renderCustomAddonDropdown();
+
+  // Refresh the hidden multi-select and the custom dropdown UI
+  await loadAddons(addonsSelect);       // you already have this loader wired:contentReference[oaicite:2]{index=2}:contentReference[oaicite:3]{index=3}
+  await renderCustomAddonDropdown();    // your existing custom dropdown builder in admin.js
 };
+
 
 /* =========================
    Image resize
