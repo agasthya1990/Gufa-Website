@@ -135,28 +135,35 @@
   function updateItemMiniCartBadge(itemId, rock=false){
     const btn = document.querySelector(`.menu-item[data-id="${itemId}"] .mini-cart-btn`);
     if (!btn) return;
-    // include all cart entries starting with this itemId (covers add-ons)
+  // include all cart entries starting with this itemId (covers add-ons)
 const bag = window?.Cart?.get?.() || {};
 let q = 0;
 for (const [k, entry] of Object.entries(bag)) {
   if (k.startsWith(itemId + ":")) q += Number(entry?.qty || 0);
 }
-    btn.classList.toggle("active", q>0);
-    let b = btn.querySelector(".badge");
-    if (q>0){
-      if (!b){ b = document.createElement("span"); b.className = "badge"; btn.appendChild(b); }
-      const prev = Number(b.textContent||"0");
-      b.textContent = String(q);
-    if (rock && q>0){
-  // retrigger animation every time
-  btn.classList.remove("rock");
-  void btn.offsetWidth; // reflow
-  btn.classList.add("rock");
-  setTimeout(()=>btn.classList.remove("rock"), 350);
+
+// fallback: if cart not updated yet, use DOM steppers to show immediate feedback
+if (q === 0) {
+  const nodes = document.querySelectorAll(`.stepper[data-item="${itemId}"] .qty .num`);
+  q = Array.from(nodes).reduce((a,el)=> a + (parseInt(el.textContent||"0",10)||0), 0);
 }
 
-    } else { if (b) b.remove(); }
+btn.classList.toggle("active", q>0);
+let b = btn.querySelector(".badge");
+if (q>0){
+  if (!b){ b = document.createElement("span"); b.className = "badge"; btn.appendChild(b); }
+  const prev = Number(b.textContent||"0");
+  b.textContent = String(q);
+  if (rock){
+    btn.classList.remove("rock");
+    void btn.offsetWidth; // reflow
+    btn.classList.add("rock");
+    setTimeout(()=>btn.classList.remove("rock"), 350);
   }
+} else {
+  if (b) b.remove();
+}
+    
   function updateAllMiniCartBadges(){
     document.querySelectorAll(".menu-item").forEach(card=>{
       const id = card.getAttribute("data-id");
@@ -469,57 +476,7 @@ function searchHaystack(it){
     if (!tile) return;
     enterList(tile.dataset.kind, tile.dataset.id, tile.dataset.label || tile.dataset.id);
   });
-
-// Stepper (+/−): update cart qty, badges, header, and rock basket
-document.addEventListener("click", (e) => {
-  const incEl = e.target.closest('.stepper [data-action="inc"], .stepper .inc, .stepper .plus, .stepper .btn-inc');
-  const decEl = e.target.closest('.stepper [data-action="dec"], .stepper .dec, .stepper .minus, .stepper .btn-dec');
-  const isInc = !!incEl, isDec = !!decEl;
-  if (!isInc && !isDec) return;
-
-  const stepper = (incEl || decEl).closest(".stepper");
-  if (!stepper) return;
-
-  const card   = stepper.closest(".menu-item");
-  const itemId = stepper.getAttribute("data-item") || card?.getAttribute("data-id");
-  const key    = stepper.getAttribute("data-key")  || itemId; // base key for this stepper
-  if (!itemId || !key) return;
-
-  // current qty from cart
-  const bag = window?.Cart?.get?.() || {};
-  const cur = Number(bag?.[key]?.qty || 0);
-  const next = Math.max(0, cur + (isInc ? 1 : -1));
-
-  // Minimal meta only if creating the entry
-  let meta;
-  if (!(key in bag) && next > 0) {
-    const item = (window.ITEMS || []).find(x => x.id === itemId) || {};
-    const priceAttr = Number(stepper.getAttribute("data-price") || 0);
-    meta = {
-      id: itemId,
-      name: item.name || card?.querySelector(".title")?.textContent || "Item",
-      price: priceAttr
-    };
-  }
-
-  // write to cart
-  try { window.Cart?.setQty?.(key, next, meta); } catch (err) { console?.error?.("setQty failed", err); }
-
-  // refresh UI
-  updateAllMiniCartBadges();
-  updateCartLink();
-
-  // rock basket every time
-  const btn = card?.querySelector(".mini-cart-btn");
-  if (btn) {
-    btn.classList.remove("rock");
-    void btn.offsetWidth; // reflow to retrigger
-    btn.classList.add("rock");
-    setTimeout(() => btn.classList.remove("rock"), 350);
-  }
-});
-
-  
+    
 // Toggle Add-ons popover
 document.addEventListener("click", (e) => {
   const btn = e.target.closest(".addons-btn");
