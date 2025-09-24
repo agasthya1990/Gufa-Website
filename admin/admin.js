@@ -1152,12 +1152,13 @@ function openAssignAddonsModal(itemId, current) {
     const addons = await fetchAddons();
     const cur = new Set((current || []).map(a => typeof a === "string" ? a : a.name));
 
-    list.innerHTML = addons.map(a => `
-      <label style="display:flex; align-items:center; gap:8px; padding:6px 4px;">
-        <input type="checkbox" value="${a.name}" ${cur.has(a.name) ? "checked" : ""} />
-        <span>${a.name} (₹${a.price})</span>
-      </label>
-    ').join("");
+   list.innerHTML = addons.map(a => `
+  <label style="display:flex; align-items:center; gap:8px; padding:6px 4px;">
+    <input type="checkbox" value="${a.name}" ${cur.has(a.name) ? "checked" : ""} />
+    <span>${a.name} (₹${a.price})</span>
+  </label>
+`).join("");
+
 
     modal.querySelector("#assignAddonSave").onclick = async () => {
       const chosen = addons
@@ -1171,10 +1172,9 @@ function openAssignAddonsModal(itemId, current) {
       }
     };
 
-    modal.style.display = "block";
+      modal.style.display = "block";
   })();
-})();
-
+}
 
 /* =========================
    Helpers
