@@ -279,10 +279,12 @@ for (const [k, entry] of Object.entries(bag)) {
   const courseMatch   = (it, c) => it.foodCourse === c.id || it.foodCourse === c.label;
   const categoryMatch = (it, c) => it.category   === c.id || it.category   === c.label;
 
-  function searchHaystack(it){
-    const parts = [ it.name, it.description, it.foodCourse, it.category, ...(Array.isArray(it.addons)?it.addons:[]) ].filter(Boolean);
-    return parts.join(" ");
-  }
+function searchHaystack(it){
+  const addonNames = Array.isArray(it.addons) ? it.addons.map(a => typeof a === "string" ? a : a.name) : [];
+  const parts = [ it.name, it.description, it.foodCourse, it.category, ...addonNames ].filter(Boolean);
+  return parts.join(" ");
+}
+
   function applySearch(items, q){ if (!q) return items; return items.filter(it => fuzzyMatch(searchHaystack(it), q)); }
 
   /* ---------- Tiles (centered grid) ---------- */
@@ -656,3 +658,4 @@ window.addEventListener("cart:update", () => {
   updateAllMiniCartBadges();
   updateCartLink();
 });
+})();
