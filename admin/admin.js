@@ -182,23 +182,6 @@ addAddonBtn.onclick = async () => {
   await renderCustomAddonDropdown();
 };
 
-  if (!name || isNaN(price) || price <= 0) {
-    return alert("Enter valid add-on name & price");
-  }
-
-  // Keep the add-on NAME as the document ID (simple to read/change in Console)
-  await setDoc(doc(db, "menuAddons", name), { name, price });
-
-  // Reset inputs
-  newAddonInput.value = "";
-  newAddonPrice.value = "";
-
-  // Refresh the hidden multi-select and the custom dropdown UI
-  await loadAddons(addonsSelect);       // you already have this loader wired:contentReference[oaicite:2]{index=2}:contentReference[oaicite:3]{index=3}
-  await renderCustomAddonDropdown();    // your existing custom dropdown builder in admin.js
-};
-
-
 /* =========================
    Image resize
    ========================= */
