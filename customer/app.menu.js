@@ -93,9 +93,22 @@
   }
 
   function totalQtyForItem(itemId){
-    const nodes = document.querySelectorAll(`.stepper[data-item="${itemId}"] .qty .num`);
-    return Array.from(nodes).reduce((a,el)=> a + (parseInt(el.textContent||"0",10)||0), 0);
-  }
+  // DOM steppers total
+  const nodes = document.querySelectorAll(`.stepper[data-item="${itemId}"] .qty .num`);
+  let domSum = Array.from(nodes).reduce((a,el)=> a + (parseInt(el.textContent||"0",10)||0), 0);
+
+  // Include Cart store entries (covers add-on composite keys)
+  try {
+    const bag = window?.Cart?.get?.() || {};
+    const cartSum = Object.entries(bag).reduce((acc, [k, entry]) => {
+      if (k.startsWith(`${itemId}:`)) acc += Number(entry?.qty||0)||0;
+      return acc;
+    }, 0);
+    // If cartSum is larger (e.g., due to add-on combos), prefer it
+    return Math.max(domSum, cartSum);
+  } catch { return domSum; }
+}
+
 
   function updateCartLink(){
     let totalDOM = 0;
@@ -203,25 +216,32 @@
     const variants = (pm?.variants || []).filter(v => v.price > 0);
     const tagsLeft = [m.foodCourse||"", m.category||""].filter(Boolean).join(" • ");
     const diet = dietSpan(m.foodType);
-   const addons = Array.isArray(m.addons) && m.addons.length
+  const addons = Array.isArray(m.addons) && m.addons.length
   ? `
-    <button class="addons-btn gold glow" data-action="addons"
+    <button class="addons-btn gold glow shimmer" data-action="addons"
             aria-expanded="false" aria-controls="addons-${m.id}">
       Add-ons
     </button>
     <div id="addons-${m.id}" class="addons-popover" role="dialog" aria-hidden="true">
       <div class="bubble">
+        <div class="addon-list">
         ${m.addons.map(a => {
           const n = (typeof a === "string") ? a : (a.name || "");
           const p = (typeof a === "string") ? 0 : Number(a.price || 0);
           return `
             <label class="addon-row">
-              <input type="checkbox" data-addon="${n}">
+              <input type="checkbox" data-addon="${n}" data-price="${p}">
               <span class="name">${n}</span>
               <span class="price">₹${p}</span>
             </label>
           `;
         }).join("")}
+        </div>
+        <div class="addon-actions">
+          <button class="addons-add gold" data-action="addons-add" disabled>
+            Add to Purchase
+          </button>
+        </div>
       </div>
     </div>
   `
@@ -436,6 +456,114 @@
     enterList(tile.dataset.kind, tile.dataset.id, tile.dataset.label || tile.dataset.id);
   });
 
+// Toggle Add-ons popover
+document.addEventListener("click", (e) => {
+  const btn = e.target.closest(".addons-btn");
+  if (!btn) return;
+
+  e.preventDefault();
+  e.stopPropagation();
+
+  const card = btn.closest(".menu-item");
+  const pop = card?.querySelector(".addons-popover");
+  if (!pop) return;
+
+  // Close others
+  document.querySelectorAll('.addons-popover[aria-hidden="false"]').forEach(p => {
+    if (p !== pop) {
+      p.setAttribute("aria-hidden", "true");
+      const b = p.previousElementSibling;
+      if (b?.classList.contains("addons-btn")) b.setAttribute("aria-expanded", "false");
+    }
+  });
+
+  const isOpen = pop.getAttribute("aria-hidden") === "false";
+  pop.setAttribute("aria-hidden", isOpen ? "true" : "false");
+  btn.setAttribute("aria-expanded", isOpen ? "false" : "true");
+
+  // Set initial disabled state
+  const addBtn = pop.querySelector('.addons-add');
+  const any = !!pop.querySelector('.addon-row input[type="checkbox"]:checked');
+  if (addBtn) addBtn.disabled = !any;
+});
+
+// Enable/disable Add to Purchase based on checks
+document.addEventListener("change", (e) => {
+  if (!e.target.matches('.addon-row input[type="checkbox"]')) return;
+  const pop = e.target.closest('.addons-popover'); if (!pop) return;
+  const addBtn = pop.querySelector('.addons-add'); if (!addBtn) return;
+  const any = !!pop.querySelector('.addon-row input[type="checkbox"]:checked');
+  addBtn.disabled = !any;
+});
+
+document.addEventListener("click", (e) => {
+  const addBtn = e.target.closest('.addons-add[data-action="addons-add"]');
+  if (!addBtn) return;
+
+  const pop = addBtn.closest('.addons-popover');
+  const card = addBtn.closest('.menu-item');
+  const itemId = card?.getAttribute('data-id');
+  if (!pop || !card || !itemId) return;
+
+  const found = ITEMS.find(x => x.id === itemId); if (!found) return;
+
+  // Gather selected add-ons
+  const picks = Array.from(pop.querySelectorAll('.addon-row input[type="checkbox"]:checked')).map(el => ({
+    name: el.getAttribute('data-addon') || "",
+    price: Number(el.getAttribute('data-price') || 0)
+  })).filter(a => a.name);
+
+  if (!picks.length) return; // shouldn't happen because button is disabled otherwise
+
+  // Choose default variant: prefer 'full' if available, else first priced variant
+  const pm = priceModel(found.qtyType);
+  const variants = (pm?.variants || []).filter(v => v.price > 0);
+  const preferFull = variants.find(v => v.key === "full") || variants[0];
+  if (!preferFull) return;
+
+  // Build composite cart key (stable order for add-ons)
+  const addonKey = picks.map(a => a.name).sort().join('+');
+  const variantKey = preferFull.key;
+  const baseKey = `${found.id}:${variantKey}`;
+  const key = addonKey ? `${baseKey}:${addonKey}` : baseKey;
+
+  // Unit price = base + sum(add-ons)
+  const unitPrice = Number(preferFull.price || 0) + picks.reduce((s,a)=> s + (Number(a.price||0)||0), 0);
+
+  // Current qty from store
+  let nextQty = 1;
+  try {
+    const bag = window?.Cart?.get?.() || {};
+    nextQty = Number(bag?.[key]?.qty || 0) + 1;
+  } catch {}
+
+  // Write to Cart with meta including add-ons
+  try {
+    window.Cart?.setQty?.(key, nextQty, {
+      id: found.id,
+      name: found.name,
+      variant: variantKey,
+      price: unitPrice,
+      addons: picks
+    });
+  } catch {}
+
+  // Animate: close genie back to button
+  pop.classList.add('genie-out');
+  setTimeout(() => {
+    pop.setAttribute('aria-hidden','true');
+    const btn = card.querySelector('.addons-btn');
+    if (btn) btn.setAttribute('aria-expanded','false');
+    pop.classList.remove('genie-out');
+  }, 180);
+
+  // Rock basket + update UI
+  updateItemMiniCartBadge(found.id, /*rock:*/ true);
+  updateCartLink();
+});
+
+  
+  
 // Add-ons button → toggle the comic bubble popover
 document.addEventListener("click", (e) => {
   const btn = e.target.closest(".addons-btn");
