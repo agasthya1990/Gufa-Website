@@ -569,27 +569,28 @@ document.addEventListener("click", (e) => {
     });
   } catch {}
 
-  // Animate: close genie back to button
-  pop.classList.add('genie-out');
-  setTimeout(() => {
-    pop.setAttribute('aria-hidden','true');
-    const btn = card.querySelector('.addons-btn');
-    if (btn) btn.setAttribute('aria-expanded','false');
-    pop.classList.remove('genie-out');
-  }, 180);
+ // Animate: close genie back to button
+pop.classList.add('genie-out');
+setTimeout(() => {
+  pop.setAttribute('aria-hidden','true');
+  const abtn = card.querySelector('.addons-btn');
+  if (abtn) abtn.setAttribute('aria-expanded','false');
+  pop.classList.remove('genie-out');
+}, 180);
 
-// Refresh badges & header (ensures gold highlight + numbers)
+// 1) Update the stepper count for the chosen variant (includes add-on composites)
+const baseBadge = card.querySelector(`.qty[data-key="${baseKey}"] .num`);
+if (baseBadge) {
+  baseBadge.textContent = String(getQty(baseKey));
+}
+
+// 2) Refresh badges (gold) + header count
 updateAllMiniCartBadges();
 updateCartLink();
 
-// Rock the mini cart button every time
-const btn = card.querySelector(".mini-cart-btn");
-if (btn) {
-  btn.classList.remove("rock");
-  void btn.offsetWidth;  // reflow to retrigger
-  btn.classList.add("rock");
-  setTimeout(() => btn.classList.remove("rock"), 350);
-}
+// 3) Ensure the mini-cart button highlights + rocks
+updateItemMiniCartBadge(found.id, /*rock:*/ true);
+
 });
 
 // Dismiss on outside click
