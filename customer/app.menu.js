@@ -562,11 +562,19 @@ document.addEventListener("click", (e) => {
     pop.classList.remove('genie-out');
   }, 180);
 
-  // Rock basket + update UI
-updateAllMiniCartBadges();       // refresh badges including composite keys
-updateItemMiniCartBadge(found.id, /*rock:*/ true); // trigger rock
-updateCartLink();                // refresh header
-});
+// Update UI & rock basket
+updateAllMiniCartBadges();
+updateCartLink();
+
+// Force rock animation on the card’s mini-cart button
+const btn = card.querySelector(".mini-cart-btn");
+if (btn) {
+  btn.classList.remove("rock");
+  void btn.offsetWidth; // force reflow
+  btn.classList.add("rock");
+  setTimeout(() => btn.classList.remove("rock"), 350);
+}
+
 
 // Dismiss on outside click
 document.addEventListener("click", (e) => {
