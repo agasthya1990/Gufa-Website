@@ -403,3 +403,78 @@ footer p{ margin:6px 0; }
   100%{ transform: translateY(0) rotate(0); }
 }
 .mini-cart-btn.rock { animation: cartRock .35s ease; }
+/* Stronger attention on Add-ons button: shimmer + heartbeat */
+@keyframes heartbeat {
+  0% { box-shadow: 0 0 0 0 rgba(224,176,42,.55); transform: translateZ(0) scale(1); }
+  40%{ box-shadow: 0 0 0 6px rgba(224,176,42,0); transform: translateZ(0) scale(1.02); }
+  100%{ box-shadow: 0 0 0 0 rgba(224,176,42,0); transform: translateZ(0) scale(1); }
+}
+@keyframes shimmer {
+  0% { background-position: -120% 0; }
+  100% { background-position: 220% 0; }
+}
+.addons-btn.gold {
+  display:inline-flex; align-items:center; gap:.4rem;
+  padding:.25rem .6rem; border:none; border-radius:999px;
+  background: linear-gradient(180deg, #f9d65c, #e0b02a);
+  color:#4a3200; font-weight:600; font-size:.85rem; cursor:pointer;
+  box-shadow: 0 0 0 0 rgba(224,176,42,.5);
+}
+.addons-btn.gold.glow { animation: heartbeat 1.8s ease-in-out infinite; }
+/* subtle shimmer overlay */
+.addons-btn.gold.shimmer {
+  position: relative; overflow: hidden;
+  background-image:
+    linear-gradient(180deg, #f9d65c, #e0b02a),
+    linear-gradient(120deg, rgba(255,255,255,.0) 0%, rgba(255,255,255,.65) 50%, rgba(255,255,255,0) 100%);
+  background-size: auto, 200% 100%;
+  background-blend-mode: overlay;
+  animation: heartbeat 1.8s ease-in-out infinite, shimmer 2.8s linear infinite;
+}
+
+/* Popover layout + genie retract */
+.addons-popover { position: relative; margin-top:.5rem; display:block; }
+.addons-popover[aria-hidden="true"] { display:none; }
+.addons-popover .bubble {
+  position: relative; background:#fffef6; border:2px solid #f0d27a;
+  border-radius: 14px; padding:.6rem .8rem 2.75rem; /* footer space */
+  box-shadow: 0 10px 20px rgba(0,0,0,.08), inset 0 0 0 2px rgba(255,255,255,.6);
+  transform-origin: top left; animation: bubbleIn .18s ease-out;
+}
+@keyframes bubbleIn {
+  0% { opacity:0; transform: translateY(-6px) scale(.98); }
+  100%{ opacity:1; transform: translateY(0) scale(1); }
+}
+.addons-popover .bubble::after {
+  content:""; position:absolute; top:-10px; left:18px; width:18px; height:18px;
+  background:#fffef6; border-left:2px solid #f0d27a; border-top:2px solid #f0d27a; transform: rotate(45deg);
+}
+.addon-list { max-height: 220px; overflow:auto; }
+.addon-row { display:flex; align-items:center; justify-content:space-between; gap:.75rem; padding:.25rem 0; font-size:.9rem; }
+.addon-row .name { font-weight:600; }
+.addon-row .price { color:#654; }
+
+/* Footer button pinned bottom-center */
+.addon-actions {
+  position:absolute; left:0; right:0; bottom:.6rem;
+  display:flex; justify-content:center;
+}
+.addons-add.gold {
+  padding:.35rem .9rem; border:none; border-radius:999px;
+  background: linear-gradient(180deg, #f9d65c, #e0b02a);
+  color:#4a3200; font-weight:700; font-size:.9rem; cursor:pointer;
+}
+.addons-add[disabled] {
+  background: #e9e6da; color:#8a8a8a; cursor:not-allowed; filter: grayscale(30%);
+}
+
+/* Genie retract (on add) */
+@keyframes genieOut {
+  0% { opacity:1; transform: translateY(0) scale(1); }
+  100% { opacity:0; transform: translateY(-8px) scale(.96); }
+}
+.addons-popover.genie-out .bubble { animation: genieOut .18s ease-in forwards; }
+
+/* Basket rock (if not already present) */
+@keyframes cartRock { 0%{transform:translateY(0) rotate(0)} 40%{transform:translateY(-2px) rotate(-6deg)} 70%{transform:translateY(0) rotate(3deg)} 100%{transform:translateY(0) rotate(0)} }
+.mini-cart-btn.rock { animation: cartRock .35s ease; }
