@@ -178,8 +178,9 @@ addCourseBtn.onclick = async () => {
 // Add-ons
 
 addAddonBtn.onclick = async () => {
-  const name  = (newAddonInput.value || "").trim();
-  const price = parseFloat(newAddonPrice.value);
+  await addAddon(newAddonInput, newAddonPrice, () => loadAddons(addonsSelect));
+  await renderCustomAddonDropdown();
+};
 
   if (!name || isNaN(price) || price <= 0) {
     return alert("Enter valid add-on name & price");
