@@ -75,7 +75,7 @@ const foodTypeSelect = document.getElementById("foodType");
 // Add-ons (hidden multi-select + custom dropdown)
 const addonsSelect = document.getElementById("addonsSelect");
 const newAddonInput = document.getElementById("newAddonInput");
-const newAddonInput = document.getElementById("newAddonPrice");
+const newAddonPrice = document.getElementById("newAddonPrice");
 const addAddonBtn = document.getElementById("addAddonBtn");
 const addonBtn = document.getElementById("addonDropdownBtn");
 const addonPanel = document.getElementById("addonDropdownPanel");
