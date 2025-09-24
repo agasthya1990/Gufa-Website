@@ -122,10 +122,14 @@
       if (!b){ b = document.createElement("span"); b.className = "badge"; btn.appendChild(b); }
       const prev = Number(b.textContent||"0");
       b.textContent = String(q);
-      if (rock && prev===0 && q>0){
-        btn.classList.add("rock");
-        setTimeout(()=>btn.classList.remove("rock"), 350);
-      }
+    if (rock && q>0){
+  // retrigger animation every time
+  btn.classList.remove("rock");
+  void btn.offsetWidth; // reflow
+  btn.classList.add("rock");
+  setTimeout(()=>btn.classList.remove("rock"), 350);
+}
+
     } else { if (b) b.remove(); }
   }
   function updateAllMiniCartBadges(){
@@ -199,9 +203,30 @@
     const variants = (pm?.variants || []).filter(v => v.price > 0);
     const tagsLeft = [m.foodCourse||"", m.category||""].filter(Boolean).join(" • ");
     const diet = dietSpan(m.foodType);
-    const addons = Array.isArray(m.addons) && m.addons.length
-  ? `<small class="muted">Add-ons: ${m.addons.map(a => typeof a === "string" ? a : a.name).join(", ")}</small>`
+   const addons = Array.isArray(m.addons) && m.addons.length
+  ? `
+    <button class="addons-btn gold glow" data-action="addons"
+            aria-expanded="false" aria-controls="addons-${m.id}">
+      Add-ons
+    </button>
+    <div id="addons-${m.id}" class="addons-popover" role="dialog" aria-hidden="true">
+      <div class="bubble">
+        ${m.addons.map(a => {
+          const n = (typeof a === "string") ? a : (a.name || "");
+          const p = (typeof a === "string") ? 0 : Number(a.price || 0);
+          return `
+            <label class="addon-row">
+              <input type="checkbox" data-addon="${n}">
+              <span class="name">${n}</span>
+              <span class="price">₹${p}</span>
+            </label>
+          `;
+        }).join("")}
+      </div>
+    </div>
+  `
   : "";
+
     const steppers = variants.map(v => stepperHTML(m, v)).join("");
 
     return `
@@ -411,6 +436,54 @@
     enterList(tile.dataset.kind, tile.dataset.id, tile.dataset.label || tile.dataset.id);
   });
 
+// Add-ons button → toggle the comic bubble popover
+document.addEventListener("click", (e) => {
+  const btn = e.target.closest(".addons-btn");
+  if (!btn) return;
+
+  e.preventDefault();
+  e.stopPropagation();
+
+  const card = btn.closest(".menu-item");
+  const pop = card?.querySelector(".addons-popover");
+  if (!pop) return;
+
+  // Close any other open popovers
+  document.querySelectorAll('.addons-popover[aria-hidden="false"]').forEach(p => {
+    if (p !== pop) {
+      p.setAttribute("aria-hidden", "true");
+      const b = p.previousElementSibling;
+      if (b?.classList.contains("addons-btn")) b.setAttribute("aria-expanded", "false");
+    }
+  });
+
+  const isOpen = pop.getAttribute("aria-hidden") === "false";
+  pop.setAttribute("aria-hidden", isOpen ? "true" : "false");
+  btn.setAttribute("aria-expanded", isOpen ? "false" : "true");
+});
+
+// Dismiss on outside click
+document.addEventListener("click", (e) => {
+  document.querySelectorAll('.addons-popover[aria-hidden="false"]').forEach(p => {
+    if (!p.contains(e.target) && !e.target.closest(".addons-btn")) {
+      p.setAttribute("aria-hidden", "true");
+      const b = p.previousElementSibling;
+      if (b?.classList.contains("addons-btn")) b.setAttribute("aria-expanded", "false");
+    }
+  });
+});
+
+// Dismiss on Esc
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape") return;
+  document.querySelectorAll('.addons-popover[aria-hidden="false"]').forEach(p => {
+    p.setAttribute("aria-hidden", "true");
+    const b = p.previousElementSibling;
+    if (b?.classList.contains("addons-btn")) b.setAttribute("aria-expanded", "false");
+  });
+});
+
+  
   // Topbar actions
   document.addEventListener("click", (e) => {
     const actBtn = e.target.closest("[data-action]"); if (!actBtn) return;
