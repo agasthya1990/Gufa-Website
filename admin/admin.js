@@ -1020,19 +1020,19 @@ async function renderCustomAddonDropdown() {
   if (!addonBtn || !addonPanel) return;
 
   const addons = await fetchAddons();
-  const selected = new Set(Array.from(addonsSelect.selectedOptions).map(o=>o.value));
+const selected = new Set(Array.from(addonsSelect.selectedOptions).map(o=>o.value));
 
-  addonPanel.innerHTML = addons.map(name => {
-    const checked = selected.has(name) ? "checked" : "";
-    return `
-      <div class="addon-row" data-name="${name}">
-        <span class="addon-check ${checked}" data-role="check" title="Toggle"></span>
-        <span class="addon-label" data-role="label" title="${name}">${name}</span>
-        <button class="addon-btn" title="Edit" data-role="edit">✏️</button>
-        <button class="addon-btn" title="Delete" data-role="delete">🗑️</button>
-      </div>
-    `;
-  }).join("");
+addonPanel.innerHTML = addons.map(a => {
+  const checked = selected.has(a.name) ? "checked" : "";
+  return `
+    <div class="addon-row" data-name="${a.name}">
+      <span class="addon-check ${checked}" data-role="check" title="Toggle"></span>
+      <span class="addon-label" data-role="label" title="${a.name}">${a.name} (₹${a.price})</span>
+      <button class="addon-btn" title="Edit" data-role="edit">✏️</button>
+      <button class="addon-btn" title="Delete" data-role="delete">🗑️</button>
+    </div>
+  `;
+}).join("");
 
   addonPanel.onmousedown = (e)=> e.stopPropagation();
   addonPanel.onclick = async (e) => {
@@ -1160,25 +1160,26 @@ function openAssignAddonsModal(itemId, current) {
   }
 
   (async () => {
-    const list = modal.querySelector("#assignAddonList");
     const addons = await fetchAddons();
-    const cur = new Set(current || []);
-    list.innerHTML = addons.map(a => `
-      <label style="display:flex; align-items:center; gap:8px; padding:6px 4px;">
-        <input type="checkbox" value="${a}" ${cur.has(a) ? "checked" : ""} />
-        <span>${a}</span>
-      </label>
-    `).join("");
+const cur = new Set((current || []).map(a => a.name));
+list.innerHTML = addons.map(a => `
+  <label style="display:flex; align-items:center; gap:8px; padding:6px 4px;">
+    <input type="checkbox" value="${a.name}" ${cur.has(a.name) ? "checked" : ""} />
+    <span>${a.name} (₹${a.price})</span>
+  </label>
+`).join("");
 
-    modal.querySelector("#assignAddonSave").onclick = async () => {
-      const chosen = Array.from(list.querySelectorAll('input[type="checkbox"]:checked')).map(el=>el.value);
-      try {
-        await updateDoc(doc(db, "menuItems", itemId), { addons: chosen });
-        modal.style.display = "none";
-      } catch (err) {
-        console.error(err); alert("Failed to assign add-ons: " + (err?.message || err));
-      }
-    };
+modal.querySelector("#assignAddonSave").onclick = async () => {
+  const chosen = addons.filter(a =>
+    list.querySelector(`input[value="${a.name}"]`)?.checked
+  );
+  try {
+    await updateDoc(doc(db, "menuItems", itemId), { addons: chosen });
+    modal.style.display = "none";
+  } catch (err) {
+    console.error(err); alert("Failed to assign add-ons: " + (err?.message || err));
+  }
+};
     modal.style.display = "block";
   })();
 }
