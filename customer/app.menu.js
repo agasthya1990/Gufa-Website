@@ -470,6 +470,56 @@ function searchHaystack(it){
     enterList(tile.dataset.kind, tile.dataset.id, tile.dataset.label || tile.dataset.id);
   });
 
+// Stepper (+/−): update cart qty, badges, header, and rock basket
+document.addEventListener("click", (e) => {
+  const incEl = e.target.closest('.stepper [data-action="inc"], .stepper .inc, .stepper .plus, .stepper .btn-inc');
+  const decEl = e.target.closest('.stepper [data-action="dec"], .stepper .dec, .stepper .minus, .stepper .btn-dec');
+  const isInc = !!incEl, isDec = !!decEl;
+  if (!isInc && !isDec) return;
+
+  const stepper = (incEl || decEl).closest(".stepper");
+  if (!stepper) return;
+
+  const card   = stepper.closest(".menu-item");
+  const itemId = stepper.getAttribute("data-item") || card?.getAttribute("data-id");
+  const key    = stepper.getAttribute("data-key")  || itemId; // base key for this stepper
+  if (!itemId || !key) return;
+
+  // current qty from cart
+  const bag = window?.Cart?.get?.() || {};
+  const cur = Number(bag?.[key]?.qty || 0);
+  const next = Math.max(0, cur + (isInc ? 1 : -1));
+
+  // Minimal meta only if creating the entry
+  let meta;
+  if (!(key in bag) && next > 0) {
+    const item = (window.ITEMS || []).find(x => x.id === itemId) || {};
+    const priceAttr = Number(stepper.getAttribute("data-price") || 0);
+    meta = {
+      id: itemId,
+      name: item.name || card?.querySelector(".title")?.textContent || "Item",
+      price: priceAttr
+    };
+  }
+
+  // write to cart
+  try { window.Cart?.setQty?.(key, next, meta); } catch (err) { console?.error?.("setQty failed", err); }
+
+  // refresh UI
+  updateAllMiniCartBadges();
+  updateCartLink();
+
+  // rock basket every time
+  const btn = card?.querySelector(".mini-cart-btn");
+  if (btn) {
+    btn.classList.remove("rock");
+    void btn.offsetWidth; // reflow to retrigger
+    btn.classList.add("rock");
+    setTimeout(() => btn.classList.remove("rock"), 350);
+  }
+});
+
+  
 // Toggle Add-ons popover
 document.addEventListener("click", (e) => {
   const btn = e.target.closest(".addons-btn");
@@ -663,9 +713,10 @@ document.addEventListener("click", (e) => {
   }
   document.addEventListener("DOMContentLoaded", boot);
 
-  // Keep header count in sync if any other script updates the cart
+ // Keep header & badges in sync whenever the cart store updates
 window.addEventListener("cart:update", () => {
   updateAllMiniCartBadges();
   updateCartLink();
 });
+
 })();
