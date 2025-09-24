@@ -562,34 +562,6 @@ document.addEventListener("click", (e) => {
   updateCartLink();
 });
 
-  
-  
-// Add-ons button → toggle the comic bubble popover
-document.addEventListener("click", (e) => {
-  const btn = e.target.closest(".addons-btn");
-  if (!btn) return;
-
-  e.preventDefault();
-  e.stopPropagation();
-
-  const card = btn.closest(".menu-item");
-  const pop = card?.querySelector(".addons-popover");
-  if (!pop) return;
-
-  // Close any other open popovers
-  document.querySelectorAll('.addons-popover[aria-hidden="false"]').forEach(p => {
-    if (p !== pop) {
-      p.setAttribute("aria-hidden", "true");
-      const b = p.previousElementSibling;
-      if (b?.classList.contains("addons-btn")) b.setAttribute("aria-expanded", "false");
-    }
-  });
-
-  const isOpen = pop.getAttribute("aria-hidden") === "false";
-  pop.setAttribute("aria-hidden", isOpen ? "true" : "false");
-  btn.setAttribute("aria-expanded", isOpen ? "false" : "true");
-});
-
 // Dismiss on outside click
 document.addEventListener("click", (e) => {
   document.querySelectorAll('.addons-popover[aria-hidden="false"]').forEach(p => {
