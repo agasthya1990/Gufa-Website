@@ -1143,29 +1143,33 @@ function openAssignAddonsModal(itemId, current) {
   }
 
   (async () => {
+    const list = modal.querySelector("#assignAddonList"); // ← define list
     const addons = await fetchAddons();
-const cur = new Set((current || []).map(a => a.name));
-list.innerHTML = addons.map(a => `
-  <label style="display:flex; align-items:center; gap:8px; padding:6px 4px;">
-    <input type="checkbox" value="${a.name}" ${cur.has(a.name) ? "checked" : ""} />
-    <span>${a.name} (₹${a.price})</span>
-  </label>
-`).join("");
+    const cur = new Set((current || []).map(a => typeof a === "string" ? a : a.name));
 
-modal.querySelector("#assignAddonSave").onclick = async () => {
-  const chosen = addons.filter(a =>
-    list.querySelector(`input[value="${a.name}"]`)?.checked
-  );
-  try {
-    await updateDoc(doc(db, "menuItems", itemId), { addons: chosen });
-    modal.style.display = "none";
-  } catch (err) {
-    console.error(err); alert("Failed to assign add-ons: " + (err?.message || err));
-  }
-};
+    list.innerHTML = addons.map(a => `
+      <label style="display:flex; align-items:center; gap:8px; padding:6px 4px;">
+        <input type="checkbox" value="${a.name}" ${cur.has(a.name) ? "checked" : ""} />
+        <span>${a.name} (₹${a.price})</span>
+      </label>
+    ').join("");
+
+    modal.querySelector("#assignAddonSave").onclick = async () => {
+      const chosen = addons
+        .filter(a => list.querySelector(`input[value="${a.name}"]`)?.checked)
+        .map(a => ({ name: a.name, price: a.price })); // store objects
+      try {
+        await updateDoc(doc(db, "menuItems", itemId), { addons: chosen });
+        modal.style.display = "none";
+      } catch (err) {
+        console.error(err); alert("Failed to assign add-ons: " + (err?.message || err));
+      }
+    };
+
     modal.style.display = "block";
   })();
-}
+})();
+
 
 /* =========================
    Helpers
