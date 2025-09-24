@@ -35,19 +35,21 @@ export async function loadCourses(selectEl) {
   });
 }
 /** Add-ons (multi) */
-export async function loadAddons(selectEl) {
-  if (!selectEl) return;
-  // keep selections while reloading
-  const prev = new Set([...selectEl.options].filter(o=>o.selected).map(o=>o.value));
-  selectEl.innerHTML = ""; // multi-select (no placeholder)
-  const snapshot = await getDocs(collection(db, "menuAddons"));
-  snapshot.forEach((d) => {
-    const opt = document.createElement("option");
-    opt.value = d.id; opt.textContent = d.id;
-    if (prev.has(d.id)) opt.selected = true;
-    selectEl.appendChild(opt);
-  });
+export async function addAddon(nameInput, priceInput, after) {
+  const name = (nameInput?.value || "").trim();
+  const price = parseFloat(priceInput?.value);
+
+  if (!name || isNaN(price) || price <= 0) {
+    return alert("Enter valid add-on name & price");
+  }
+
+  await setDoc(doc(db, "menuAddons", name), { name, price });
+
+  if (nameInput) nameInput.value = "";
+  if (priceInput) priceInput.value = "";
+  if (after) after();
 }
+
 
 /** =========================
  *  List fetchers (arrays)
