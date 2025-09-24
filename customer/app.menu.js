@@ -128,7 +128,12 @@
   function updateItemMiniCartBadge(itemId, rock=false){
     const btn = document.querySelector(`.menu-item[data-id="${itemId}"] .mini-cart-btn`);
     if (!btn) return;
-    const q = totalQtyForItem(itemId);
+    // include all cart entries starting with this itemId (covers add-ons)
+const bag = window?.Cart?.get?.() || {};
+let q = 0;
+for (const [k, entry] of Object.entries(bag)) {
+  if (k.startsWith(itemId + ":")) q += Number(entry?.qty || 0);
+}
     btn.classList.toggle("active", q>0);
     let b = btn.querySelector(".badge");
     if (q>0){
@@ -558,8 +563,9 @@ document.addEventListener("click", (e) => {
   }, 180);
 
   // Rock basket + update UI
-  updateItemMiniCartBadge(found.id, /*rock:*/ true);
-  updateCartLink();
+updateAllMiniCartBadges();       // refresh badges including composite keys
+updateItemMiniCartBadge(found.id, /*rock:*/ true); // trigger rock
+updateCartLink();                // refresh header
 });
 
 // Dismiss on outside click
