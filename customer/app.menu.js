@@ -200,7 +200,8 @@
     const tagsLeft = [m.foodCourse||"", m.category||""].filter(Boolean).join(" • ");
     const diet = dietSpan(m.foodType);
     const addons = Array.isArray(m.addons) && m.addons.length
-      ? `<small class="muted">Add-ons: ${m.addons.join(", ")}</small>` : "";
+  ? `<small class="muted">Add-ons: ${m.addons.map(a => typeof a === "string" ? a : a.name).join(", ")}</small>`
+  : "";
     const steppers = variants.map(v => stepperHTML(m, v)).join("");
 
     return `
