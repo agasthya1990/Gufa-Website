@@ -84,13 +84,24 @@
   }
 
   function getQty(key) {
-    const el = document.querySelector(`.qty[data-key="${key}"] .num`);
-    if (el) {
-      const v = parseInt(el.textContent || "0", 10);
-      if (!Number.isNaN(v)) return v;
-    }
-    try { return Number(window?.Cart?.get?.()?.[key]?.qty || 0); } catch { return 0; }
+  const el = document.querySelector(`.qty[data-key="${key}"] .num`);
+  if (el) {
+    const v = parseInt(el.textContent || "0", 10);
+    if (!Number.isNaN(v)) return v;
   }
+  try {
+    const bag = window?.Cart?.get?.() || {};
+    // exact key qty
+    let q = Number(bag?.[key]?.qty || 0);
+    // include composite children like "item:variant:addonKey"
+    const prefix = key + ":";
+    for (const [k, entry] of Object.entries(bag)) {
+      if (k.startsWith(prefix)) q += Number(entry?.qty || 0);
+    }
+    return q;
+  } catch { return 0; }
+}
+
 
   function totalQtyForItem(itemId){
   // DOM steppers total
@@ -560,12 +571,11 @@ document.addEventListener("click", (e) => {
     pop.classList.remove('genie-out');
   }, 180);
 
-// Update badges & header first (ensures gold highlight + badge number)
-updateItemMiniCartBadge(found.id);
+// Refresh badges & header (ensures gold highlight + numbers)
 updateAllMiniCartBadges();
 updateCartLink();
 
-// Then rock the mini cart button every time
+// Rock the mini cart button every time
 const btn = card.querySelector(".mini-cart-btn");
 if (btn) {
   btn.classList.remove("rock");
@@ -639,11 +649,11 @@ document.addEventListener("keydown", (e) => {
     setQty(found, variantKey, v.price, next);
   });
 
-  // Mini cart button click: go to checkout (folder path)
-  document.addEventListener("click", (e) => {
-    const btn = e.target.closest(".mini-cart-btn"); if (!btn) return;
-    e.preventDefault(); window.location.href = "customer/checkout.html";
-  });
+ // Mini cart button click: go to checkout
+document.addEventListener("click", (e) => {
+  const btn = e.target.closest(".mini-cart-btn"); if (!btn) return;
+  e.preventDefault(); window.location.href = "checkout.html";
+});
 
   /* ---------- Boot ---------- */
   async function boot(){
