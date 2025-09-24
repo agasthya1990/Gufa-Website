@@ -111,19 +111,15 @@
 
 
   function updateCartLink(){
-    let totalDOM = 0;
-    document.querySelectorAll(".qty .num").forEach(el => {
-      totalDOM += (parseInt(el.textContent||"0",10) || 0);
-    });
-    let total = totalDOM;
-    if (total === 0) {
-      try {
-        const bag = window?.Cart?.get?.() || {};
-        total = Object.values(bag).reduce((a,entry)=> a + (Number(entry?.qty||0)||0), 0);
-      } catch {}
-    }
+  try {
+    const bag = window?.Cart?.get?.() || {};
+    const total = Object.values(bag).reduce((a,entry)=> a + (Number(entry?.qty||0)||0), 0);
     if (cartLink) cartLink.textContent = `Cart (${total})`;
+  } catch {
+    if (cartLink) cartLink.textContent = `Cart (0)`;
   }
+}
+ 
 
   function updateItemMiniCartBadge(itemId, rock=false){
     const btn = document.querySelector(`.menu-item[data-id="${itemId}"] .mini-cart-btn`);
@@ -562,15 +558,16 @@ document.addEventListener("click", (e) => {
     pop.classList.remove('genie-out');
   }, 180);
 
-// Update UI & rock basket
+// Update badges & header first (ensures gold highlight + badge number)
+updateItemMiniCartBadge(found.id);
 updateAllMiniCartBadges();
 updateCartLink();
 
-// Force rock animation on the card’s mini-cart button
+// Then rock the mini cart button every time
 const btn = card.querySelector(".mini-cart-btn");
 if (btn) {
   btn.classList.remove("rock");
-  void btn.offsetWidth; // force reflow
+  void btn.offsetWidth;  // reflow to retrigger
   btn.classList.add("rock");
   setTimeout(() => btn.classList.remove("rock"), 350);
 }
@@ -655,5 +652,7 @@ document.addEventListener("keydown", (e) => {
   document.addEventListener("DOMContentLoaded", boot);
 
   // Keep header count in sync if any other script updates the cart
-  window.addEventListener("cart:update", updateCartLink);
-})();
+window.addEventListener("cart:update", () => {
+  updateAllMiniCartBadges();
+  updateCartLink();
+});
