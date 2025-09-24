@@ -498,9 +498,24 @@ document.addEventListener("click", (e) => {
     }
   });
 
-  const isOpen = pop.getAttribute("aria-hidden") === "false";
-  pop.setAttribute("aria-hidden", isOpen ? "true" : "false");
-  btn.setAttribute("aria-expanded", isOpen ? "false" : "true");
+const isOpen = pop.getAttribute("aria-hidden") === "false";
+if (isOpen) {
+  // blur focus before hiding to avoid aria-hidden warning
+  if (document.activeElement && pop.contains(document.activeElement)) {
+    document.activeElement.blur();
+  }
+  pop.setAttribute("aria-hidden","true");
+  pop.hidden = true;
+  btn.setAttribute("aria-expanded","false");
+} else {
+  pop.hidden = false;
+  pop.setAttribute("aria-hidden","false");
+  btn.setAttribute("aria-expanded","true");
+  // optional: move focus into the popover for accessibility
+  const first = pop.querySelector('.addon-row input, .addons-add');
+  if (first) first.focus({ preventScroll: true });
+}
+
 
   // Set initial disabled state
   const addBtn = pop.querySelector('.addons-add');
@@ -572,11 +587,18 @@ document.addEventListener("click", (e) => {
 // Animate: close genie back to button
 pop.classList.add('genie-out');
 setTimeout(() => {
+  // blur before hide to avoid aria-hidden focus conflict
+  if (document.activeElement && pop.contains(document.activeElement)) {
+    document.activeElement.blur();
+  }
   pop.setAttribute('aria-hidden','true');
+  pop.hidden = true;
+
   const abtn = card.querySelector('.addons-btn');
   if (abtn) abtn.setAttribute('aria-expanded','false');
   pop.classList.remove('genie-out');
 }, 180);
+
 
 // Defer UI refresh to next frame so Cart store is definitely updated
 requestAnimationFrame(() => {
