@@ -574,7 +574,7 @@ if (btn) {
   btn.classList.add("rock");
   setTimeout(() => btn.classList.remove("rock"), 350);
 }
-
+});
 
 // Dismiss on outside click
 document.addEventListener("click", (e) => {
