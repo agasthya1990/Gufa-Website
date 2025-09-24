@@ -610,14 +610,18 @@ requestAnimationFrame(() => {
   updateItemMiniCartBadge(found.id, /*rock:*/ true);
   updateAllMiniCartBadges();
   updateCartLink();
+  
 });
-
 
 // Dismiss on outside click
 document.addEventListener("click", (e) => {
   document.querySelectorAll('.addons-popover[aria-hidden="false"]').forEach(p => {
     if (!p.contains(e.target) && !e.target.closest(".addons-btn")) {
+      if (document.activeElement && p.contains(document.activeElement)) {
+        document.activeElement.blur();
+      }
       p.setAttribute("aria-hidden", "true");
+      p.hidden = true;
       const b = p.previousElementSibling;
       if (b?.classList.contains("addons-btn")) b.setAttribute("aria-expanded", "false");
     }
@@ -628,7 +632,11 @@ document.addEventListener("click", (e) => {
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
   document.querySelectorAll('.addons-popover[aria-hidden="false"]').forEach(p => {
+    if (document.activeElement && p.contains(document.activeElement)) {
+      document.activeElement.blur();
+    }
     p.setAttribute("aria-hidden", "true");
+    p.hidden = true;
     const b = p.previousElementSibling;
     if (b?.classList.contains("addons-btn")) b.setAttribute("aria-expanded", "false");
   });
