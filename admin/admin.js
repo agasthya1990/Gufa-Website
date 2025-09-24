@@ -296,9 +296,10 @@ function renderTable() {
       qty.type === "Half & Full"
         ? `Half: ₹${qty.halfPrice} / Full: ₹${qty.fullPrice}`
         : `₹${qty.itemPrice}`;
-    const addonsText = Array.isArray(d.addons)
-  ? d.addons.map(a => `${a.name} (₹${a.price})`).join(", ")
+const addonsText = Array.isArray(d.addons)
+  ? d.addons.map(a => (typeof a === "string" ? a : `${a.name} (₹${a.price})`)).join(", ")
   : "";
+
 
     const row = document.createElement("tr");
     row.innerHTML = `
@@ -661,7 +662,11 @@ function applyFilters(items) {
     if (fo && (d.foodCourse || "") !== fo) return false;
     if (ft && d.foodType !== ft) return false;
     if (q) {
-      const hay = `${d.name} ${d.description} ${d.category || ""} ${d.foodCourse || ""} ${(d.addons||[]).join(" ")}`.toLowerCase();
+      const addonHay = Array.isArray(d.addons)
+  ? d.addons.map(a => (typeof a === "string" ? a : a.name)).join(" ")
+  : "";
+const hay = `${d.name} ${d.description} ${d.category || ""} ${d.foodCourse || ""} ${addonHay}`.toLowerCase();
+      
       if (!hay.includes(q)) return false;
     }
     return true;
