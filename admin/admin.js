@@ -173,7 +173,15 @@ addCourseBtn.onclick = async () => {
   await populateFilterDropdowns();
 };
 addAddonBtn.onclick = async () => {
-  await addAddon(newAddonInput, () => loadAddons(addonsSelect));
+  const name = (newAddonInput.value || "").trim();
+  const price = parseFloat(newAddonPrice.value);
+  if (!name || isNaN(price) || price <= 0) {
+    return alert("Enter valid add-on name & price");
+  }
+  await setDoc(doc(db, "menuAddons", name), { name, price });
+  newAddonInput.value = "";
+  newAddonPrice.value = "";
+  await loadAddons(addonsSelect);
   await renderCustomAddonDropdown();
 };
 
@@ -291,7 +299,9 @@ function renderTable() {
       qty.type === "Half & Full"
         ? `Half: ₹${qty.halfPrice} / Full: ₹${qty.fullPrice}`
         : `₹${qty.itemPrice}`;
-    const addonsText = Array.isArray(d.addons) && d.addons.length ? d.addons.join(", ") : "";
+    const addonsText = Array.isArray(d.addons)
+  ? d.addons.map(a => `${a.name} (₹${a.price})`).join(", ")
+  : "";
 
     const row = document.createElement("tr");
     row.innerHTML = `
