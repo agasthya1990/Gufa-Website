@@ -478,3 +478,4 @@ footer p{ margin:6px 0; }
 /* Basket rock (if not already present) */
 @keyframes cartRock { 0%{transform:translateY(0) rotate(0)} 40%{transform:translateY(-2px) rotate(-6deg)} 70%{transform:translateY(0) rotate(3deg)} 100%{transform:translateY(0) rotate(0)} }
 .mini-cart-btn.rock { animation: cartRock .35s ease; }
+.addons-popover[hidden] { display: none !important; }
