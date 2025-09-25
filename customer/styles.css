@@ -633,3 +633,33 @@ button.gold:active:not(:disabled) { transform: translateY(1px); }
   display: flex;
   justify-content: flex-end;
 }
+:root { --gold: #d4af37; }
+
+button.gold,
+.addons-popover .addons-add.gold,
+.addons-btn.gold {
+  background: var(--gold);
+  color: #121212;
+  border: none;
+  border-radius: 9999px;       /* pill */
+  padding: 8px 14px;           /* leaner */
+  line-height: 1;
+  min-height: 34px;            /* compact height */
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+  transition: transform .06s ease, filter .15s ease;
+}
+
+button.gold:disabled,
+.addons-popover .addons-add.gold:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  filter: grayscale(25%);
+}
+
+button.gold:hover:not(:disabled),
+.addons-popover .addons-add.gold:hover:not(:disabled) { filter: brightness(1.05); }
+
+button.gold:active:not(:disabled),
+.addons-popover .addons-add.gold:active:not(:disabled) { transform: translateY(1px); }
