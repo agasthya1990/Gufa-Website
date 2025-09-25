@@ -372,21 +372,25 @@ if (q>0){
           const n = (typeof a === "string") ? a : (a.name || "");
           const p = (typeof a === "string") ? 0 : Number(a.price || 0);
           return `
-            <div class="addon-row" data-addon="${n}" data-price="${p}">
-              <span class="name">${n}</span>
-              <span class="price">₹${p}</span>
-              <div class="addon-stepper" aria-label="Quantity for ${n}">
-                <button class="addon-dec" aria-label="decrease">−</button>
-                <span class="num">0</span>
-                <button class="addon-inc" aria-label="increase">+</button>
-              </div>
-            </div>
+           <div class="addon-row" data-addon="${n}" data-price="${p}">
+  <div class="label-price">
+    <span class="name">${n}</span>
+    <span class="price">₹${p}</span>
+  </div>
+  <div class="addon-stepper" aria-label="Quantity for ${n}">
+    <button class="addon-dec" aria-label="decrease">−</button>
+    <span class="num">0</span>
+    <button class="addon-inc" aria-label="increase">+</button>
+  </div>
+</div>
           `;
         }).join("")}
         </div>
         <div class="addon-actions">
-          <button class="addons-done" data-action="addons-done">Done</button>
-        </div>
+  <button class="addons-add gold" data-action="addons-add" title="Add to Purchase" aria-label="Add to Purchase">
+    Add to Purchase
+  </button>
+</div>
       </div>
     </div>
   `
@@ -734,10 +738,35 @@ document.addEventListener("click", (e) => {
   const b = pop.previousElementSibling; if (b?.classList.contains("addons-btn")) b.setAttribute('aria-expanded','false');
 });
 
+// [Add to Purchase]: close popover, rock badge, refresh header/badges
+document.addEventListener("click", (e) => {
+  const addBtn = e.target.closest('.addons-add[data-action="addons-add"]');
+  if (!addBtn) return;
 
+  const pop  = addBtn.closest('.addons-popover');
+  const card = addBtn.closest('.menu-item');
+  const itemId = card?.getAttribute('data-id');
+  if (!pop || !card || !itemId) return;
 
+  // Close with the same genie-out feel
+  pop.classList.add('genie-out');
+  setTimeout(() => {
+    if (document.activeElement && pop.contains(document.activeElement)) {
+      document.activeElement.blur();
+    }
+    pop.setAttribute('aria-hidden','true');
+    pop.hidden = true;
+    const b = pop.previousElementSibling;
+    if (b?.classList.contains("addons-btn")) b.setAttribute('aria-expanded','false');
+    pop.classList.remove('genie-out');
+  }, 180);
 
-
+  // Smooth UX bump: rock, badges, header
+  requestAnimationFrame(() => {
+    updateItemMiniCartBadge(itemId, /*rock*/ true);
+    updateCartLink();
+  });
+});
 
 
 // Dismiss on outside click
