@@ -680,7 +680,7 @@ if (isOpen) {
 }
 });
 
-  // Add-on stepper (+/−): STAGE only (no Cart writes yet)
+// Add-on stepper (+/−): STAGE only (no Cart writes yet)
 document.addEventListener("click", (e) => {
   const inc = e.target.closest(".addon-inc");
   const dec = e.target.closest(".addon-dec");
@@ -692,40 +692,62 @@ document.addEventListener("click", (e) => {
   const itemId = card?.getAttribute("data-id");
   if (!row || !pop || !card || !itemId) return;
 
-  const variantKey = pop.dataset.variantKey; // locked when popover opened
+  const variantKey = pop.dataset.variantKey;
   if (!variantKey) { nudgeBaseSteppers(itemId); return; }
 
-  // Ensure stage map exists on this popover
   if (!(pop._stage instanceof Map)) pop._stage = new Map();
 
   const name  = row.getAttribute("data-addon") || "";
   const price = Number(row.getAttribute("data-price") || 0);
 
-  // Committed qty currently in Cart
   let committed = 0;
   try {
     const key = `${itemId}:${variantKey}:${name}`;
     committed = Number((window.Cart?.get?.() || {})[key]?.qty || 0);
   } catch {}
 
-  // Current staged delta for this addon
   const currDelta = Number(pop._stage.get(name) || 0);
-
-  // Next delta (never let committed + delta go below 0)
   const nextDelta = Math.max(-committed, currDelta + (inc ? 1 : -1));
   pop._stage.set(name, nextDelta);
 
-  // Displayed (committed + staged)
   const displayQty = committed + nextDelta;
 
-  // Paint row number
   const num = row.querySelector(".num");
   if (num) num.textContent = String(displayQty);
 
-  // Enable/disable Add to Purchase depending on any positive staged qty
-  const stagedTotal = Array.from(pop._stage.values()).reduce((a,b)=> a + (b > 0 ? b : 0), 0);
+  // Enable if ANY delta ≠ 0 (add or remove)
+  const hasChange = Array.from(pop._stage.values()).some(v => v !== 0);
   const addBtn = pop.querySelector('.addons-add');
-  if (addBtn) addBtn.disabled = stagedTotal <= 0;
+  if (addBtn) addBtn.disabled = !hasChange;
+});
+
+// Close add-ons popover when clicking outside
+document.addEventListener("click", (e) => {
+  if (!e.target.closest(".addons-popover") && !e.target.closest(".addons-btn")) {
+    document.querySelectorAll(".addons-popover[aria-hidden='false']").forEach(p => {
+      if (document.activeElement && p.contains(document.activeElement)) {
+        document.activeElement.blur();
+      }
+      p.setAttribute("aria-hidden","true");
+      p.hidden = true;
+      p._stage = undefined; // clear staged changes
+      const b = p.previousElementSibling;
+      if (b?.classList.contains("addons-btn")) b.setAttribute("aria-expanded","false");
+    });
+  }
+});
+
+// Close add-ons popover on Esc
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") {
+    document.querySelectorAll(".addons-popover[aria-hidden='false']").forEach(p => {
+      p.setAttribute("aria-hidden","true");
+      p.hidden = true;
+      p._stage = undefined; // clear staged changes
+      const b = p.previousElementSibling;
+      if (b?.classList.contains("addons-btn")) b.setAttribute("aria-expanded","false");
+    });
+  }
 });
 
   
@@ -894,7 +916,7 @@ document.addEventListener("keydown", (e) => {
   searchInputHome?.addEventListener("keydown", (e) => { if (e.key === "Enter") enterSearch((searchInputHome?.value || "").trim()); });
 
   /* Steppers — DOM-first qty, then store */
- // Steppers — DOM-first qty, then store
+// Steppers — DOM-first qty, then store
 document.addEventListener("click", (e) => {
   const btn = e.target.closest(".inc, .dec"); if (!btn) return;
   const wrap = btn.closest(".stepper"); const id = wrap?.dataset.item; const variantKey = wrap?.dataset.variant;
@@ -906,9 +928,30 @@ document.addEventListener("click", (e) => {
   const next = Math.max(0, now + (btn.classList.contains("inc") ? 1 : -1));
   setQty(found, variantKey, v.price, next);
 
-  // NEW: enable/disable Add-ons button based on base qty
+  // Cascade: if base qty goes to 0, purge all add-ons for this base
+  if (next === 0) {
+    const bag = window?.Cart?.get?.() || {};
+    Object.keys(bag).forEach(k => {
+      if (k.startsWith(`${id}:${variantKey}:`)) {
+        window.Cart?.setQty?.(k, 0);
+      }
+    });
+
+    // Close popover if open
+    const card = wrap.closest(".menu-item");
+    const pop  = card?.querySelector(".addons-popover");
+    if (pop && pop.getAttribute("aria-hidden") === "false") {
+      pop.setAttribute("aria-hidden","true");
+      pop.hidden = true;
+      pop._stage = undefined;
+      const b = pop.previousElementSibling;
+      if (b?.classList.contains("addons-btn")) b.setAttribute("aria-expanded","false");
+    }
+  }
+
   updateAddonsButtonState(id);
 });
+
 
 
  // Mini cart button click: go to checkout
