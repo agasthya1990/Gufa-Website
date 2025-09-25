@@ -1,5 +1,69 @@
 // app.menu.js — align menu cards with the real Cart store and folder paths (no UI changes)
 
+// ===== Cart Helpers =====
+function getCartEntries() {
+  try { return Object.entries(Cart.get() || {}); } catch { return []; }
+}
+
+function sumQtyByPrefix(prefix) {
+  return getCartEntries().reduce((n, [k, it]) => n + (k.startsWith(prefix) ? (Number(it.qty)||0) : 0), 0);
+}
+
+function getVariantQty(baseKey) {
+  const base = Number((Cart.get?.() || {})[baseKey]?.qty || 0);
+  const children = sumQtyByPrefix(baseKey + ":");
+  return base + children;
+}
+
+// ===== Header Cart =====
+function updateCartLink(){
+  const total = getCartEntries().reduce((n, [, it]) => n + (Number(it.qty)||0), 0);
+  const el = document.getElementById("cartLink");
+  if (el) el.textContent = `Cart (${total})`;
+}
+
+// ===== Mini-cart Badge =====
+function updateItemMiniCartBadge(itemId, rock=false){
+  const card = document.querySelector(`.menu-item[data-id="${itemId}"]`);
+  if (!card) return;
+  const btn = card.querySelector(".mini-cart-btn");
+  if (!btn) return;
+
+  const qty = sumQtyByPrefix(`${itemId}:`);
+  let badge = btn.querySelector(".badge");
+  if (!badge) {
+    badge = document.createElement("span");
+    badge.className = "badge";
+    btn.appendChild(badge);
+  }
+
+  if (qty > 0) {
+    badge.textContent = String(qty);
+    btn.classList.add("active");
+    if (rock) {
+      btn.classList.add("rock");
+      setTimeout(() => btn.classList.remove("rock"), 300);
+    }
+  } else {
+    badge.textContent = "";
+    btn.classList.remove("active");
+  }
+}
+
+function updateAllMiniCartBadges(){
+  document.querySelectorAll(".menu-item[data-id]").forEach(el => {
+    const id = el.getAttribute("data-id");
+    updateItemMiniCartBadge(id);
+  });
+}
+
+// ===== Global Sync =====
+window.addEventListener("cart:update", () => {
+  updateAllMiniCartBadges();
+  updateCartLink();
+});
+
+
 (function () {
   const $  = (s, r=document) => r.querySelector(s);
   const $$ = (s, r=document) => Array.from(r.querySelectorAll(s));
