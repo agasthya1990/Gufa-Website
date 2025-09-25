@@ -685,3 +685,17 @@ button.gold,
   font-size: 0.75rem;   /* smaller font */
   font-weight: 500;     /* lighter look */
 }
+
+/* Make Add-ons trigger text bold */
+.addons-btn.gold {
+  font-weight: 600;   /* stronger weight */
+}
+
+/* Adjust Add to Purchase pill inside popover */
+.addons-popover .addon-actions {
+  justify-content: flex-start;   /* align left instead of right */
+}
+
+.addons-popover .addons-add.gold {
+  margin-left: 4px;  /* small offset */
+}
