@@ -679,3 +679,9 @@ button.gold,
   box-shadow: 0 1px 4px rgba(0,0,0,0.12);
   transition: transform .06s ease, filter .15s ease;
 }
+.addons-popover .addons-add.gold {
+  padding: 4px 10px;    /* tighter pill */
+  min-height: 24px;     /* shorter height */
+  font-size: 0.75rem;   /* smaller font */
+  font-weight: 500;     /* lighter look */
+}
