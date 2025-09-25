@@ -479,3 +479,72 @@ footer p{ margin:6px 0; }
 @keyframes cartRock { 0%{transform:translateY(0) rotate(0)} 40%{transform:translateY(-2px) rotate(-6deg)} 70%{transform:translateY(0) rotate(3deg)} 100%{transform:translateY(0) rotate(0)} }
 .mini-cart-btn.rock { animation: cartRock .35s ease; }
 .addons-popover[hidden] { display: none !important; }
+/* Comic popover layout tidy */
+.addons-popover .addon-list {
+  display: grid;
+  gap: 8px;
+}
+
+.addons-popover .addon-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.addons-popover .label-price {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.addons-popover .label-price .name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1 1 auto;
+}
+
+.addons-popover .label-price .price {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.addons-popover .addon-stepper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.addons-popover .addon-stepper .num {
+  min-width: 18px;
+  text-align: center;
+}
+
+/* Footer button alignment */
+.addons-popover .addon-actions {
+  margin-top: 12px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* Ensure the Add to Purchase matches your existing gold button style */
+.addons-popover .addons-add.gold,
+.addons-btn.gold {
+  /* If you already have a .gold style, this keeps parity; otherwise: */
+  background: #d4af37;
+  color: #1b1b1b;
+  border: none;
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.addons-popover .addons-add.gold:hover {
+  filter: brightness(1.05);
+}
