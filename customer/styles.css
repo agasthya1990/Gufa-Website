@@ -548,3 +548,88 @@ footer p{ margin:6px 0; }
 .addons-popover .addons-add.gold:hover {
   filter: brightness(1.05);
 }
+/* --- Gold tone (not bright yellow) --- */
+:root {
+  --gold: #d4af37;
+}
+
+/* --- Pill/tube button style --- */
+button.gold {
+  background: var(--gold);
+  color: #121212;
+  border: none;
+  border-radius: 9999px;     /* pill */
+  padding: 10px 16px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+  transition: transform .06s ease, filter .15s ease;
+}
+
+button.gold:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  filter: grayscale(25%);
+}
+
+button.gold:hover:not(:disabled) { filter: brightness(1.05); }
+button.gold:active:not(:disabled) { transform: translateY(1px); }
+
+/* Keep Add-ons trigger visually consistent */
+.addons-btn.gold {
+  border-radius: 9999px;
+  padding: 8px 14px;
+}
+
+/* --- Popover row alignment --- */
+.addons-popover .addon-list {
+  display: grid;
+  gap: 8px;
+}
+
+.addons-popover .addon-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.addons-popover .label-price {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.addons-popover .label-price .name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1 1 auto;
+}
+
+.addons-popover .label-price .price {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.addons-popover .addon-stepper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.addons-popover .addon-stepper .num {
+  min-width: 18px;
+  text-align: center;
+}
+
+/* Footer alignment */
+.addons-popover .addon-actions {
+  margin-top: 12px;
+  display: flex;
+  justify-content: flex-end;
+}
