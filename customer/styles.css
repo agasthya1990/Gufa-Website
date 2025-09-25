@@ -699,3 +699,16 @@ button.gold,
 .addons-popover .addons-add.gold {
   margin-left: 4px;  /* small offset */
 }
+/* Center align the Add to Purchase button */
+.addons-popover .addon-actions {
+  justify-content: center;   /* center instead of right */
+}
+
+/* Style the Add to Purchase pill */
+.addons-popover .addons-add.gold {
+  background: var(--gold);
+  font-weight: 600;          /* bold text */
+  font-size: 0.85rem;        /* keep lean */
+  padding: 6px 12px;         /* slim pill */
+  border-radius: 9999px;     /* pill shape */
+}
