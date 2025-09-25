@@ -372,7 +372,7 @@ if (q>0){
           const n = (typeof a === "string") ? a : (a.name || "");
           const p = (typeof a === "string") ? 0 : Number(a.price || 0);
           return `
-           <div class="addon-row" data-addon="${n}" data-price="${p}">
+ <div class="addon-row" data-addon="${n}" data-price="${p}">
   <div class="label-price">
     <span class="name">${n}</span>
     <span class="price">₹${p}</span>
