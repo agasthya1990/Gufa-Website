@@ -663,3 +663,19 @@ button.gold:hover:not(:disabled),
 
 button.gold:active:not(:disabled),
 .addons-popover .addons-add.gold:active:not(:disabled) { transform: translateY(1px); }
+button.gold,
+.addons-popover .addons-add.gold,
+.addons-btn.gold {
+  background: var(--gold);
+  color: #121212;
+  border: none;
+  border-radius: 9999px;       /* pill */
+  padding: 6px 12px;           /* slimmer */
+  line-height: 1.1;
+  min-height: 28px;            /* shorter */
+  font-size: 0.85rem;          /* reduced font size */
+  font-weight: 500;            /* lighter weight */
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.12);
+  transition: transform .06s ease, filter .15s ease;
+}
