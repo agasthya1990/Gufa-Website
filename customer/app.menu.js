@@ -610,7 +610,7 @@ requestAnimationFrame(() => {
   updateItemMiniCartBadge(found.id, /*rock:*/ true);
   updateAllMiniCartBadges();
   updateCartLink();
-  
+  });
 });
 
 // Dismiss on outside click
