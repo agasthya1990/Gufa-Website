@@ -613,69 +613,60 @@ document.addEventListener("click", (e) => {
     price: Number(el.getAttribute('data-price') || 0)
   })).filter(a => a.name);
 
-  if (!picks.length) return; // shouldn't happen because button is disabled otherwise
+  if (!picks.length) return;
 
-  // Choose default variant: prefer 'full' if available, else first priced variant
+  // Choose default variant
   const pm = priceModel(found.qtyType);
   const variants = (pm?.variants || []).filter(v => v.price > 0);
   const preferFull = variants.find(v => v.key === "full") || variants[0];
   if (!preferFull) return;
 
-  // Build composite cart key (stable order for add-ons)
+  // Build composite cart key
   const addonKey = picks.map(a => a.name).sort().join('+');
   const variantKey = preferFull.key;
   const baseKey = `${found.id}:${variantKey}`;
   const key = addonKey ? `${baseKey}:${addonKey}` : baseKey;
 
-  // Unit price = base + sum(add-ons)
+  // Unit price
   const unitPrice = Number(preferFull.price || 0) + picks.reduce((s,a)=> s + (Number(a.price||0)||0), 0);
 
-  // Current qty from store
-  let nextQty = 1;
-  try {
-    const bag = window?.Cart?.get?.() || {};
-    nextQty = Number(bag?.[key]?.qty || 0) + 1;
-  } catch {}
+  // Current qty
+  const bag = window?.Cart?.get?.() || {};
+  const nextQty = Number(bag?.[key]?.qty || 0) + 1;
 
-  // Write to Cart with meta including add-ons
-  try {
-    window.Cart?.setQty?.(key, nextQty, {
-      id: found.id,
-      name: found.name,
-      variant: variantKey,
-      price: unitPrice,
-      addons: picks
-    });
-  } catch {}
+  // Write to Cart
+  window.Cart?.setQty?.(key, nextQty, {
+    id: found.id,
+    name: found.name,
+    variant: variantKey,
+    price: unitPrice,
+    addons: picks
+  });
 
-// Animate: close genie back to button
-pop.classList.add('genie-out');
-setTimeout(() => {
-  // blur before hide to avoid aria-hidden focus conflict
-  if (document.activeElement && pop.contains(document.activeElement)) {
-    document.activeElement.blur();
-  }
-  pop.setAttribute('aria-hidden','true');
-  pop.hidden = true;
+  // Animate close
+  pop.classList.add('genie-out');
+  setTimeout(() => {
+    if (document.activeElement && pop.contains(document.activeElement)) {
+      document.activeElement.blur();
+    }
+    pop.setAttribute('aria-hidden','true');
+    pop.hidden = true;
+    const abtn = card.querySelector('.addons-btn');
+    if (abtn) abtn.setAttribute('aria-expanded','false');
+    pop.classList.remove('genie-out');
+  }, 180);
 
-  const abtn = card.querySelector('.addons-btn');
-  if (abtn) abtn.setAttribute('aria-expanded','false');
-  pop.classList.remove('genie-out');
-}, 180);
+  // UI refresh
+  requestAnimationFrame(() => {
+    const baseBadge = card.querySelector(`.qty[data-key="${baseKey}"] .num`);
+    if (baseBadge) baseBadge.textContent = String(getQty(baseKey));
 
-
-// Defer UI refresh to next frame so Cart store is definitely updated
-requestAnimationFrame(() => {
-  // Stepper count (for the chosen variant; includes add-on composites)
-  const baseBadge = card.querySelector(`.qty[data-key="${baseKey}"] .num`);
-  if (baseBadge) baseBadge.textContent = String(getQty(baseKey));
-
-  // Gold highlight + badge number + header
-  updateItemMiniCartBadge(found.id, /*rock:*/ true);
-  updateAllMiniCartBadges();
-  updateCartLink();
+    // Gold highlight + badge number + header
+    updateItemMiniCartBadge(found.id, true);
+    updateCartLink();
   });
 });
+
 
 // Dismiss on outside click
 document.addEventListener("click", (e) => {
