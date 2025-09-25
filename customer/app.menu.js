@@ -387,7 +387,7 @@ if (q>0){
         }).join("")}
         </div>
         <div class="addon-actions">
-  <button class="addons-add gold" data-action="addons-add" title="Add to Purchase" aria-label="Add to Purchase">
+  <button class="addons-add gold" data-action="addons-add" title="Add to Purchase" aria-label="Add to Purchase" disabled>
     Add to Purchase
   </button>
 </div>
@@ -618,125 +618,190 @@ function searchHaystack(it){
 // Toggle Add-ons popover (guarded by base selection)
 document.addEventListener("click", (e) => {
   const btn = e.target.closest(".addons-btn");
-  if (!btn) return;
+if (!btn) return;
 
-  e.preventDefault();
-  e.stopPropagation();
+e.preventDefault();
+e.stopPropagation();
 
-  const card = btn.closest(".menu-item");
-  const pop = card?.querySelector(".addons-popover");
-  const itemId = card?.getAttribute("data-id");
-  if (!pop || !itemId) return;
+const card   = btn.closest(".menu-item");
+const pop    = card?.querySelector(".addons-popover");
+const itemId = card?.getAttribute("data-id");
+if (!pop || !itemId) return;
 
-  // Require base item selection first
-  const variantKey = activeVariantForAddons(itemId);
-  if (!variantKey) {
-    nudgeBaseSteppers(itemId);
-    return;
-  }
+// Require a base variant selection first
+const variantKey = activeVariantForAddons(itemId);
+if (!variantKey) { nudgeBaseSteppers(itemId); return; }
 
-  // Close other popovers
-  document.querySelectorAll('.addons-popover[aria-hidden="false"]').forEach(p => {
-    if (p !== pop) {
-      p.setAttribute("aria-hidden", "true");
-      const b = p.previousElementSibling;
-      if (b?.classList.contains("addons-btn")) b.setAttribute("aria-expanded", "false");
-      p.hidden = true;
-    }
-  });
-
-  const isOpen = pop.getAttribute("aria-hidden") === "false";
-  if (isOpen) {
-    if (document.activeElement && pop.contains(document.activeElement)) document.activeElement.blur();
-    pop.setAttribute("aria-hidden","true");
-    pop.hidden = true;
-    btn.setAttribute("aria-expanded","false");
-  } else {
-    pop.hidden = false;
-    pop.setAttribute("aria-hidden","false");
-    btn.setAttribute("aria-expanded","true");
-
-    // Prime stepper numbers from Cart for the chosen variant
-    primeAddonQuantities(pop, itemId, variantKey);
-
-    // (Optional) show which variant is active if you want a label
-    const vwrap = pop.querySelector(".addon-variants");
-    if (vwrap) {
-      vwrap.hidden = false;
-      vwrap.innerHTML = `<small class="muted">Applying to variant: <strong>${variantKey}</strong></small>`;
-    }
-
-    const first = pop.querySelector('.addon-inc, .addon-dec, .addons-done');
-    if (first) first.focus({ preventScroll: true });
+// Close other open popovers
+document.querySelectorAll('.addons-popover[aria-hidden="false"]').forEach(p => {
+  if (p !== pop) {
+    p.setAttribute("aria-hidden", "true");
+    const b = p.previousElementSibling;
+    if (b?.classList.contains("addons-btn")) b.setAttribute("aria-expanded", "false");
+    p.hidden = true;
   }
 });
 
-  // Add-on stepper (+/-) => write composite keys immediately
+const isOpen = pop.getAttribute("aria-hidden") === "false";
+if (isOpen) {
+  if (document.activeElement && pop.contains(document.activeElement)) document.activeElement.blur();
+  pop.setAttribute("aria-hidden","true");
+  pop.hidden = true;
+  btn.setAttribute("aria-expanded","false");
+  // discard any staged deltas
+  pop._stage = undefined;
+} else {
+  // lock variant in this session
+  pop.dataset.variantKey = variantKey;
+
+  // Stage map: addonName -> delta (start 0)
+  pop._stage = new Map();
+
+  // Prime UI numbers from Cart (committed state)
+  primeAddonQuantities(pop, itemId, variantKey);
+
+  // Reset staged button state
+  const addBtn = pop.querySelector('.addons-add');
+  if (addBtn) addBtn.disabled = true;
+
+  // Optional: show variant info
+  const vwrap = pop.querySelector(".addon-variants");
+  if (vwrap) {
+    vwrap.hidden = false;
+    vwrap.innerHTML = `<small class="muted">Applying to variant: <strong>${variantKey}</strong></small>`;
+  }
+
+  pop.hidden = false;
+  pop.setAttribute("aria-hidden","false");
+  btn.setAttribute("aria-expanded","true");
+
+  const first = pop.querySelector('.addon-inc, .addon-dec, .addons-add');
+  if (first) first.focus({ preventScroll: true });
+}
+});
+
+  // Add-on stepper (+/−): STAGE only (no Cart writes yet)
 document.addEventListener("click", (e) => {
   const inc = e.target.closest(".addon-inc");
   const dec = e.target.closest(".addon-dec");
   if (!inc && !dec) return;
 
-  const row = e.target.closest(".addon-row");
-  const pop = e.target.closest(".addons-popover");
+  const row  = e.target.closest(".addon-row");
+  const pop  = e.target.closest(".addons-popover");
   const card = e.target.closest(".menu-item");
   const itemId = card?.getAttribute("data-id");
   if (!row || !pop || !card || !itemId) return;
 
-  const found = ITEMS.find(x => x.id === itemId); if (!found) return;
-
-  // Variant must be selected via base steppers
-  const variantKey = activeVariantForAddons(itemId);
+  const variantKey = pop.dataset.variantKey; // locked when popover opened
   if (!variantKey) { nudgeBaseSteppers(itemId); return; }
 
-  const name = row.getAttribute("data-addon") || "";
+  // Ensure stage map exists on this popover
+  if (!(pop._stage instanceof Map)) pop._stage = new Map();
+
+  const name  = row.getAttribute("data-addon") || "";
   const price = Number(row.getAttribute("data-price") || 0);
-  const baseKey = `${itemId}:${variantKey}`;
-  const key = `${baseKey}:${name}`;
 
-  // Current qty from Cart
-  const bag = window?.Cart?.get?.() || {};
-  const now = Number(bag?.[key]?.qty || 0);
-  const next = Math.max(0, now + (inc ? 1 : -1));
+  // Committed qty currently in Cart
+  let committed = 0;
+  try {
+    const key = `${itemId}:${variantKey}:${name}`;
+    committed = Number((window.Cart?.get?.() || {})[key]?.qty || 0);
+  } catch {}
 
-  // Price model for the base variant
-  const pm = priceModel(found.qtyType);
-  const v = (pm?.variants || []).find(x => x.key === variantKey);
-  const unitPrice = Number(v?.price || 0) + price;
+  // Current staged delta for this addon
+  const currDelta = Number(pop._stage.get(name) || 0);
 
-  // Write to Cart
-  window.Cart?.setQty?.(key, next, {
-    id: found.id,
-    name: found.name,
-    variant: variantKey,
-    price: unitPrice,
-    addons: [{ name, price }]
-  });
+  // Next delta (never let committed + delta go below 0)
+  const nextDelta = Math.max(-committed, currDelta + (inc ? 1 : -1));
+  pop._stage.set(name, nextDelta);
 
-  // Update the row number
+  // Displayed (committed + staged)
+  const displayQty = committed + nextDelta;
+
+  // Paint row number
   const num = row.querySelector(".num");
-  if (num) num.textContent = String(next);
+  if (num) num.textContent = String(displayQty);
 
-  // Rock + badges + header
+  // Enable/disable Add to Purchase depending on any positive staged qty
+  const stagedTotal = Array.from(pop._stage.values()).reduce((a,b)=> a + (b > 0 ? b : 0), 0);
+  const addBtn = pop.querySelector('.addons-add');
+  if (addBtn) addBtn.disabled = stagedTotal <= 0;
+});
+
+  
+// [Add to Purchase]: commit staged add-ons to Cart, then close
+document.addEventListener("click", (e) => {
+  const addBtn = e.target.closest('.addons-add[data-action="addons-add"]');
+  if (!addBtn) return;
+
+  const pop  = addBtn.closest('.addons-popover');
+  const card = addBtn.closest('.menu-item');
+  const itemId = card?.getAttribute('data-id');
+  if (!pop || !card || !itemId) return;
+
+  const variantKey = pop.dataset.variantKey;
+  if (!variantKey) { nudgeBaseSteppers(itemId); return; }
+
+  // Stage map (addonName -> delta)
+  const stage = (pop._stage instanceof Map) ? pop._stage : new Map();
+
+  // Compute total staged > 0
+  let stagedTotal = 0;
+  for (const v of stage.values()) if (v > 0) stagedTotal += v;
+
+  // Commit deltas to Cart
+  if (stagedTotal > 0) {
+    const bag = window?.Cart?.get?.() || {};
+    for (const [name, delta] of stage.entries()) {
+      if (delta <= 0) continue;
+
+      const key = `${itemId}:${variantKey}:${name}`;
+      const now = Number(bag?.[key]?.qty || 0);
+      const next = now + delta;
+
+      // unit price = base + addon
+      let basePrice = 0, addonPrice = 0;
+      try {
+        const found = ITEMS.find(x => x.id === itemId);
+        const pm = priceModel(found?.qtyType);
+        basePrice = Number((pm?.variants || []).find(x => x.key === variantKey)?.price || 0);
+        const row = pop.querySelector(`.addon-row[data-addon="${CSS.escape(name)}"]`);
+        addonPrice = Number(row?.getAttribute("data-price") || 0);
+      } catch {}
+
+      window.Cart?.setQty?.(key, next, {
+        id: itemId,
+        name: (ITEMS.find(x=>x.id===itemId)?.name) || itemId,
+        variant: variantKey,
+        price: basePrice + addonPrice,
+        addons: [{ name, price: addonPrice }]
+      });
+    }
+  }
+
+  // Close popover (genie-in) & clear stage
+  pop.classList.add('genie-out');
+  setTimeout(() => {
+    if (document.activeElement && pop.contains(document.activeElement)) document.activeElement.blur();
+    pop.setAttribute('aria-hidden','true');
+    pop.hidden = true;
+    const b = pop.previousElementSibling;
+    if (b?.classList.contains("addons-btn")) b.setAttribute('aria-expanded','false');
+    pop.classList.remove('genie-out');
+    pop._stage = undefined;
+  }, 180);
+
+  // Rock basket & refresh (only if anything was committed)
   requestAnimationFrame(() => {
-    updateItemMiniCartBadge(found.id, true);
+    updateItemMiniCartBadge(itemId, /*rock*/ stagedTotal > 0);
     updateCartLink();
 
-    // Also refresh the visible base stepper number for this variant
+    const baseKey = `${itemId}:${variantKey}`;
     const baseBadge = card.querySelector(`.qty[data-key="${baseKey}"] .num`);
     if (baseBadge) baseBadge.textContent = String(getQty(baseKey));
   });
 });
 
-// Close popover on "Done"
-document.addEventListener("click", (e) => {
-  const done = e.target.closest('.addons-done[data-action="addons-done"]');
-  if (!done) return;
-  const pop = done.closest('.addons-popover'); if (!pop) return;
-  if (document.activeElement && pop.contains(document.activeElement)) document.activeElement.blur();
-  pop.setAttribute('aria-hidden','true'); pop.hidden = true;
-  const b = pop.previousElementSibling; if (b?.classList.contains("addons-btn")) b.setAttribute('aria-expanded','false');
-});
 
 // [Add to Purchase]: close popover, rock badge, refresh header/badges
 document.addEventListener("click", (e) => {
