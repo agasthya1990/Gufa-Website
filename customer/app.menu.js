@@ -725,17 +725,16 @@ document.addEventListener("click", (e) => {
 document.addEventListener("click", (e) => {
   if (!e.target.closest(".addons-popover") && !e.target.closest(".addons-btn")) {
     document.querySelectorAll(".addons-popover[aria-hidden='false']").forEach(p => {
-      if (document.activeElement && p.contains(document.activeElement)) {
-        document.activeElement.blur();
-      }
+      if (document.activeElement && p.contains(document.activeElement)) document.activeElement.blur();
       p.setAttribute("aria-hidden","true");
       p.hidden = true;
       p._stage = undefined; // clear staged changes
       const b = p.previousElementSibling;
-      if (b?.classList.contains("addons-btn")) b.setAttribute("aria-expanded","false");
+      if (b?.classList.contains("addons-btn")) b.setAttribute('aria-expanded','false');
     });
   }
 });
+
 
 // Close add-ons popover on Esc
 document.addEventListener("keydown", (e) => {
@@ -745,13 +744,14 @@ document.addEventListener("keydown", (e) => {
       p.hidden = true;
       p._stage = undefined; // clear staged changes
       const b = p.previousElementSibling;
-      if (b?.classList.contains("addons-btn")) b.setAttribute("aria-expanded","false");
+      if (b?.classList.contains("addons-btn")) b.setAttribute('aria-expanded','false');
     });
   }
 });
 
+
   
-// [Add to Purchase]: commit staged add-ons to Cart, then close
+// [Add to Purchase]: commit staged add-ons to Cart (adds & removals), then close
 document.addEventListener("click", (e) => {
   const addBtn = e.target.closest('.addons-add[data-action="addons-add"]');
   if (!addBtn) return;
@@ -764,24 +764,20 @@ document.addEventListener("click", (e) => {
   const variantKey = pop.dataset.variantKey;
   if (!variantKey) { nudgeBaseSteppers(itemId); return; }
 
-  // Stage map (addonName -> delta)
   const stage = (pop._stage instanceof Map) ? pop._stage : new Map();
 
-  // Compute total staged > 0
-  let stagedTotal = 0;
-  for (const v of stage.values()) if (v > 0) stagedTotal += v;
+  // Any change (positive or negative)?
+  const hasChange = Array.from(stage.values()).some(v => v !== 0);
 
-  // Commit deltas to Cart
-  if (stagedTotal > 0) {
+  if (hasChange) {
     const bag = window?.Cart?.get?.() || {};
     for (const [name, delta] of stage.entries()) {
-      if (delta <= 0) continue;
+      if (delta === 0) continue;
 
       const key = `${itemId}:${variantKey}:${name}`;
       const now = Number(bag?.[key]?.qty || 0);
-      const next = now + delta;
+      const next = Math.max(0, now + delta);
 
-      // unit price = base + addon
       let basePrice = 0, addonPrice = 0;
       try {
         const found = ITEMS.find(x => x.id === itemId);
@@ -791,17 +787,17 @@ document.addEventListener("click", (e) => {
         addonPrice = Number(row?.getAttribute("data-price") || 0);
       } catch {}
 
-      window.Cart?.setQty?.(key, next, {
+      window.Cart?.setQty?.(key, next, next > 0 ? {
         id: itemId,
         name: (ITEMS.find(x=>x.id===itemId)?.name) || itemId,
         variant: variantKey,
         price: basePrice + addonPrice,
         addons: [{ name, price: addonPrice }]
-      });
+      } : undefined);
     }
   }
 
-  // Close popover (genie-in) & clear stage
+  // close popover + clear stage
   pop.classList.add('genie-out');
   setTimeout(() => {
     if (document.activeElement && pop.contains(document.activeElement)) document.activeElement.blur();
@@ -813,47 +809,16 @@ document.addEventListener("click", (e) => {
     pop._stage = undefined;
   }, 180);
 
-  // Rock basket & refresh (only if anything was committed)
+  // Rock if any change; refresh header + variant stepper
   requestAnimationFrame(() => {
-    updateItemMiniCartBadge(itemId, /*rock*/ stagedTotal > 0);
+    updateItemMiniCartBadge(itemId, /*rock*/ hasChange);
     updateCartLink();
-
     const baseKey = `${itemId}:${variantKey}`;
     const baseBadge = card.querySelector(`.qty[data-key="${baseKey}"] .num`);
     if (baseBadge) baseBadge.textContent = String(getQty(baseKey));
   });
 });
 
-
-// [Add to Purchase]: close popover, rock badge, refresh header/badges
-document.addEventListener("click", (e) => {
-  const addBtn = e.target.closest('.addons-add[data-action="addons-add"]');
-  if (!addBtn) return;
-
-  const pop  = addBtn.closest('.addons-popover');
-  const card = addBtn.closest('.menu-item');
-  const itemId = card?.getAttribute('data-id');
-  if (!pop || !card || !itemId) return;
-
-  // Close with the same genie-out feel
-  pop.classList.add('genie-out');
-  setTimeout(() => {
-    if (document.activeElement && pop.contains(document.activeElement)) {
-      document.activeElement.blur();
-    }
-    pop.setAttribute('aria-hidden','true');
-    pop.hidden = true;
-    const b = pop.previousElementSibling;
-    if (b?.classList.contains("addons-btn")) b.setAttribute('aria-expanded','false');
-    pop.classList.remove('genie-out');
-  }, 180);
-
-  // Smooth UX bump: rock, badges, header
-  requestAnimationFrame(() => {
-    updateItemMiniCartBadge(itemId, /*rock*/ true);
-    updateCartLink();
-  });
-});
 
 
 // Dismiss on outside click
