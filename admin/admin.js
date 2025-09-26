@@ -1,7 +1,7 @@
-// /admin/admin.js — clean rewrite (2025-09-27)
-// - Fix: menu rows failing due to undefined promoChips / stray code
-// - Adds a visible "Promotions" column (chips) and working [Promotions] button per row
-// - Safer event wiring + clear structure for future edits
+// /admin/admin.js — clean rewrite & harden (2025-09-27)
+// - Guarantees menu renders even if Promotions UI fails
+// - Adds Promotions chips column and working per-row [Promotions] modal
+// - Safer event wiring & null-guards
 
 import { auth, db, storage } from "./firebase.js";
 
@@ -20,14 +20,13 @@ import {
   updateDoc,
   deleteDoc,
   getDoc,
-  setDoc,
   getDocs,
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 import { ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
 
 import {
-  // existing API from categoryCourse.js
+  // from categoryCourse.js
   loadCategories, loadCourses,
   fetchCategories, fetchCourses,
   addCategory, addCourse,
@@ -41,7 +40,7 @@ import {
 import { initPromotions } from "./promotions.js";
 
 /* =========================
-   Coupon cache (for chips in the menu table)
+   Promo cache (for chips in menu table)
    ========================= */
 let PROMOS_BY_ID = {}; // { promoId: {code, channel, type, value, ...} }
 
@@ -138,7 +137,7 @@ onAuthStateChanged(auth, async (user) => {
     if (loginBox) loginBox.style.display = "none";
     if (adminContent) adminContent.style.display = "block";
 
-    // Hidden selects for form value
+    // Load data sources for create form
     await loadCategories(categoryDropdown);
     await loadCourses(foodCourseDropdown);
     await loadAddons(addonsSelect);
@@ -152,8 +151,8 @@ onAuthStateChanged(auth, async (user) => {
     await populateFilterDropdowns();
     wireSearchAndFilters();
 
-    // Promotions (Dining | Delivery) section
-    initPromotions();
+    // ✅ Always attach menu listener FIRST so items render even if Promotions fails
+    attachSnapshot();
 
     // Live coupon map for chips
     onSnapshot(collection(db, "promotions"), (snap) => {
@@ -163,12 +162,14 @@ onAuthStateChanged(auth, async (user) => {
         if (p?.kind === "coupon") map[d.id] = p;
       });
       PROMOS_BY_ID = map;
-      // re-render to update chips if needed
-      renderTable();
+      renderTable(); // update chips
     });
 
-    // Live menu list
-    attachSnapshot();
+    // Promotions UI — guarded so it can’t break the rest
+    try { initPromotions(); } catch (e) {
+      console.error("Promotions init failed — continuing:", e);
+    }
+
   } else {
     if (loginBox) loginBox.style.display = "block";
     if (adminContent) adminContent.style.display = "none";
@@ -213,7 +214,7 @@ if (addAddonBtn) {
 }
 
 /* =========================
-   Image resize (menu item images): 200x200 JPEG
+   Image resize (menu item) 200x200 JPEG
    ========================= */
 function resizeImage(file) {
   return new Promise((resolve, reject) => {
@@ -234,7 +235,7 @@ function resizeImage(file) {
 }
 
 /* =========================
-   Add new menu item
+   Create item
    ========================= */
 if (form) {
   form.onsubmit = async (e) => {
@@ -288,7 +289,6 @@ if (form) {
 
       form.reset();
       qtyTypeSelect?.dispatchEvent(new Event("change"));
-      // clear add-ons UI
       setMultiHiddenValue(addonsSelect, []);
       updateAddonBtnLabel();
       if (statusMsg) statusMsg.innerText = "✅ Added!";
@@ -344,7 +344,7 @@ function renderTable() {
       ? d.addons.map(a => (typeof a === "string" ? a : `${a.name} (₹${a.price})`)).join(", ")
       : "";
 
-    // === NEW: build promo chips safely per-row ===
+    // Promo chips
     const promoIds = Array.isArray(d.promotions) ? d.promotions : [];
     const promoChips = promoIds.map((pid) => {
       const info = PROMOS_BY_ID[pid];
@@ -362,12 +362,12 @@ function renderTable() {
       <td>${d.description}</td>
       <td>${d.category || ""}</td>
       <td>${d.foodCourse || ""}</td>
-      <td>${d.foodType}</td>
+      <td>${d.foodType || ""}</td>
       <td>${qty.type || ""}</td>
       <td>${priceText || ""}</td>
       <td>${addonsText || '<span class="adm-muted">—</span>'}</td>
       <td>${promoChips || '<span class="adm-muted">—</span>'}</td>
-      <td><img src="${d.imageUrl}" width="50" /></td>
+      <td><img src="${d.imageUrl}" width="50" height="50" style="object-fit:cover;border-radius:6px;border:1px solid #eee"/></td>
       <td>
         <select class="stockToggle" data-id="${id}">
           <option value="true" ${d.inStock ? "selected" : ""}>In Stock</option>
@@ -402,7 +402,7 @@ function renderTable() {
     };
   });
 
-  // Delete single
+  // Delete
   document.querySelectorAll(".deleteBtn").forEach((el) => {
     el.onclick = async () => {
       const id = el.dataset.id;
@@ -413,7 +413,7 @@ function renderTable() {
     };
   });
 
-  // Edit open
+  // Edit
   document.querySelectorAll(".editBtn").forEach((el) => {
     el.onclick = async () => {
       const id = el.dataset.id;
@@ -451,7 +451,7 @@ function renderTable() {
 }
 
 /* =========================
-   Bulk bar  (Edit + Delete)
+   Bulk UI
    ========================= */
 function ensureBulkBar() {
   if (document.getElementById("bulkBar")) return;
@@ -467,7 +467,6 @@ function ensureBulkBar() {
   const table = document.getElementById("menuTable");
   if (table && table.parentNode) table.parentNode.insertBefore(bar, table);
 
-  // handlers
   const bulkEditBtn = document.getElementById("bulkEditBtn");
   const bulkDeleteBtn = document.getElementById("bulkDeleteBtn");
   if (bulkEditBtn) bulkEditBtn.onclick = openBulkEditModal;
@@ -481,7 +480,6 @@ function ensureBulkBar() {
     updateBulkBar();
   };
 }
-
 function updateBulkBar() {
   ensureBulkBar();
   const n = selectedIds.size;
@@ -490,7 +488,6 @@ function updateBulkBar() {
   if (editBtn) { editBtn.textContent = `Edit Selected (${n})`; editBtn.disabled = n === 0; }
   if (delBtn)  { delBtn.textContent  = `Delete Selected (${n})`; delBtn.disabled  = n === 0; }
 }
-
 function syncSelectAllHeader(itemsRendered) {
   const cb = document.getElementById("selectAll");
   if (!cb) return;
@@ -507,7 +504,7 @@ function syncSelectAllHeader(itemsRendered) {
 }
 
 /* =========================
-   Bulk Edit modal (same as before, safer wiring)
+   Bulk Edit modal
    ========================= */
 function openBulkEditModal() {
   let modal = document.getElementById("bulkModal");
@@ -580,7 +577,7 @@ function openBulkEditModal() {
     `;
     document.body.appendChild(modal);
 
-    // wire enables
+    // enable toggles
     const bulkCatEnable    = modal.querySelector("#bulkCatEnable");
     const bulkCourseEnable = modal.querySelector("#bulkCourseEnable");
     const bulkTypeEnable   = modal.querySelector("#bulkTypeEnable");
@@ -597,7 +594,6 @@ function openBulkEditModal() {
     const bulkHalfPrice = modal.querySelector("#bulkHalfPrice");
     const bulkFullPrice = modal.querySelector("#bulkFullPrice");
 
-    // enable/disable fields based on checkboxes
     bulkCatEnable.onchange    = () => bulkCategory.disabled = !bulkCatEnable.checked;
     bulkCourseEnable.onchange = () => bulkCourse.disabled   = !bulkCourseEnable.checked;
     bulkTypeEnable.onchange   = () => bulkType.disabled     = !bulkTypeEnable.checked;
@@ -621,10 +617,7 @@ function openBulkEditModal() {
     }
     bulkQtyType.onchange = toggleBulkQtyInputs;
 
-    // cancel
     modal.querySelector("#bulkCancelBtn").onclick = () => { modal.style.display = "none"; };
-
-    // submit
     modal.querySelector("#bulkForm").onsubmit = async (e) => {
       e.preventDefault();
       if (!selectedIds.size) { alert("No items selected."); return; }
@@ -677,30 +670,26 @@ function openBulkEditModal() {
       }
     };
 
-    // store refs for later reuse
+    // store refs for reuse
     modal._refs = { bulkCategory, bulkCourse, bulkType, bulkQtyType, toggleBulkQtyInputs };
   }
 
-  // each open: refresh counts & option lists
+  // open: refresh data
   modal.querySelector("#bulkCount").textContent = String(selectedIds.size);
 
   const { bulkCategory, bulkCourse, bulkType, bulkQtyType, toggleBulkQtyInputs } = modal._refs;
-
-  // refresh options
   loadCategories(bulkCategory);
   loadCourses(bulkCourse);
   bulkType.value = "";
   bulkQtyType.value = "";
   toggleBulkQtyInputs();
 
-  // reset enables
   modal.querySelector("#bulkCatEnable").checked = false;
   modal.querySelector("#bulkCourseEnable").checked = false;
   modal.querySelector("#bulkTypeEnable").checked = false;
   modal.querySelector("#bulkStockEnable").checked = false;
   modal.querySelector("#bulkQtyEnable").checked = false;
 
-  // disable all fields initially
   bulkCategory.disabled = true;
   bulkCourse.disabled   = true;
   bulkType.disabled     = true;
@@ -713,6 +702,22 @@ function openBulkEditModal() {
 /* =========================
    Search & Filters
    ========================= */
+async function populateFilterDropdowns() {
+  // categories
+  const cats = await fetchCategories();
+  if (filterCategory) {
+    const prev = filterCategory.value;
+    filterCategory.innerHTML = `<option value="">All Categories</option>` + cats.map(c => `<option>${c}</option>`).join("");
+    filterCategory.value = prev || "";
+  }
+  // courses
+  const courses = await fetchCourses();
+  if (filterCourse) {
+    const prev = filterCourse.value;
+    filterCourse.innerHTML = `<option value="">All Courses</option>` + courses.map(c => `<option>${c}</option>`).join("");
+    filterCourse.value = prev || "";
+  }
+}
 function wireSearchAndFilters() {
   const debounced = debounce(() => { renderTable(); updateBulkBar(); }, 200);
   searchInput?.addEventListener("input", debounced);
@@ -742,7 +747,7 @@ function applyFilters(items) {
 }
 
 /* =========================
-   Edit modal
+   Edit modal (single)
    ========================= */
 function openEditModal(id, d) {
   editingId = id;
@@ -830,7 +835,7 @@ if (editForm) {
 }
 
 /* =========================
-   Custom dropdowns (Category)
+   Category dropdown (comic style)
    ========================= */
 async function renderCustomCategoryDropdown() {
   if (!catBtn || !catPanel) return;
@@ -946,7 +951,7 @@ async function renderCustomCategoryDropdown() {
 }
 
 /* =========================
-   Custom dropdowns (Course)
+   Course dropdown (comic style)
    ========================= */
 async function renderCustomCourseDropdown() {
   if (!courseBtn || !coursePanel) return;
@@ -1062,7 +1067,7 @@ async function renderCustomCourseDropdown() {
 }
 
 /* =========================
-   Add-ons: custom multi dropdown
+   Add-ons (custom multi)
    ========================= */
 async function renderCustomAddonDropdown() {
   if (!addonBtn || !addonPanel) return;
@@ -1094,11 +1099,8 @@ async function renderCustomAddonDropdown() {
       const el = row.querySelector(".addon-check");
       const isChecked = el.classList.contains("checked");
       const values = new Set(Array.from(addonsSelect?.selectedOptions || []).map(o=>o.value));
-      if (isChecked) {
-        el.classList.remove("checked"); values.delete(name);
-      } else {
-        el.classList.add("checked"); values.add(name);
-      }
+      if (isChecked) { el.classList.remove("checked"); values.delete(name); }
+      else { el.classList.add("checked"); values.add(name); }
       setMultiHiddenValue(addonsSelect, Array.from(values));
       updateAddonBtnLabel();
       return;
@@ -1125,7 +1127,6 @@ async function renderCustomAddonDropdown() {
           try {
             row.querySelector(".addon-input").disabled = true;
             await renameAddonEverywhere(oldName, newVal);
-            // keep selection if it was selected
             const sel = new Set(Array.from(addonsSelect?.selectedOptions || []).map(o=>o.value));
             if (sel.has(oldName)) { sel.delete(oldName); sel.add(newVal); }
             await loadAddons(addonsSelect);
@@ -1185,7 +1186,7 @@ function updateAddonBtnLabel() {
 }
 
 /* =========================
-   Assign Add-ons to a single item (modal)
+   Assign Add-ons modal
    ========================= */
 function openAssignAddonsModal(itemId, current) {
   let modal = document.getElementById("addonAssignModal");
@@ -1222,7 +1223,7 @@ function openAssignAddonsModal(itemId, current) {
     modal.querySelector("#assignAddonSave").onclick = async () => {
       const chosen = addons
         .filter(a => list.querySelector(`input[value="${a.name}"]`)?.checked)
-        .map(a => ({ name: a.name, price: a.price })); // store objects
+        .map(a => ({ name: a.name, price: a.price })); // store as objects
       try {
         await updateDoc(doc(db, "menuItems", itemId), { addons: chosen });
         modal.style.display = "none";
@@ -1236,10 +1237,9 @@ function openAssignAddonsModal(itemId, current) {
 }
 
 /* =========================
-   Assign Promotions to a single item (modal)
+   Assign Promotions modal
    ========================= */
 async function openAssignPromotionsModal(itemId, currentIds) {
-  // Fetch coupon promotions (kind === "coupon")
   const promosSnap = await getDocs(collection(db, "promotions"));
   const coupons = [];
   promosSnap.forEach((d) => {
@@ -1252,11 +1252,7 @@ async function openAssignPromotionsModal(itemId, currentIds) {
     modal = document.createElement("div");
     modal.id = "promoAssignModal";
     Object.assign(modal.style, {
-      position: "fixed",
-      inset: 0,
-      background: "rgba(0,0,0,.6)",
-      display: "none",
-      zIndex: 9999,
+      position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", display: "none", zIndex: 9999,
     });
     modal.innerHTML = `
       <div style="background:#fff; padding:18px; max-width:520px; margin:5% auto; border-radius:12px; border:2px solid #111; box-shadow:5px 5px 0 #111;">
@@ -1271,13 +1267,12 @@ async function openAssignPromotionsModal(itemId, currentIds) {
     document.body.appendChild(modal);
   }
 
-  // Render list
   const listEl = modal.querySelector("#promoAssignList");
   listEl.innerHTML = "";
+  const set = new Set(Array.isArray(currentIds) ? currentIds : []);
   if (!coupons.length) {
     listEl.innerHTML = `<div class="adm-muted">No promotions found. Create a coupon in Promotions first.</div>`;
   } else {
-    const set = new Set(Array.isArray(currentIds) ? currentIds : []);
     coupons.forEach(({ id, p }) => {
       const row = document.createElement("label");
       row.style.cssText = "display:flex; align-items:center; gap:10px; padding:6px 8px; border-bottom:1px solid #f1f1f1;";
@@ -1294,9 +1289,7 @@ async function openAssignPromotionsModal(itemId, currentIds) {
     });
   }
 
-  // Wire buttons
   modal.querySelector("#promoAssignCancel").onclick = () => (modal.style.display = "none");
-
   modal.querySelector("#promoAssignSave").onclick = async () => {
     const ids = [...modal.querySelectorAll(".promoAssignChk:checked")].map((i) => i.value);
     try {
@@ -1323,13 +1316,11 @@ function setHiddenValue(selectEl, val) {
 function setMultiHiddenValue(selectEl, values=[]) {
   if (!selectEl) return;
   const set = new Set(values);
-  // ensure options exist
   values.forEach(v => {
     if (![...selectEl.options].some(o=>o.value===v)) {
       const opt = document.createElement("option"); opt.value=v; opt.textContent=v; selectEl.appendChild(opt);
     }
   });
-  // set selection
   [...selectEl.options].forEach(o => { o.selected = set.has(o.value); });
 }
 function debounce(fn, delay=300){ let t; return (...args)=>{ clearTimeout(t); t=setTimeout(()=>fn(...args), delay); }; }
