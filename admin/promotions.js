@@ -203,7 +203,7 @@ export function initPromotions(){
     try {
       bSaveBtn.disabled = true; bSaveBtn.textContent = "Uploading…";
       const blob = await resizeToBannerBlob(file);
-      const path = `banners/${Date.now()}_${file.name.replace(/\s+/g,"_")}`;
+      const path = `promoBanners/${Date.now()}_${file.name.replace(/\s+/g,"_")}`;
       const ref = storageRef(storage, path);
       await uploadBytes(ref, blob, { contentType: BANNER_MIME, cacheControl: "public, max-age=31536000, immutable" });
       const imageUrl = await getDownloadURL(ref);
