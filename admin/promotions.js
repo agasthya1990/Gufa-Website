@@ -1,16 +1,11 @@
 // /admin/promotions.js — Channel-aware (Dining | Delivery), friendlier UI
-import { db } from "./firebase.js";
+import { db, storage } from "./firebase.js";
 import {
   collection, doc, setDoc, updateDoc, deleteDoc, onSnapshot,
   serverTimestamp, query, orderBy
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
-import {
-  getStorage, ref as storageRef, uploadBytes, getDownloadURL
-} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
+import { ref as storageRef, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
 
-// Explicit bucket (consistent with rest of app)
-const STORAGE_BUCKET = "gs://gufa-restaurant.firebasestorage.app";
-const storage = getStorage(undefined, STORAGE_BUCKET);
 
 // ===== Banners: resize params =====
 const BANNER_W = 1600, BANNER_H = 600, BANNER_MIME = "image/jpeg", BANNER_QUALITY = 0.85, MAX_UPLOAD_MB = 10;
