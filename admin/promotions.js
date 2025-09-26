@@ -4,7 +4,7 @@ import {
   collection, doc, setDoc, updateDoc, deleteDoc, onSnapshot,
   serverTimestamp, query, orderBy
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
-import { ref as storageRef, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
+import { ref as storageRef, uploadBytesResumable, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
 
 
 // ===== Banners: resize params =====
@@ -83,7 +83,7 @@ export function initPromotions(){
             </select>
             <input id="bTitle" class="adm-input" placeholder="Banner title" />
             <input id="bLink" class="adm-input" placeholder="Link URL (optional)" />
-            <input id="bFile" type="file" class="adm-file" accept="image/png,image/jpeg,image/webp" required />
+            <input id="bFile" type="file" accept="image/png,image/jpeg,image/webp" class="adm-file full" />
             <label class="adm-row" style="margin-left:auto;"><input id="bActive" type="checkbox" checked/> Active</label>
             <button id="bSave" type="submit" class="adm-btn adm-btn--primary">Save Banner</button>
           </div>
@@ -223,12 +223,32 @@ export function initPromotions(){
     bSaveBtn.textContent = "Uploading…";
     bannerMsg.textContent = "Uploading to storage…";
     const path = `promoBanners/${Date.now()}_${file.name.replace(/\s+/g, "_")}`;
-    const ref  = storageRef(storage, path);
-    await withTimeout(
-      uploadBytes(ref, blob, { contentType: BANNER_MIME, cacheControl: "public, max-age=31536000, immutable" }),
-      30000,
-      "Upload"
+   const ref  = storageRef(storage, path);
+const metadata = { contentType: BANNER_MIME, cacheControl: "public, max-age=31536000, immutable" };
+
+// Log blob size so we can see if it’s unusually large
+console.info("Banner blob size (KB):", Math.round((blob.size || 0) / 1024));
+
+const task = uploadBytesResumable(ref, blob, metadata);
+
+// Wrap resumable task into a Promise with progress + a longer guard
+await withTimeout(
+  new Promise((resolve, reject) => {
+    task.on(
+      "state_changed",
+      (snap) => {
+        const pct = snap.totalBytes ? Math.round((snap.bytesTransferred / snap.totalBytes) * 100) : 0;
+        bSaveBtn.textContent = `Uploading ${pct}%`;
+        bannerMsg.textContent = `Uploading… ${pct}%`;
+      },
+      (err) => reject(err),   // surface real Storage errors ('unauthorized', 'quota-exceeded', etc.)
+      () => resolve()         // completed
     );
+  }),
+  120000, // 120s guard (slow networks or first upload on a new bucket can take longer)
+  "Upload"
+);
+
 
     // 3) Get public URL
     bSaveBtn.textContent = "Finalizing…";
