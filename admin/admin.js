@@ -14,6 +14,7 @@ import {
   deleteDoc,
   getDoc,
   setDoc
+  getDocs
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 import {
@@ -330,7 +331,8 @@ const addonsText = Array.isArray(d.addons)
         </select>
       </td>
       <td>
-        <button class="addonBtn" data-id="${id}">Add On</button>
+        <button class="addonBtn" data-id="${id}">Add-On</button>
+        <button class="promoBtn" data-id="${id}">Promotions</button>
         <button class="editBtn" data-id="${id}">Edit</button>
         <button class="deleteBtn" data-id="${id}">Delete</button>
       </td>
@@ -387,6 +389,21 @@ const addonsText = Array.isArray(d.addons)
     };
   });
 
+// Promotions assign
+  
+document.querySelectorAll(".promoBtn").forEach((el) => {
+  el.onclick = async () => {
+    const id = el.dataset.id;
+    const snap = await getDoc(doc(db, "menuItems", id));
+    if (!snap.exists()) return alert("Item not found!");
+    openAssignPromotionsModal(
+      id,
+      Array.isArray(snap.data().promotions) ? snap.data().promotions : []
+    );
+  };
+});
+
+  
   // Header select-all sync
   syncSelectAllHeader(items);
 }
@@ -1202,6 +1219,98 @@ function setMultiHiddenValue(selectEl, values=[]) {
       const opt = document.createElement("option"); opt.value=v; opt.textContent=v; selectEl.appendChild(opt);
     }
   });
+
+  // =========================
+// Assign Promotions to a single item
+// =========================
+async function openAssignPromotionsModal(itemId, currentIds) {
+  // Fetch coupon promotions (kind === "coupon")
+  const promosSnap = await getDocs(collection(db, "promotions"));
+  const coupons = [];
+  promosSnap.forEach((d) => {
+    const p = d.data();
+    if (p && p.kind === "coupon") coupons.push({ id: d.id, p });
+  });
+
+  let modal = document.getElementById("promoAssignModal");
+  if (!modal) {
+    modal = document.createElement("div");
+    modal.id = "promoAssignModal";
+    Object.assign(modal.style, {
+      position: "fixed",
+      inset: 0,
+      background: "rgba(0,0,0,.6)",
+      display: "none",
+      zIndex: 9999,
+    });
+    modal.innerHTML = `
+      <div style="background:#fff; padding:18px; max-width:520px; margin:5% auto; border-radius:12px; border:2px solid #111; box-shadow:5px 5px 0 #111;">
+        <h3 style="margin:0 0 10px">Attach Promotions</h3>
+        <div id="promoAssignList" style="max-height:340px; overflow:auto; border:1px solid #eee; border-radius:8px; padding:8px;">
+          <!-- items injected -->
+        </div>
+        <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:12px;">
+          <button id="promoAssignSave" class="adm-btn adm-btn--primary">Save</button>
+          <button id="promoAssignCancel" class="adm-btn">Cancel</button>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+  }
+
+  // Render list
+  const listEl = modal.querySelector("#promoAssignList");
+  listEl.innerHTML = "";
+  if (!coupons.length) {
+    listEl.innerHTML = `<div class="adm-muted">No promotions found. Create a coupon in Promotions first.</div>`;
+  } else {
+    const set = new Set(Array.isArray(currentIds) ? currentIds : []);
+    coupons.forEach(({ id, p }) => {
+      const row = document.createElement("label");
+      row.style.cssText =
+        "display:flex; align-items:center; gap:10px; padding:6px 8px; border-bottom:1px solid #f1f1f1;";
+      const typeText =
+        p.type === "percent" ? `${p.value}% off` : `₹${p.value} off`;
+      const chan =
+        (p.channel || "").toLowerCase() === "dining" ? "Dining" : "Delivery";
+      row.innerHTML = `
+        <input type="checkbox" class="promoAssignChk" value="${id}" ${
+        set.has(id) ? "checked" : ""
+      }/>
+        <div style="display:flex; flex-direction:column;">
+          <div><strong>${p.code || "(no code)"}</strong> • <em>${chan}</em></div>
+          <div style="font-size:12px; color:#555;">
+            ${typeText}${p.minOrder ? ` • Min ₹${p.minOrder}` : ""}${
+        p.active === false ? ` • inactive` : ""
+      }
+          </div>
+        </div>
+      `;
+      listEl.appendChild(row);
+    });
+  }
+
+  // Wire buttons
+  modal.querySelector("#promoAssignCancel").onclick = () =>
+    (modal.style.display = "none");
+
+  modal.querySelector("#promoAssignSave").onclick = async () => {
+    const ids = [
+      ...modal.querySelectorAll(".promoAssignChk:checked"),
+    ].map((i) => i.value);
+    try {
+      await updateDoc(doc(db, "menuItems", itemId), { promotions: ids });
+      modal.style.display = "none";
+    } catch (err) {
+      console.error(err);
+      alert("Failed to save promotions: " + (err?.message || err));
+    }
+  };
+
+  modal.style.display = "block";
+}
+
+  
   // set selection
   [...selectEl.options].forEach(o => { o.selected = set.has(o.value); });
 }
