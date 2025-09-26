@@ -83,7 +83,7 @@ export function initPromotions(){
             </select>
             <input id="bTitle" class="adm-input" placeholder="Banner title" />
             <input id="bLink" class="adm-input" placeholder="Link URL (optional)" />
-            <input id="bFile" type="file" accept="image/*" class="adm-file full" />
+            <input id="bFile" type="file" class="adm-file" accept="image/png,image/jpeg,image/webp" required />
             <label class="adm-row" style="margin-left:auto;"><input id="bActive" type="checkbox" checked/> Active</label>
             <button id="bSave" type="submit" class="adm-btn adm-btn--primary">Save Banner</button>
           </div>
@@ -187,40 +187,82 @@ export function initPromotions(){
   const bannerMsg  = root.querySelector("#bannerMsg");
   const bannersBody = root.querySelector("#bannersBody");
 
-  bannerForm.addEventListener("submit", async (e)=>{
-    e.preventDefault();
-    const channel = root.querySelector("#bChannel").value; // 'delivery' | 'dining'
-    const title = root.querySelector("#bTitle").value.trim();
-    const linkUrl = root.querySelector("#bLink").value.trim();
-    const file = root.querySelector("#bFile").files[0];
-    const active = root.querySelector("#bActive").checked;
+  // ==== Sumbit Banner ====
 
-    if (!title) return alert("Enter a banner title");
-    if (!file) return alert("Select an image");
-    if (!isImage(file)) return alert("Please choose an image file");
-    if (fileTooLarge(file)) return alert("Image too large (max 10MB)");
+  bannerForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
 
-    try {
-      bSaveBtn.disabled = true; bSaveBtn.textContent = "Uploading…";
-      const blob = await resizeToBannerBlob(file);
-      const path = `promoBanners/${Date.now()}_${file.name.replace(/\s+/g,"_")}`;
-      const ref = storageRef(storage, path);
-      await uploadBytes(ref, blob, { contentType: BANNER_MIME, cacheControl: "public, max-age=31536000, immutable" });
-      const imageUrl = await getDownloadURL(ref);
+  const channel = root.querySelector("#bChannel").value; // 'delivery' | 'dining'
+  const title   = root.querySelector("#bTitle").value.trim();
+  const linkUrl = root.querySelector("#bLink").value.trim();
+  const file    = root.querySelector("#bFile").files[0];
+  const active  = root.querySelector("#bActive").checked;
 
-      const promoRef = doc(collection(db,"promotions"));
-      await setDoc(promoRef, {
-        kind: "banner",
-        channel, title, linkUrl: linkUrl || null, imageUrl, active,
-        createdAt: serverTimestamp(), updatedAt: serverTimestamp()
-      });
+  if (!title) { alert("Enter a banner title"); return; }
+  if (!file)  { alert("Select an image"); return; }
+  // Stricter type check (prevents odd formats that can hang during resize)
+  if (!/^image\/(png|jpe?g|webp)$/i.test(file.type)) { alert("Please choose PNG/JPEG/WEBP"); return; }
+  if (fileTooLarge(file)) { alert("Image too large (max 10MB)"); return; }
 
-      bannerForm.reset(); root.querySelector("#bActive").checked = true;
-      bannerMsg.textContent = "Saved ✓"; setTimeout(()=> bannerMsg.textContent="", 1400);
-    } catch(err){
-      console.error(err); alert("Failed to save banner: " + (err?.message || err));
-    } finally { bSaveBtn.disabled = false; bSaveBtn.textContent = "Save Banner"; }
-  });
+  // Helper to avoid silent hangs
+  const withTimeout = (p, ms, label) =>
+    Promise.race([
+      p,
+      new Promise((_, rej) => setTimeout(() => rej(new Error(label + " timed out")), ms))
+    ]);
+
+  try {
+    bSaveBtn.disabled = true;
+    bSaveBtn.textContent = "Resizing…";
+    bannerMsg.textContent = "Resizing image…";
+
+    // 1) Resize to 1600×600 JPEG
+    const blob = await withTimeout(resizeToBannerBlob(file), 15000, "Resize");
+
+    // 2) Upload to Storage (promoBanners/)
+    bSaveBtn.textContent = "Uploading…";
+    bannerMsg.textContent = "Uploading to storage…";
+    const path = `promoBanners/${Date.now()}_${file.name.replace(/\s+/g, "_")}`;
+    const ref  = storageRef(storage, path);
+    await withTimeout(
+      uploadBytes(ref, blob, { contentType: BANNER_MIME, cacheControl: "public, max-age=31536000, immutable" }),
+      30000,
+      "Upload"
+    );
+
+    // 3) Get public URL
+    bSaveBtn.textContent = "Finalizing…";
+    bannerMsg.textContent = "Fetching public URL…";
+    const imageUrl = await withTimeout(getDownloadURL(ref), 15000, "GetDownloadURL");
+
+    // 4) Write Firestore doc
+    bannerMsg.textContent = "Saving banner…";
+    const promoRef = doc(collection(db, "promotions")); // auto-id
+    await withTimeout(setDoc(promoRef, {
+      kind: "banner",
+      channel,
+      title,
+      linkUrl: linkUrl || null,
+      imageUrl,
+      active,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    }), 15000, "Firestore write");
+
+    bannerForm.reset();
+    root.querySelector("#bActive").checked = true;
+    bannerMsg.textContent = "Saved ✓";
+    setTimeout(() => (bannerMsg.textContent = ""), 1400);
+  } catch (err) {
+    console.error(err);
+    alert("Failed to save banner: " + (err?.message || err));
+    bannerMsg.textContent = "Failed.";
+  } finally {
+    bSaveBtn.disabled = false;
+    bSaveBtn.textContent = "Save Banner";
+  }
+});
+
 
   // ===== Banners list =====
   onSnapshot(query(collection(db,"promotions"), orderBy("createdAt","desc")), (snap)=>{
