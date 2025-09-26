@@ -36,10 +36,7 @@ import {
   renameAddonEverywhere, deleteAddonEverywhere,
 } from "./categoryCourse.js";
 import { initPromotions } from "./promotions.js";
-/* =========================
-   Storage
-   ========================= */
-const storage = getStorage(undefined, "gs://gufa-restaurant.firebasestorage.app");
+
 
 /* =========================
    DOM
