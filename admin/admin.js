@@ -1,9 +1,11 @@
 import { auth, db } from "./firebase.js";
+
 import {
   signInWithEmailAndPassword,
   signOut,
   onAuthStateChanged,
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+
 import {
   collection,
   addDoc,
@@ -13,7 +15,7 @@ import {
   updateDoc,
   deleteDoc,
   getDoc,
-  setDoc
+  setDoc,
   getDocs
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
@@ -1220,7 +1222,13 @@ function setMultiHiddenValue(selectEl, values=[]) {
     }
   });
 
-  // =========================
+  
+  // set selection
+  [...selectEl.options].forEach(o => { o.selected = set.has(o.value); });
+}
+function debounce(fn, delay=300){ let t; return (...args)=>{ clearTimeout(t); t=setTimeout(()=>fn(...args), delay); }; }
+
+// =========================
 // Assign Promotions to a single item
 // =========================
 async function openAssignPromotionsModal(itemId, currentIds) {
@@ -1309,9 +1317,3 @@ async function openAssignPromotionsModal(itemId, currentIds) {
 
   modal.style.display = "block";
 }
-
-  
-  // set selection
-  [...selectEl.options].forEach(o => { o.selected = set.has(o.value); });
-}
-function debounce(fn, delay=300){ let t; return (...args)=>{ clearTimeout(t); t=setTimeout(()=>fn(...args), delay); }; }
