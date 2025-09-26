@@ -1,4 +1,9 @@
-import { auth, db } from "./firebase.js";
+// /admin/admin.js — clean rewrite (2025-09-27)
+// - Fix: menu rows failing due to undefined promoChips / stray code
+// - Adds a visible "Promotions" column (chips) and working [Promotions] button per row
+// - Safer event wiring + clear structure for future edits
+
+import { auth, db, storage } from "./firebase.js";
 
 import {
   signInWithEmailAndPassword,
@@ -16,33 +21,29 @@ import {
   deleteDoc,
   getDoc,
   setDoc,
-  getDocs
+  getDocs,
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
-import {
-  ref,
-  uploadBytes,
-  getDownloadURL,
-} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
-import { storage } from "./firebase.js";
-
+import { ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
 
 import {
-  // existing
+  // existing API from categoryCourse.js
   loadCategories, loadCourses,
   fetchCategories, fetchCourses,
   addCategory, addCourse,
   renameCategoryEverywhere, renameCourseEverywhere,
   deleteCategoryEverywhere, deleteCourseEverywhere,
-  // new: addons
+  // add-ons
   loadAddons, fetchAddons, addAddon,
   renameAddonEverywhere, deleteAddonEverywhere,
 } from "./categoryCourse.js";
+
 import { initPromotions } from "./promotions.js";
 
-// Coupon cache for quick lookups when rendering the menu table
-let PROMOS_BY_ID = {};
-
+/* =========================
+   Coupon cache (for chips in the menu table)
+   ========================= */
+let PROMOS_BY_ID = {}; // { promoId: {code, channel, type, value, ...} }
 
 /* =========================
    DOM
@@ -110,7 +111,6 @@ const editQtyType = document.getElementById("editQtyType");
 const editItemPrice = document.getElementById("editItemPrice");
 const editHalfPrice = document.getElementById("editHalfPrice");
 const editFullPrice = document.getElementById("editFullPrice");
-const editImage = document.getElementById("editImage");
 
 /* =========================
    State
@@ -122,17 +122,21 @@ let editingId = null;
 /* =========================
    Auth
    ========================= */
-loginBtn.onclick = () => {
-  signInWithEmailAndPassword(auth, email.value, password.value)
-    .then(() => { email.value = ""; password.value = ""; })
-    .catch(err => alert("Login failed: " + err.message));
-};
-logoutBtn.onclick = () => signOut(auth);
+if (loginBtn) {
+  loginBtn.onclick = () => {
+    signInWithEmailAndPassword(auth, email.value, password.value)
+      .then(() => { email.value = ""; password.value = ""; })
+      .catch(err => alert("Login failed: " + err.message));
+  };
+}
+if (logoutBtn) {
+  logoutBtn.onclick = () => signOut(auth);
+}
 
 onAuthStateChanged(auth, async (user) => {
   if (user) {
-    loginBox.style.display = "none";
-    adminContent.style.display = "block";
+    if (loginBox) loginBox.style.display = "none";
+    if (adminContent) adminContent.style.display = "block";
 
     // Hidden selects for form value
     await loadCategories(categoryDropdown);
@@ -148,61 +152,68 @@ onAuthStateChanged(auth, async (user) => {
     await populateFilterDropdowns();
     wireSearchAndFilters();
 
-    // Promotions (Dining | Delivery)
+    // Promotions (Dining | Delivery) section
     initPromotions();
 
-    // Keep a live map of coupon promotions (id -> promo data)
-onSnapshot(collection(db, "promotions"), (snap) => {
-  const map = {};
-  snap.forEach((d) => {
-    const p = d.data();
-    if (p?.kind === "coupon") map[d.id] = p;
-  });
-  PROMOS_BY_ID = map;
-});
+    // Live coupon map for chips
+    onSnapshot(collection(db, "promotions"), (snap) => {
+      const map = {};
+      snap.forEach((d) => {
+        const p = d.data();
+        if (p?.kind === "coupon") map[d.id] = p;
+      });
+      PROMOS_BY_ID = map;
+      // re-render to update chips if needed
+      renderTable();
+    });
 
-    // Live list
+    // Live menu list
     attachSnapshot();
   } else {
-    loginBox.style.display = "block";
-    adminContent.style.display = "none";
+    if (loginBox) loginBox.style.display = "block";
+    if (adminContent) adminContent.style.display = "none";
   }
 });
 
-
 /* =========================
-   Pricing toggle
+   Pricing toggle (create form)
    ========================= */
-qtyTypeSelect.onchange = () => {
-  const value = qtyTypeSelect.value;
-  itemPrice.style.display = value === "Not Applicable" ? "block" : "none";
-  const showHF = value === "Half & Full";
-  halfPrice.style.display = fullPrice.style.display = showHF ? "block" : "none";
-};
+if (qtyTypeSelect) {
+  qtyTypeSelect.onchange = () => {
+    const value = qtyTypeSelect.value;
+    if (itemPrice) itemPrice.style.display = value === "Not Applicable" ? "block" : "none";
+    const showHF = value === "Half & Full";
+    if (halfPrice) halfPrice.style.display = showHF ? "block" : "none";
+    if (fullPrice) fullPrice.style.display = showHF ? "block" : "none";
+  };
+}
 
 /* =========================
    Add Category/Course/Add-on
    ========================= */
-addCategoryBtn.onclick = async () => {
-  await addCategory(newCategoryInput, () => loadCategories(categoryDropdown));
-  await renderCustomCategoryDropdown();
-  await populateFilterDropdowns();
-};
-addCourseBtn.onclick = async () => {
-  await addCourse(newCourseInput, () => loadCourses(foodCourseDropdown));
-  await renderCustomCourseDropdown();
-  await populateFilterDropdowns();
-};
-
-// Add-ons
-
-addAddonBtn.onclick = async () => {
-  await addAddon(newAddonInput, newAddonPrice, () => loadAddons(addonsSelect));
-  await renderCustomAddonDropdown();
-};
+if (addCategoryBtn) {
+  addCategoryBtn.onclick = async () => {
+    await addCategory(newCategoryInput, () => loadCategories(categoryDropdown));
+    await renderCustomCategoryDropdown();
+    await populateFilterDropdowns();
+  };
+}
+if (addCourseBtn) {
+  addCourseBtn.onclick = async () => {
+    await addCourse(newCourseInput, () => loadCourses(foodCourseDropdown));
+    await renderCustomCourseDropdown();
+    await populateFilterDropdowns();
+  };
+}
+if (addAddonBtn) {
+  addAddonBtn.onclick = async () => {
+    await addAddon(newAddonInput, newAddonPrice, () => loadAddons(addonsSelect));
+    await renderCustomAddonDropdown();
+  };
+}
 
 /* =========================
-   Image resize
+   Image resize (menu item images): 200x200 JPEG
    ========================= */
 function resizeImage(file) {
   return new Promise((resolve, reject) => {
@@ -225,66 +236,67 @@ function resizeImage(file) {
 /* =========================
    Add new menu item
    ========================= */
-form.onsubmit = async (e) => {
-  e.preventDefault();
-  statusMsg.innerText = "Adding...";
+if (form) {
+  form.onsubmit = async (e) => {
+    e.preventDefault();
+    if (statusMsg) statusMsg.innerText = "Adding...";
 
-  const name = itemName.value.trim();
-  const description = itemDescription.value.trim();
-  const category = categoryDropdown.value;
-  const foodCourse = foodCourseDropdown.value;
-  const foodType = foodTypeSelect.value;
-  const qtyTypeValue = qtyTypeSelect.value;
-  const imageFile = itemImage.files[0];
-  
-// save {name, price} objects
-  
-const addonNames = Array.from(addonsSelect.selectedOptions).map(o => o.value);
-const addons = await Promise.all(addonNames.map(async (nm) => {
-  const snap = await getDoc(doc(db, "menuAddons", nm));
-  const v = snap.exists() ? snap.data() : { name: nm, price: 0 };
-  return { name: v.name || nm, price: Number(v.price || 0) };
-}));
+    const name = (itemName?.value || "").trim();
+    const description = (itemDescription?.value || "").trim();
+    const category = categoryDropdown?.value;
+    const foodCourse = foodCourseDropdown?.value;
+    const foodType = foodTypeSelect?.value;
+    const qtyTypeValue = qtyTypeSelect?.value;
+    const imageFile = itemImage?.files?.[0];
 
-  if (!name || !description || !category || !foodCourse || !foodType || !qtyTypeValue || !imageFile) {
-    statusMsg.innerText = "❌ Fill all fields"; return;
-  }
+    // Add-ons: store [{name, price}]
+    const addonNames = Array.from(addonsSelect?.selectedOptions || []).map(o => o.value);
+    const addons = await Promise.all(addonNames.map(async (nm) => {
+      const snap = await getDoc(doc(db, "menuAddons", nm));
+      const v = snap.exists() ? snap.data() : { name: nm, price: 0 };
+      return { name: v.name || nm, price: Number(v.price || 0) };
+    }));
 
-  let qtyType = {};
-  if (qtyTypeValue === "Not Applicable") {
-    const price = parseFloat(itemPrice.value);
-    if (isNaN(price) || price <= 0) { statusMsg.innerText = "❌ Invalid price"; return; }
-    qtyType = { type: qtyTypeValue, itemPrice: price };
-  } else if (qtyTypeValue === "Half & Full") {
-    const half = parseFloat(halfPrice.value), full = parseFloat(fullPrice.value);
-    if (isNaN(half) || isNaN(full) || half <= 0 || full <= 0) {
-      statusMsg.innerText = "❌ Invalid Half/Full price"; return;
+    if (!name || !description || !category || !foodCourse || !foodType || !qtyTypeValue || !imageFile) {
+      if (statusMsg) statusMsg.innerText = "❌ Fill all fields"; return;
     }
-    qtyType = { type: qtyTypeValue, halfPrice: half, fullPrice: full };
-  }
 
-  try {
-    const resizedBlob = await resizeImage(imageFile);
-    const imageRef = ref(storage, `menuImages/${Date.now()}_${imageFile.name}`);
-    await uploadBytes(imageRef, resizedBlob);
-    const imageUrl = await getDownloadURL(imageRef);
+    let qtyType = {};
+    if (qtyTypeValue === "Not Applicable") {
+      const price = parseFloat(itemPrice?.value);
+      if (isNaN(price) || price <= 0) { if (statusMsg) statusMsg.innerText = "❌ Invalid price"; return; }
+      qtyType = { type: qtyTypeValue, itemPrice: price };
+    } else if (qtyTypeValue === "Half & Full") {
+      const half = parseFloat(halfPrice?.value), full = parseFloat(fullPrice?.value);
+      if (isNaN(half) || isNaN(full) || half <= 0 || full <= 0) {
+        if (statusMsg) statusMsg.innerText = "❌ Invalid Half/Full price"; return;
+      }
+      qtyType = { type: qtyTypeValue, halfPrice: half, fullPrice: full };
+    }
 
-    await addDoc(collection(db, "menuItems"), {
-      name, description, category, foodCourse, foodType,
-      qtyType, addons, imageUrl,
-      inStock: true, createdAt: serverTimestamp(),
-    });
+    try {
+      const resizedBlob = await resizeImage(imageFile);
+      const imageRef = ref(storage, `menuImages/${Date.now()}_${imageFile.name}`);
+      await uploadBytes(imageRef, resizedBlob);
+      const imageUrl = await getDownloadURL(imageRef);
 
-    form.reset();
-    qtyTypeSelect.dispatchEvent(new Event("change"));
-    // clear add-ons UI
-    setMultiHiddenValue(addonsSelect, []);
-    updateAddonBtnLabel();
-    statusMsg.innerText = "✅ Added!";
-  } catch (err) {
-    console.error(err); statusMsg.innerText = "❌ Error: " + err.message;
-  }
-};
+      await addDoc(collection(db, "menuItems"), {
+        name, description, category, foodCourse, foodType,
+        qtyType, addons, imageUrl,
+        inStock: true, createdAt: serverTimestamp(),
+      });
+
+      form.reset();
+      qtyTypeSelect?.dispatchEvent(new Event("change"));
+      // clear add-ons UI
+      setMultiHiddenValue(addonsSelect, []);
+      updateAddonBtnLabel();
+      if (statusMsg) statusMsg.innerText = "✅ Added!";
+    } catch (err) {
+      console.error(err); if (statusMsg) statusMsg.innerText = "❌ Error: " + err.message;
+    }
+  };
+}
 
 /* =========================
    Live snapshot + render
@@ -296,6 +308,8 @@ function attachSnapshot() {
     ensureSelectAllHeader();
     renderTable();
     updateBulkBar();
+  }, (err) => {
+    console.error("menuItems snapshot error", err);
   });
 }
 
@@ -305,7 +319,8 @@ function ensureSelectAllHeader() {
     const th = document.createElement("th");
     th.innerHTML = `<input type="checkbox" id="selectAll" title="Select all" />`;
     thead.insertBefore(th, thead.firstElementChild);
-    document.getElementById("selectAll").onchange = (e) => {
+    const allCb = document.getElementById("selectAll");
+    if (allCb) allCb.onchange = (e) => {
       const checked = e.target.checked;
       if (checked) selectedIds = new Set(allItems.map((i) => i.id)); else selectedIds.clear();
       renderTable(); updateBulkBar();
@@ -314,6 +329,7 @@ function ensureSelectAllHeader() {
 }
 
 function renderTable() {
+  if (!menuBody) return;
   menuBody.innerHTML = "";
   const items = applyFilters(allItems);
 
@@ -323,9 +339,21 @@ function renderTable() {
       qty.type === "Half & Full"
         ? `Half: ₹${qty.halfPrice} / Full: ₹${qty.fullPrice}`
         : `₹${qty.itemPrice}`;
-const addonsText = Array.isArray(d.addons)
-  ? d.addons.map(a => (typeof a === "string" ? a : `${a.name} (₹${a.price})`)).join(", ")
-  : "";
+
+    const addonsText = Array.isArray(d.addons)
+      ? d.addons.map(a => (typeof a === "string" ? a : `${a.name} (₹${a.price})`)).join(", ")
+      : "";
+
+    // === NEW: build promo chips safely per-row ===
+    const promoIds = Array.isArray(d.promotions) ? d.promotions : [];
+    const promoChips = promoIds.map((pid) => {
+      const info = PROMOS_BY_ID[pid];
+      if (!info) return `<span class="adm-pill">${pid.slice(0,5)}…</span>`;
+      const pillClass = info.channel === "dining" ? "adm-pill--dining" : "adm-pill--delivery";
+      const code = info.code || pid;
+      const title = info.type === "percent" ? `${info.value}% off` : `₹${info.value} off`;
+      return `<span class="adm-pill ${pillClass}" title="${title}">${code}</span>`;
+    }).join(" ");
 
     const row = document.createElement("tr");
     row.innerHTML = `
@@ -337,7 +365,7 @@ const addonsText = Array.isArray(d.addons)
       <td>${d.foodType}</td>
       <td>${qty.type || ""}</td>
       <td>${priceText || ""}</td>
-      <td>${addonsText}</td>
+      <td>${addonsText || '<span class="adm-muted">—</span>'}</td>
       <td>${promoChips || '<span class="adm-muted">—</span>'}</td>
       <td><img src="${d.imageUrl}" width="50" /></td>
       <td>
@@ -405,21 +433,19 @@ const addonsText = Array.isArray(d.addons)
     };
   });
 
-// Promotions assign
-  
-document.querySelectorAll(".promoBtn").forEach((el) => {
-  el.onclick = async () => {
-    const id = el.dataset.id;
-    const snap = await getDoc(doc(db, "menuItems", id));
-    if (!snap.exists()) return alert("Item not found!");
-    openAssignPromotionsModal(
-      id,
-      Array.isArray(snap.data().promotions) ? snap.data().promotions : []
-    );
-  };
-});
+  // Promotions assign
+  document.querySelectorAll(".promoBtn").forEach((el) => {
+    el.onclick = async () => {
+      const id = el.dataset.id;
+      const snap = await getDoc(doc(db, "menuItems", id));
+      if (!snap.exists()) return alert("Item not found!");
+      openAssignPromotionsModal(
+        id,
+        Array.isArray(snap.data().promotions) ? snap.data().promotions : []
+      );
+    };
+  });
 
-  
   // Header select-all sync
   syncSelectAllHeader(items);
 }
@@ -439,11 +465,13 @@ function ensureBulkBar() {
     <button id="bulkDeleteBtn" disabled>Delete Selected (0)</button>
   `;
   const table = document.getElementById("menuTable");
-  table.parentNode.insertBefore(bar, table);
+  if (table && table.parentNode) table.parentNode.insertBefore(bar, table);
 
   // handlers
-  document.getElementById("bulkEditBtn").onclick = openBulkEditModal;
-  document.getElementById("bulkDeleteBtn").onclick = async () => {
+  const bulkEditBtn = document.getElementById("bulkEditBtn");
+  const bulkDeleteBtn = document.getElementById("bulkDeleteBtn");
+  if (bulkEditBtn) bulkEditBtn.onclick = openBulkEditModal;
+  if (bulkDeleteBtn) bulkDeleteBtn.onclick = async () => {
     if (!selectedIds.size) return;
     if (!confirm(`Delete ${selectedIds.size} item(s)?`)) return;
     const ops = [];
@@ -479,7 +507,7 @@ function syncSelectAllHeader(itemsRendered) {
 }
 
 /* =========================
-   Bulk Edit modal
+   Bulk Edit modal (same as before, safer wiring)
    ========================= */
 function openBulkEditModal() {
   let modal = document.getElementById("bulkModal");
@@ -633,9 +661,7 @@ function openBulkEditModal() {
         }
       }
 
-      if (!Object.keys(updates).length) {
-        return alert("Tick at least one field to update.");
-      }
+      if (!Object.keys(updates).length) return alert("Tick at least one field to update.");
 
       try {
         modal.querySelector("#bulkApplyBtn").disabled = true;
@@ -705,29 +731,14 @@ function applyFilters(items) {
     if (fo && (d.foodCourse || "") !== fo) return false;
     if (ft && d.foodType !== ft) return false;
     if (q) {
-const addonHay = Array.isArray(d.addons)
-  ? d.addons.map(a => (typeof a === "string" ? a : a.name)).join(" ")
-  : "";
-const hay = `${d.name} ${d.description} ${d.category || ""} ${d.foodCourse || ""} ${addonHay}`.toLowerCase();
-      
+      const addonHay = Array.isArray(d.addons)
+        ? d.addons.map(a => (typeof a === "string" ? a : a.name)).join(" ")
+        : "";
+      const hay = `${d.name} ${d.description} ${d.category || ""} ${d.foodCourse || ""} ${addonHay}`.toLowerCase();
       if (!hay.includes(q)) return false;
     }
     return true;
   });
-}
-async function populateFilterDropdowns() {
-  if (filterCategory) {
-    const cats = await fetchCategories();
-    const cur = filterCategory.value;
-    filterCategory.innerHTML = `<option value="">All Categories</option>` + cats.map(c=>`<option value="${c}">${c}</option>`).join("");
-    if (cur && cats.includes(cur)) filterCategory.value = cur;
-  }
-  if (filterCourse) {
-    const crs = await fetchCourses();
-    const cur = filterCourse.value;
-    filterCourse.innerHTML = `<option value="">All Courses</option>` + crs.map(c=>`<option value="${c}">${c}</option>`).join("");
-    if (cur && crs.includes(cur)) filterCourse.value = cur;
-  }
 }
 
 /* =========================
@@ -735,82 +746,88 @@ async function populateFilterDropdowns() {
    ========================= */
 function openEditModal(id, d) {
   editingId = id;
-  editName.value = d.name || "";
-  editDescription.value = d.description || "";
+  if (!editModal) return;
+  if (editName) editName.value = d.name || "";
+  if (editDescription) editDescription.value = d.description || "";
   Promise.all([loadCategories(editCategory), loadCourses(editCourse)]).then(() => {
-    editCategory.value = d.category || ""; editCourse.value = d.foodCourse || "";
+    if (editCategory) editCategory.value = d.category || "";
+    if (editCourse) editCourse.value = d.foodCourse || "";
   });
-  editType.value = d.foodType || "Veg";
-  editQtyType.value = (d.qtyType && d.qtyType.type) || "Not Applicable";
+  if (editType) editType.value = d.foodType || "Veg";
+  if (editQtyType) editQtyType.value = (d.qtyType && d.qtyType.type) || "Not Applicable";
   toggleEditPriceInputs();
-  if (editQtyType.value === "Not Applicable") {
-    editItemPrice.value = d.qtyType?.itemPrice ?? "";
+  if (editQtyType && editQtyType.value === "Not Applicable") {
+    if (editItemPrice) editItemPrice.value = d.qtyType?.itemPrice ?? "";
   } else {
-    editHalfPrice.value = d.qtyType?.halfPrice ?? "";
-    editFullPrice.value = d.qtyType?.fullPrice ?? "";
+    if (editHalfPrice) editHalfPrice.value = d.qtyType?.halfPrice ?? "";
+    if (editFullPrice) editFullPrice.value = d.qtyType?.fullPrice ?? "";
   }
   editModal.style.display = "block";
 }
-function closeEditModal() { editingId = null; editForm.reset(); editModal.style.display = "none"; }
-closeEditModalBtn.onclick = closeEditModal;
+function closeEditModal() { editingId = null; editForm?.reset(); if (editModal) editModal.style.display = "none"; }
+if (closeEditModalBtn) closeEditModalBtn.onclick = closeEditModal;
 
-editQtyType.onchange = toggleEditPriceInputs;
+if (editQtyType) editQtyType.onchange = toggleEditPriceInputs;
 function toggleEditPriceInputs() {
+  if (!editQtyType) return;
   const v = editQtyType.value;
-  editItemPrice.style.display = v === "Not Applicable" ? "block" : "none";
+  if (editItemPrice) editItemPrice.style.display = v === "Not Applicable" ? "block" : "none";
   const showHF = v === "Half & Full";
-  editHalfPrice.style.display = editFullPrice.style.display = showHF ? "block" : "none";
+  if (editHalfPrice) editHalfPrice.style.display = showHF ? "block" : "none";
+  if (editFullPrice) editFullPrice.style.display = showHF ? "block" : "none";
 }
 
-editForm.onsubmit = async (e) => {
-  e.preventDefault();
-  if (!editingId) return;
+if (editForm) {
+  editForm.onsubmit = async (e) => {
+    e.preventDefault();
+    if (!editingId) return;
 
-  const name = editName.value.trim();
-  const description = editDescription.value.trim();
-  const category = editCategory.value;
-  const foodCourse = editCourse.value;
-  const foodType = editType.value;
-  const qtyTypeValue = editQtyType.value;
+    const name = (editName?.value || "").trim();
+    const description = (editDescription?.value || "").trim();
+    const category = editCategory?.value;
+    const foodCourse = editCourse?.value;
+    const foodType = editType?.value;
+    const qtyTypeValue = editQtyType?.value;
 
-  if (!name || !description || !category || !foodCourse || !foodType || !qtyTypeValue) {
-    return alert("Fill all fields");
-  }
-
-  let qtyType = {};
-  if (qtyTypeValue === "Not Applicable") {
-    const price = parseFloat(editItemPrice.value);
-    if (isNaN(price) || price <= 0) return alert("Invalid price");
-    qtyType = { type: qtyTypeValue, itemPrice: price };
-  } else {
-    const half = parseFloat(editHalfPrice.value);
-    const full = parseFloat(editFullPrice.value);
-    if (isNaN(half) || isNaN(full) || half <= 0 || full <= 0) return alert("Invalid Half/Full price");
-    qtyType = { type: qtyTypeValue, halfPrice: half, fullPrice: full };
-  }
-
-  try {
-    let imageUrlUpdate = {};
-    const file = editImage.files[0];
-    if (file) {
-      const resized = await resizeImage(file);
-      const imageRef = ref(storage, `menuImages/${Date.now()}_${file.name}`);
-      await uploadBytes(imageRef, resized);
-      const newUrl = await getDownloadURL(imageRef);
-      imageUrlUpdate = { imageUrl: newUrl };
+    if (!name || !description || !category || !foodCourse || !foodType || !qtyTypeValue) {
+      return alert("Fill all fields");
     }
 
-    await updateDoc(doc(db, "menuItems", editingId), {
-      name, description, category, foodCourse, foodType, qtyType,
-      updatedAt: serverTimestamp(), ...imageUrlUpdate,
-    });
+    let qtyType = {};
+    if (qtyTypeValue === "Not Applicable") {
+      const price = parseFloat(editItemPrice?.value);
+      if (isNaN(price) || price <= 0) return alert("Invalid price");
+      qtyType = { type: qtyTypeValue, itemPrice: price };
+    } else {
+      const half = parseFloat(editHalfPrice?.value);
+      const full = parseFloat(editFullPrice?.value);
+      if (isNaN(half) || isNaN(full) || half <= 0 || full <= 0) return alert("Invalid Half/Full price");
+      qtyType = { type: qtyTypeValue, halfPrice: half, fullPrice: full };
+    }
 
-    closeEditModal();
-  } catch (err) {
-    console.error(err);
-    alert("Update failed: " + err.message);
-  }
-};
+    try {
+      let imageUrlUpdate = {};
+      const file = document.getElementById("editImage")?.files?.[0];
+      if (file) {
+        const resized = await resizeImage(file);
+        const imageRef = ref(storage, `menuImages/${Date.now()}_${file.name}`);
+        await uploadBytes(imageRef, resized);
+        const newUrl = await getDownloadURL(imageRef);
+        imageUrlUpdate = { imageUrl: newUrl };
+      }
+
+      await updateDoc(doc(db, "menuItems", editingId), {
+        name, description, category, foodCourse, foodType, qtyType,
+        updatedAt: serverTimestamp(), ...imageUrlUpdate,
+      });
+
+      closeEditModal();
+    } catch (err) {
+      console.error(err);
+      alert("Update failed: " + err.message);
+    }
+  };
+}
 
 /* =========================
    Custom dropdowns (Category)
@@ -819,7 +836,7 @@ async function renderCustomCategoryDropdown() {
   if (!catBtn || !catPanel) return;
 
   const categories = await fetchCategories();
-  const current = categoryDropdown.value || "";
+  const current = categoryDropdown?.value || "";
 
   catPanel.innerHTML = categories.map(name => {
     const checked = name === current ? "checked" : "";
@@ -877,7 +894,7 @@ async function renderCustomCategoryDropdown() {
           try {
             row.querySelector(".cat-input").disabled = true;
             await renameCategoryEverywhere(oldName, newVal);
-            if (categoryDropdown.value === oldName) {
+            if (categoryDropdown?.value === oldName) {
               setHiddenValue(categoryDropdown, newVal);
               catBtn.textContent = `${newVal} ▾`;
             }
@@ -897,7 +914,7 @@ async function renderCustomCategoryDropdown() {
     if (role === "delete") {
       if (!confirm(`Delete category "${name}"?\n(Items will NOT be deleted; category field will be cleared.)`)) return;
       try {
-        if (categoryDropdown.value === name) {
+        if (categoryDropdown?.value === name) {
           setHiddenValue(categoryDropdown, "");
           catBtn.textContent = `Select Category ▾`;
         }
@@ -935,7 +952,7 @@ async function renderCustomCourseDropdown() {
   if (!courseBtn || !coursePanel) return;
 
   const courses = await fetchCourses();
-  const current = foodCourseDropdown.value || "";
+  const current = foodCourseDropdown?.value || "";
 
   coursePanel.innerHTML = courses.map(name => {
     const checked = name === current ? "checked" : "";
@@ -993,7 +1010,7 @@ async function renderCustomCourseDropdown() {
           try {
             row.querySelector(".course-input").disabled = true;
             await renameCourseEverywhere(oldName, newVal);
-            if (foodCourseDropdown.value === oldName) {
+            if (foodCourseDropdown?.value === oldName) {
               setHiddenValue(foodCourseDropdown, newVal);
               courseBtn.textContent = `${newVal} ▾`;
             }
@@ -1013,7 +1030,7 @@ async function renderCustomCourseDropdown() {
     if (role === "delete") {
       if (!confirm(`Delete course "${name}"?\n(Items will NOT be deleted; course field will be cleared.)`)) return;
       try {
-        if (foodCourseDropdown.value === name) {
+        if (foodCourseDropdown?.value === name) {
           setHiddenValue(foodCourseDropdown, "");
           courseBtn.textContent = `Select Course ▾`;
         }
@@ -1051,19 +1068,19 @@ async function renderCustomAddonDropdown() {
   if (!addonBtn || !addonPanel) return;
 
   const addons = await fetchAddons();
-const selected = new Set(Array.from(addonsSelect.selectedOptions).map(o=>o.value));
+  const selected = new Set(Array.from(addonsSelect?.selectedOptions || []).map(o=>o.value));
 
-addonPanel.innerHTML = addons.map(a => {
-  const checked = selected.has(a.name) ? "checked" : "";
-  return `
-    <div class="addon-row" data-name="${a.name}">
-      <span class="addon-check ${checked}" data-role="check" title="Toggle"></span>
-      <span class="addon-label" data-role="label" title="${a.name}">${a.name} (₹${a.price})</span>
-      <button class="addon-btn" title="Edit" data-role="edit">✏️</button>
-      <button class="addon-btn" title="Delete" data-role="delete">🗑️</button>
-    </div>
-  `;
-}).join("");
+  addonPanel.innerHTML = addons.map(a => {
+    const checked = selected.has(a.name) ? "checked" : "";
+    return `
+      <div class="addon-row" data-name="${a.name}">
+        <span class="addon-check ${checked}" data-role="check" title="Toggle"></span>
+        <span class="addon-label" data-role="label" title="${a.name}">${a.name} (₹${a.price})</span>
+        <button class="addon-btn" title="Edit" data-role="edit">✏️</button>
+        <button class="addon-btn" title="Delete" data-role="delete">🗑️</button>
+      </div>
+    `;
+  }).join("");
 
   addonPanel.onmousedown = (e)=> e.stopPropagation();
   addonPanel.onclick = async (e) => {
@@ -1076,7 +1093,7 @@ addonPanel.innerHTML = addons.map(a => {
     if (role === "check" || role === "label") {
       const el = row.querySelector(".addon-check");
       const isChecked = el.classList.contains("checked");
-      const values = new Set(Array.from(addonsSelect.selectedOptions).map(o=>o.value));
+      const values = new Set(Array.from(addonsSelect?.selectedOptions || []).map(o=>o.value));
       if (isChecked) {
         el.classList.remove("checked"); values.delete(name);
       } else {
@@ -1109,7 +1126,7 @@ addonPanel.innerHTML = addons.map(a => {
             row.querySelector(".addon-input").disabled = true;
             await renameAddonEverywhere(oldName, newVal);
             // keep selection if it was selected
-            const sel = new Set(Array.from(addonsSelect.selectedOptions).map(o=>o.value));
+            const sel = new Set(Array.from(addonsSelect?.selectedOptions || []).map(o=>o.value));
             if (sel.has(oldName)) { sel.delete(oldName); sel.add(newVal); }
             await loadAddons(addonsSelect);
             setMultiHiddenValue(addonsSelect, Array.from(sel));
@@ -1128,7 +1145,7 @@ addonPanel.innerHTML = addons.map(a => {
     if (role === "delete") {
       if (!confirm(`Delete add-on "${name}"?\n(Items will NOT be deleted; the add-on will be removed from them.)`)) return;
       try {
-        const sel = new Set(Array.from(addonsSelect.selectedOptions).map(o=>o.value));
+        const sel = new Set(Array.from(addonsSelect?.selectedOptions || []).map(o=>o.value));
         sel.delete(name);
         await deleteAddonEverywhere(name);
         await loadAddons(addonsSelect);
@@ -1161,14 +1178,14 @@ addonPanel.innerHTML = addons.map(a => {
 }
 function updateAddonBtnLabel() {
   if (!addonBtn || !addonsSelect) return;
-  const vals = Array.from(addonsSelect.selectedOptions).map(o=>o.value);
+  const vals = Array.from(addonsSelect.selectedOptions || []).map(o=>o.value);
   if (!vals.length) addonBtn.textContent = "Select Add-ons ▾";
   else if (vals.length <= 2) addonBtn.textContent = `${vals.join(", ")} ▾`;
   else addonBtn.textContent = `${vals[0]}, ${vals[1]} +${vals.length-2} ▾`;
 }
 
 /* =========================
-   Assign Add-ons to a single item
+   Assign Add-ons to a single item (modal)
    ========================= */
 function openAssignAddonsModal(itemId, current) {
   let modal = document.getElementById("addonAssignModal");
@@ -1191,17 +1208,16 @@ function openAssignAddonsModal(itemId, current) {
   }
 
   (async () => {
-    const list = modal.querySelector("#assignAddonList"); // ← define list
+    const list = modal.querySelector("#assignAddonList");
     const addons = await fetchAddons();
     const cur = new Set((current || []).map(a => typeof a === "string" ? a : a.name));
 
-   list.innerHTML = addons.map(a => `
-  <label style="display:flex; align-items:center; gap:8px; padding:6px 4px;">
-    <input type="checkbox" value="${a.name}" ${cur.has(a.name) ? "checked" : ""} />
-    <span>${a.name} (₹${a.price})</span>
-  </label>
-`).join("");
-
+    list.innerHTML = addons.map(a => `
+      <label style="display:flex; align-items:center; gap:8px; padding:6px 4px;">
+        <input type="checkbox" value="${a.name}" ${cur.has(a.name) ? "checked" : ""} />
+        <span>${a.name} (₹${a.price})</span>
+      </label>
+    `).join("");
 
     modal.querySelector("#assignAddonSave").onclick = async () => {
       const chosen = addons
@@ -1215,36 +1231,13 @@ function openAssignAddonsModal(itemId, current) {
       }
     };
 
-      modal.style.display = "block";
+    modal.style.display = "block";
   })();
 }
 
 /* =========================
-   Helpers
+   Assign Promotions to a single item (modal)
    ========================= */
-function setHiddenValue(selectEl, val) {
-  let opt = [...selectEl.options].find(o => o.value === val);
-  if (!opt) { opt = document.createElement("option"); opt.value = val; opt.textContent = val; selectEl.appendChild(opt); }
-  selectEl.value = val;
-}
-function setMultiHiddenValue(selectEl, values=[]) {
-  const set = new Set(values);
-  // ensure options exist
-  values.forEach(v => {
-    if (![...selectEl.options].some(o=>o.value===v)) {
-      const opt = document.createElement("option"); opt.value=v; opt.textContent=v; selectEl.appendChild(opt);
-    }
-  });
-
-  
-  // set selection
-  [...selectEl.options].forEach(o => { o.selected = set.has(o.value); });
-}
-function debounce(fn, delay=300){ let t; return (...args)=>{ clearTimeout(t); t=setTimeout(()=>fn(...args), delay); }; }
-
-// =========================
-// Assign Promotions to a single item
-// =========================
 async function openAssignPromotionsModal(itemId, currentIds) {
   // Fetch coupon promotions (kind === "coupon")
   const promosSnap = await getDocs(collection(db, "promotions"));
@@ -1268,9 +1261,7 @@ async function openAssignPromotionsModal(itemId, currentIds) {
     modal.innerHTML = `
       <div style="background:#fff; padding:18px; max-width:520px; margin:5% auto; border-radius:12px; border:2px solid #111; box-shadow:5px 5px 0 #111;">
         <h3 style="margin:0 0 10px">Attach Promotions</h3>
-        <div id="promoAssignList" style="max-height:340px; overflow:auto; border:1px solid #eee; border-radius:8px; padding:8px;">
-          <!-- items injected -->
-        </div>
+        <div id="promoAssignList" style="max-height:340px; overflow:auto; border:1px solid #eee; border-radius:8px; padding:8px;"></div>
         <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:12px;">
           <button id="promoAssignSave" class="adm-btn adm-btn--primary">Save</button>
           <button id="promoAssignCancel" class="adm-btn">Cancel</button>
@@ -1289,23 +1280,14 @@ async function openAssignPromotionsModal(itemId, currentIds) {
     const set = new Set(Array.isArray(currentIds) ? currentIds : []);
     coupons.forEach(({ id, p }) => {
       const row = document.createElement("label");
-      row.style.cssText =
-        "display:flex; align-items:center; gap:10px; padding:6px 8px; border-bottom:1px solid #f1f1f1;";
-      const typeText =
-        p.type === "percent" ? `${p.value}% off` : `₹${p.value} off`;
-      const chan =
-        (p.channel || "").toLowerCase() === "dining" ? "Dining" : "Delivery";
+      row.style.cssText = "display:flex; align-items:center; gap:10px; padding:6px 8px; border-bottom:1px solid #f1f1f1;";
+      const typeText = p.type === "percent" ? `${p.value}% off` : `₹${p.value} off`;
+      const chan = (p.channel || "").toLowerCase() === "dining" ? "Dining" : "Delivery";
       row.innerHTML = `
-        <input type="checkbox" class="promoAssignChk" value="${id}" ${
-        set.has(id) ? "checked" : ""
-      }/>
+        <input type="checkbox" class="promoAssignChk" value="${id}" ${ set.has(id) ? "checked" : "" }/>
         <div style="display:flex; flex-direction:column;">
           <div><strong>${p.code || "(no code)"}</strong> • <em>${chan}</em></div>
-          <div style="font-size:12px; color:#555;">
-            ${typeText}${p.minOrder ? ` • Min ₹${p.minOrder}` : ""}${
-        p.active === false ? ` • inactive` : ""
-      }
-          </div>
+          <div style="font-size:12px; color:#555;">${typeText}${p.minOrder ? ` • Min ₹${p.minOrder}` : ""}${p.active === false ? ` • inactive` : ""}</div>
         </div>
       `;
       listEl.appendChild(row);
@@ -1313,13 +1295,10 @@ async function openAssignPromotionsModal(itemId, currentIds) {
   }
 
   // Wire buttons
-  modal.querySelector("#promoAssignCancel").onclick = () =>
-    (modal.style.display = "none");
+  modal.querySelector("#promoAssignCancel").onclick = () => (modal.style.display = "none");
 
   modal.querySelector("#promoAssignSave").onclick = async () => {
-    const ids = [
-      ...modal.querySelectorAll(".promoAssignChk:checked"),
-    ].map((i) => i.value);
+    const ids = [...modal.querySelectorAll(".promoAssignChk:checked")].map((i) => i.value);
     try {
       await updateDoc(doc(db, "menuItems", itemId), { promotions: ids });
       modal.style.display = "none";
@@ -1331,11 +1310,26 @@ async function openAssignPromotionsModal(itemId, currentIds) {
 
   modal.style.display = "block";
 }
-const promoIds = Array.isArray(item.promotions) ? item.promotions : [];
-const promoChips = promoIds.map((pid) => {
-  const info = PROMOS_BY_ID[pid];
-  if (!info) return `<span class="adm-pill">${pid.slice(0,5)}…</span>`;
-  const pillClass = info.channel === "dining" ? "adm-pill--dining" : "adm-pill--delivery";
-  const code = info.code || pid;
-  return `<span class="adm-pill ${pillClass}" title="${info.type === 'percent' ? info.value + '% off' : '₹' + info.value + ' off'}">${code}</span>`;
-}).join(" ");
+
+/* =========================
+   Helpers
+   ========================= */
+function setHiddenValue(selectEl, val) {
+  if (!selectEl) return;
+  let opt = [...selectEl.options].find(o => o.value === val);
+  if (!opt) { opt = document.createElement("option"); opt.value = val; opt.textContent = val; selectEl.appendChild(opt); }
+  selectEl.value = val;
+}
+function setMultiHiddenValue(selectEl, values=[]) {
+  if (!selectEl) return;
+  const set = new Set(values);
+  // ensure options exist
+  values.forEach(v => {
+    if (![...selectEl.options].some(o=>o.value===v)) {
+      const opt = document.createElement("option"); opt.value=v; opt.textContent=v; selectEl.appendChild(opt);
+    }
+  });
+  // set selection
+  [...selectEl.options].forEach(o => { o.selected = set.has(o.value); });
+}
+function debounce(fn, delay=300){ let t; return (...args)=>{ clearTimeout(t); t=setTimeout(()=>fn(...args), delay); }; }
