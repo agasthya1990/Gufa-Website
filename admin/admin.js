@@ -15,12 +15,14 @@ import {
   getDoc,
   setDoc
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
 import {
-  getStorage,
   ref,
   uploadBytes,
   getDownloadURL,
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
+import { storage } from "./firebase.js";
+
 
 import {
   // existing
