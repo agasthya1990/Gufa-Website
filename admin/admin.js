@@ -40,6 +40,9 @@ import {
 } from "./categoryCourse.js";
 import { initPromotions } from "./promotions.js";
 
+// Coupon cache for quick lookups when rendering the menu table
+let PROMOS_BY_ID = {};
+
 
 /* =========================
    DOM
@@ -147,6 +150,16 @@ onAuthStateChanged(auth, async (user) => {
 
     // Promotions (Dining | Delivery)
     initPromotions();
+
+    // Keep a live map of coupon promotions (id -> promo data)
+onSnapshot(collection(db, "promotions"), (snap) => {
+  const map = {};
+  snap.forEach((d) => {
+    const p = d.data();
+    if (p?.kind === "coupon") map[d.id] = p;
+  });
+  PROMOS_BY_ID = map;
+});
 
     // Live list
     attachSnapshot();
@@ -325,6 +338,7 @@ const addonsText = Array.isArray(d.addons)
       <td>${qty.type || ""}</td>
       <td>${priceText || ""}</td>
       <td>${addonsText}</td>
+      <td>${promoChips || '<span class="adm-muted">—</span>'}</td>
       <td><img src="${d.imageUrl}" width="50" /></td>
       <td>
         <select class="stockToggle" data-id="${id}">
@@ -1317,3 +1331,11 @@ async function openAssignPromotionsModal(itemId, currentIds) {
 
   modal.style.display = "block";
 }
+const promoIds = Array.isArray(item.promotions) ? item.promotions : [];
+const promoChips = promoIds.map((pid) => {
+  const info = PROMOS_BY_ID[pid];
+  if (!info) return `<span class="adm-pill">${pid.slice(0,5)}…</span>`;
+  const pillClass = info.channel === "dining" ? "adm-pill--dining" : "adm-pill--delivery";
+  const code = info.code || pid;
+  return `<span class="adm-pill ${pillClass}" title="${info.type === 'percent' ? info.value + '% off' : '₹' + info.value + ' off'}">${code}</span>`;
+}).join(" ");
