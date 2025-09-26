@@ -33,7 +33,7 @@ import {
   loadAddons, fetchAddons, addAddon,
   renameAddonEverywhere, deleteAddonEverywhere,
 } from "./categoryCourse.js";
-
+import { initPromotions } from "./promotions.js";
 /* =========================
    Storage
    ========================= */
@@ -143,6 +143,9 @@ onAuthStateChanged(auth, async (user) => {
     await populateFilterDropdowns();
     wireSearchAndFilters();
 
+    // Promotions (Dining | Delivery)
+    initPromotions();
+
     // Live list
     attachSnapshot();
   } else {
@@ -150,6 +153,7 @@ onAuthStateChanged(auth, async (user) => {
     adminContent.style.display = "none";
   }
 });
+
 
 /* =========================
    Pricing toggle
