@@ -28,8 +28,8 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
 
 // ===== Config =====
-const BANNER_W = 100;
-const BANNER_H = 100;
+const BANNER_W = 200;
+const BANNER_H = 50;
 const BANNER_MIME = "image/jpeg";
 const BANNER_QUALITY = 0.85;
 const MAX_UPLOAD_MB = 10;
