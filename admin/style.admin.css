@@ -126,4 +126,44 @@ html, body { font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Hel
 
 /* Make default modal dialog a bit narrower for friendlier feel */
 .adm-modal__dialog { max-width: 640px; }
+/* === Readability upgrades === */
+html, body { font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji"; }
+
+/* Compact input sizing helpers */
+.adm-input[data-size="xs"], .adm-select[data-size="xs"] { max-width: 120px; }
+.adm-input[data-size="sm"], .adm-select[data-size="sm"] { max-width: 180px; }
+.adm-input[data-size="md"], .adm-select[data-size="md"] { max-width: 260px; }
+
+/* Table striping */
+.adm-table tbody tr:nth-child(odd) td { background: #fafafa; }
+
+/* Channel pills */
+.adm-pill { display:inline-block; padding:3px 10px; border-radius:999px; font-size:12px; font-weight:700; border:1px solid var(--adm-border); }
+.adm-pill--delivery { background:#eef2ff; color:#3730a3; }
+.adm-pill--dining   { background:#ecfdf5; color:#065f46; }
+
+/* Friendlier "comic" popovers (for dropdown panels/modals used as pickers) */
+.dropdown-panel,
+.adm-popover {
+  display: none;
+  position: absolute;
+  z-index: 1000;
+  background: #fff;
+  border: 2px solid #111;
+  border-radius: 14px;
+  box-shadow: 5px 5px 0 #111;
+  padding: 10px;
+  min-width: 260px;
+  max-width: 420px;
+  max-height: 320px;
+  overflow: auto;
+}
+.dropdown-wrap .dropdown-panel { display: none; }
+.dropdown-wrap.open .dropdown-panel { display: block; }
+
+/* Buttons inside popovers */
+.dropdown-panel .adm-btn { border-radius: 999px; }
+
+/* Make default modal dialog a bit narrower for friendlier feel */
+.adm-modal__dialog { max-width: 640px; }
 
