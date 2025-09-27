@@ -579,33 +579,42 @@ function openBulkEditModal() {
       wrap.id = "bulkPromoAddonSection";
       wrap.style.marginTop = "14px";
       wrap.innerHTML = `
-        <div style=\"display:grid; gap:10px; border-top:1px dashed #ddd; padding-top:12px;\">
+        <div style=\"
+display:grid; gap:10px; border-top:1px dashed #ddd; padding-top:12px;">
 
           <div>
-            <label style=\"font-weight:600; display:block; margin-bottom:6px;\">Promotions</label>
-            <div style=\"display:flex; gap:10px; align-items:center; flex-wrap:wrap;\">
-              <label style=\"display:flex; align-items:center; gap:6px;\">
-                <input type=\"checkbox\" id=\"bulkClearPromos\" />
+            <label style="display:flex; gap:8px; align-items:center;">
+              <input type="checkbox" id="bulkPromosEnable" />
+              <span>Promotions</span>
+            </label>
+            <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+              <label style="display:flex; align-items:center; gap:6px;">
+                <input type="checkbox" id="bulkClearPromos" disabled />
                 <span>Clear promotions</span>
               </label>
-              <button type=\"button\" id=\"bulkPromosBtn\">Choose coupon(s)</button>
-              <input type=\"hidden\" id=\"bulkPromos\" value=\"[]\"/>
-              <span id=\"bulkPromosPreview\" class=\"adm-muted\">none selected</span>
+              <button type="button" id="bulkPromosBtn" disabled>Choose coupon(s)</button>
+              <input type="hidden" id="bulkPromos" value="[]"/>
+              <span id="bulkPromosPreview" class="adm-muted">none selected</span>
             </div>
           </div>
 
           <div>
-            <label style=\"font-weight:600; display:block; margin-bottom:6px;\">Add-ons</label>
-            <div style=\"display:flex; gap:10px; align-items:center; flex-wrap:wrap;\">
-              <label style=\"display:flex; align-items:center; gap:6px;\">
-                <input type=\"checkbox\" id=\"bulkClearAddons\" />
+            <label style="display:flex; gap:8px; align-items:center;">
+              <input type="checkbox" id="bulkAddonsEnable" />
+              <span>Add-ons</span>
+            </label>
+            <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+              <label style="display:flex; align-items:center; gap:6px;">
+                <input type="checkbox" id="bulkClearAddons" disabled />
                 <span>Clear add-ons</span>
               </label>
-              <button type=\"button\" id=\"bulkAddonsBtn\">Choose add-on(s)</button>
-              <input type=\"hidden\" id=\"bulkAddons\" value=\"[]\"/>
-              <span id=\"bulkAddonsPreview\" class=\"adm-muted\">none selected</span>
+              <button type="button" id="bulkAddonsBtn" disabled>Choose add-on(s)</button>
+              <input type="hidden" id="bulkAddons" value="[]"/>
+              <span id="bulkAddonsPreview" class="adm-muted">none selected</span>
             </div>
           </div>
+
+        </div>
 
         </div>
       `;
@@ -639,6 +648,26 @@ function openBulkEditModal() {
       const lay = document.getElementById("bulkChooserOverlay");
       if (lay) lay.style.display = "none";
     }
+    const bulkPromosEnable   = modal.querySelector("#bulkPromosEnable");
+    const bulkAddonsEnable   = modal.querySelector("#bulkAddonsEnable");
+    const bulkClearPromos    = modal.querySelector("#bulkClearPromos");
+    const bulkClearAddons    = modal.querySelector("#bulkClearAddons");
+
+    function togglePromosInputs() {
+      const on = !!(bulkPromosEnable && bulkPromosEnable.checked);
+      if (bulkPromosBtn) bulkPromosBtn.disabled = !on;
+      if (bulkClearPromos) bulkClearPromos.disabled = !on;
+    }
+    function toggleAddonsInputs() {
+      const on = !!(bulkAddonsEnable && bulkAddonsEnable.checked);
+      if (bulkAddonsBtn) bulkAddonsBtn.disabled = !on;
+      if (bulkClearAddons) bulkClearAddons.disabled = !on;
+    }
+    if (bulkPromosEnable) bulkPromosEnable.onchange = togglePromosInputs;
+    if (bulkAddonsEnable) bulkAddonsEnable.onchange = toggleAddonsInputs;
+    togglePromosInputs();
+    toggleAddonsInputs();
+
 
     // Promotions chooser (coupons only)
     bulkPromosBtn.onclick = async () => {
@@ -791,17 +820,23 @@ function openBulkEditModal() {
         }
       }
 
-      // ✅ BULK EDIT/DELETE (Promotions & Add-ons) — inside submit, before empty-check
-      if (document.getElementById("bulkPromos")?.value || document.getElementById("bulkClearPromos")?.checked) {
-        updates.promotions = document.getElementById("bulkClearPromos")?.checked
-          ? []
-          : JSON.parse(document.getElementById("bulkPromos").value || "[]");
+      
+      // ✅ BULK EDIT/DELETE (Promotions & Add-ons) — align with other toggles
+      if (document.getElementById("bulkPromosEnable")?.checked) {
+        if (document.getElementById("bulkClearPromos")?.checked) {
+          updates.promotions = [];
+        } else {
+          updates.promotions = JSON.parse(document.getElementById("bulkPromos")?.value || "[]");
+        }
       }
-      if (document.getElementById("bulkAddons")?.value || document.getElementById("bulkClearAddons")?.checked) {
-        updates.addons = document.getElementById("bulkClearAddons")?.checked
-          ? []
-          : JSON.parse(document.getElementById("bulkAddons").value || "[]");
+      if (document.getElementById("bulkAddonsEnable")?.checked) {
+        if (document.getElementById("bulkClearAddons")?.checked) {
+          updates.addons = [];
+        } else {
+          updates.addons = JSON.parse(document.getElementById("bulkAddons")?.value || "[]");
+        }
       }
+
 
       if (!Object.keys(updates).length) return alert("Tick at least one field to update.");
 
@@ -834,7 +869,12 @@ function openBulkEditModal() {
   toggleBulkQtyInputs();
 
   modal.querySelector("#bulkCatEnable").checked = false;
-  modal.querySelector("#bulkCourseEnable").checked = false;
+ 
+  if (modal.querySelector("#bulkPromosEnable")) modal.querySelector("#bulkPromosEnable").checked = false;
+  if (modal.querySelector("#bulkAddonsEnable")) modal.querySelector("#bulkAddonsEnable").checked = false;
+  togglePromosInputs();
+  toggleAddonsInputs();
+ modal.querySelector("#bulkCourseEnable").checked = false;
   modal.querySelector("#bulkTypeEnable").checked = false;
   modal.querySelector("#bulkStockEnable").checked = false;
   modal.querySelector("#bulkQtyEnable").checked = false;
