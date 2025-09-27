@@ -573,175 +573,173 @@ function openBulkEditModal() {
     document.body.appendChild(modal);
 
     // === INSERT: Bulk Promotions & Add-ons controls (before footer buttons) ===
-    {
-      const footer = modal.querySelector("form > div:last-child"); // button row
-      const wrap = document.createElement("div");
-      wrap.id = "bulkPromoAddonSection";
-      wrap.style.marginTop = "14px";
-      wrap.innerHTML = `
-        <div style=\"
-display:grid; gap:10px; border-top:1px dashed #ddd; padding-top:12px;">
-
-          <div>
-            <label style="display:flex; gap:8px; align-items:center;">
-              <input type="checkbox" id="bulkPromosEnable" />
-              <span>Promotions</span>
-            </label>
-            <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-              <label style="display:flex; align-items:center; gap:6px;">
-                <input type="checkbox" id="bulkClearPromos" disabled />
-                <span>Clear promotions</span>
-              </label>
-              <button type="button" id="bulkPromosBtn" disabled>Choose coupon(s)</button>
-              <input type="hidden" id="bulkPromos" value="[]"/>
-              <span id="bulkPromosPreview" class="adm-muted">none selected</span>
-            </div>
-          </div>
-
-          <div>
-            <label style="display:flex; gap:8px; align-items:center;">
-              <input type="checkbox" id="bulkAddonsEnable" />
-              <span>Add-ons</span>
-            </label>
-            <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-              <label style="display:flex; align-items:center; gap:6px;">
-                <input type="checkbox" id="bulkClearAddons" disabled />
-                <span>Clear add-ons</span>
-              </label>
-              <button type="button" id="bulkAddonsBtn" disabled>Choose add-on(s)</button>
-              <input type="hidden" id="bulkAddons" value="[]"/>
-              <span id="bulkAddonsPreview" class="adm-muted">none selected</span>
-            </div>
-          </div>
-
-        </div>
-
-        </div>
-      `;
-      footer.parentNode.insertBefore(wrap, footer);
-    }
-
-    // === INSERT: bulk chooser wiring (Promotions & Add-ons) ===
-    const bulkPromosBtn      = modal.querySelector("#bulkPromosBtn");
-    const bulkAddonsBtn      = modal.querySelector("#bulkAddonsBtn");
-    const bulkPromosInput    = modal.querySelector("#bulkPromos");
-    const bulkAddonsInput    = modal.querySelector("#bulkAddons");
-    const bulkPromosPreview  = modal.querySelector("#bulkPromosPreview");
-    const bulkAddonsPreview  = modal.querySelector("#bulkAddonsPreview");
-
-    function showOverlay(html) {
-      let lay = document.getElementById("bulkChooserOverlay");
-      if (!lay) {
-        lay = document.createElement("div");
-        lay.id = "bulkChooserOverlay";
-        Object.assign(lay.style, { position:"fixed", inset:"0", background:"rgba(0,0,0,.6)", zIndex:"10000", display:"none" });
-        document.body.appendChild(lay);
-      }
-      lay.innerHTML = `
-        <div style="background:#fff; max-width:560px; margin:5% auto; border-radius:10px; border:2px solid #111; box-shadow:6px 6px 0 #111; padding:16px;">
-          ${html}
-        </div>`;
-      lay.style.display = "block";
-      return lay;
-    }
-    function closeOverlay() {
-      const lay = document.getElementById("bulkChooserOverlay");
-      if (lay) lay.style.display = "none";
-    }
-    const bulkPromosEnable   = modal.querySelector("#bulkPromosEnable");
-    const bulkAddonsEnable   = modal.querySelector("#bulkAddonsEnable");
-    const bulkClearPromos    = modal.querySelector("#bulkClearPromos");
-    const bulkClearAddons    = modal.querySelector("#bulkClearAddons");
-
-    function togglePromosInputs() {
-      const on = !!(bulkPromosEnable && bulkPromosEnable.checked);
-      if (bulkPromosBtn) bulkPromosBtn.disabled = !on;
-      if (bulkClearPromos) bulkClearPromos.disabled = !on;
-    }
-    function toggleAddonsInputs() {
-      const on = !!(bulkAddonsEnable && bulkAddonsEnable.checked);
-      if (bulkAddonsBtn) bulkAddonsBtn.disabled = !on;
-      if (bulkClearAddons) bulkClearAddons.disabled = !on;
-    }
-    if (bulkPromosEnable) bulkPromosEnable.onchange = togglePromosInputs;
-    if (bulkAddonsEnable) bulkAddonsEnable.onchange = toggleAddonsInputs;
-    togglePromosInputs();
-    toggleAddonsInputs();
-
-
-    // Promotions chooser (coupons only)
-    bulkPromosBtn.onclick = async () => {
-      const snap = await getDocs(collection(db, "promotions"));
-      const coupons = [];
-      snap.forEach(d => { const p = d.data(); if (p?.kind === "coupon") coupons.push({ id: d.id, p }); });
-      const current = (() => { try { return JSON.parse(bulkPromosInput.value || "[]"); } catch { return []; } })();
-      const set = new Set(current);
-
-      const rows = coupons.map(({id, p}) => {
-        const typeTxt = p.type === "percent" ? `${p.value}% off` : `₹${p.value} off`;
-        const chan = p.channel === "dining" ? "Dining" : "Delivery";
-        return `
-          <label style="display:flex; gap:10px; align-items:center; padding:6px 0; border-bottom:1px solid #f3f3f3;">
-            <input type="checkbox" value="${id}" ${set.has(id) ? "checked" : ""} />
-            <div style="display:flex; flex-direction:column;">
-              <div><strong>${p.code || "(no code)"} </strong>• <em>${chan}</em></div>
-              <div class="adm-muted" style="font-size:12px;">${typeTxt}${p.minOrder ? ` • Min ₹${p.minOrder}` : ""}${p.active===false ? " • inactive" : ""}</div>
-            </div>
-          </label>
-        `;
-      }).join("") || `<div class="adm-muted">No coupons found.</div>`;
-
-      const overlay = showOverlay(`
-        <h3 style="margin:0 0 10px">Choose coupon(s)</h3>
-        <div style="max-height:320px; overflow:auto; margin-bottom:10px;">${rows}</div>
-        <div style="display:flex; gap:8px; justify-content:flex-end;">
-          <button id="bulkPromosSave" class="adm-btn adm-btn--primary">Save</button>
-          <button id="bulkPromosCancel" class="adm-btn">Cancel</button>
-        </div>
-      `);
-
-      overlay.querySelector("#bulkPromosCancel").onclick = closeOverlay;
-      overlay.querySelector("#bulkPromosSave").onclick = () => {
-        const ids = [...overlay.querySelectorAll('input[type="checkbox"]:checked')].map(i => i.value);
-        bulkPromosInput.value = JSON.stringify(ids);
-        bulkPromosPreview.textContent = ids.length ? `${ids.length} selected` : "none selected";
-        closeOverlay();
-      };
-    };
-
-    // Add-ons chooser
-    bulkAddonsBtn.onclick = async () => {
-      const snap = await getDocs(collection(db, "menuAddons"));
-      const addons = [];
-      snap.forEach(d => { const v = d.data() || {}; addons.push({ name: v.name || d.id, price: Number(v.price || 0) }); });
-      const current = (() => { try { return JSON.parse(bulkAddonsInput.value || "[]"); } catch { return []; } })();
-      const sel = new Set(current.map(a => a.name));
-
-      const rows = addons.map(a => `
-        <label style="display:flex; gap:10px; align-items:center; padding:6px 0; border-bottom:1px solid #f3f3f3;">
-          <input type="checkbox" value="${a.name}" ${sel.has(a.name) ? "checked" : ""} />
-          <span>${a.name} (₹${a.price})</span>
+{
+  const footer = modal.querySelector("form > div:last-child"); // button row
+  const wrap = document.createElement("div");
+  wrap.id = "bulkPromoAddonSection";
+  wrap.style.marginTop = "14px";
+  wrap.innerHTML = `
+    <div style="
+      display:grid; gap:10px; border-top:1px dashed #ddd; padding-top:12px;">
+      <div>
+        <label style="display:flex; gap:8px; align-items:center;">
+          <input type="checkbox" id="bulkPromosEnable" />
+          <span>Promotions</span>
         </label>
-      `).join("") || `<div class="adm-muted">No add-ons found.</div>`;
-
-      const overlay = showOverlay(`
-        <h3 style="margin:0 0 10px">Choose add-on(s)</h3>
-        <div style="max-height:320px; overflow:auto; margin-bottom:10px;">${rows}</div>
-        <div style="display:flex; gap:8px; justify-content:flex-end;">
-          <button id="bulkAddonsSave" class="adm-btn adm-btn--primary">Save</button>
-          <button id="bulkAddonsCancel" class="adm-btn">Cancel</button>
+        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+          <label style="display:flex; align-items:center; gap:6px;">
+            <input type="checkbox" id="bulkClearPromos" disabled />
+            <span>Clear promotions</span>
+          </label>
+          <button type="button" id="bulkPromosBtn" disabled>Choose coupon(s)</button>
+          <input type="hidden" id="bulkPromos" value="[]"/>
+          <span id="bulkPromosPreview" class="adm-muted">none selected</span>
         </div>
-      `);
+      </div>
 
-      overlay.querySelector("#bulkAddonsCancel").onclick = closeOverlay;
-      overlay.querySelector("#bulkAddonsSave").onclick = () => {
-        const chosenNames = [...overlay.querySelectorAll('input[type="checkbox"]:checked')].map(i => i.value);
-        const chosenObjs = addons.filter(a => chosenNames.includes(a.name));
-        bulkAddonsInput.value = JSON.stringify(chosenObjs);
-        bulkAddonsPreview.textContent = chosenObjs.length ? `${chosenObjs.length} selected` : "none selected";
-        closeOverlay();
-      };
-    };
+      <div>
+        <label style="display:flex; gap:8px; align-items:center;">
+          <input type="checkbox" id="bulkAddonsEnable" />
+          <span>Add-ons</span>
+        </label>
+        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+          <label style="display:flex; align-items:center; gap:6px;">
+            <input type="checkbox" id="bulkClearAddons" disabled />
+            <span>Clear add-ons</span>
+          </label>
+          <button type="button" id="bulkAddonsBtn" disabled>Choose add-on(s)</button>
+          <input type="hidden" id="bulkAddons" value="[]"/>
+          <span id="bulkAddonsPreview" class="adm-muted">none selected</span>
+        </div>
+      </div>
+    </div>
+  `;
+  footer.parentNode.insertBefore(wrap, footer);
+}
+
+
+// === INSERT: bulk chooser wiring (Promotions & Add-ons) ===
+const bulkPromosBtn      = modal.querySelector("#bulkPromosBtn");
+const bulkAddonsBtn      = modal.querySelector("#bulkAddonsBtn");
+const bulkPromosInput    = modal.querySelector("#bulkPromos");
+const bulkAddonsInput    = modal.querySelector("#bulkAddons");
+const bulkPromosPreview  = modal.querySelector("#bulkPromosPreview");
+const bulkAddonsPreview  = modal.querySelector("#bulkAddonsPreview");
+
+function showOverlay(html) {
+  let lay = document.getElementById("bulkChooserOverlay");
+  if (!lay) {
+    lay = document.createElement("div");
+    lay.id = "bulkChooserOverlay";
+    Object.assign(lay.style, { position:"fixed", inset:"0", background:"rgba(0,0,0,.6)", zIndex:"10000", display:"none" });
+    document.body.appendChild(lay);
+  }
+  lay.innerHTML = `
+    <div style="background:#fff; max-width:560px; margin:5% auto; border-radius:10px; border:2px solid #111; box-shadow:6px 6px 0 #111; padding:16px;">
+      ${html}
+    </div>`;
+  lay.style.display = "block";
+  return lay;
+}
+function closeOverlay() {
+  const lay = document.getElementById("bulkChooserOverlay");
+  if (lay) lay.style.display = "none";
+}
+
+const bulkPromosEnable   = modal.querySelector("#bulkPromosEnable");
+const bulkAddonsEnable   = modal.querySelector("#bulkAddonsEnable");
+const bulkClearPromos    = modal.querySelector("#bulkClearPromos");
+const bulkClearAddons    = modal.querySelector("#bulkClearAddons");
+
+function togglePromosInputs() {
+  const on = !!(bulkPromosEnable && bulkPromosEnable.checked);
+  if (bulkPromosBtn)   bulkPromosBtn.disabled = !on;
+  if (bulkClearPromos) bulkClearPromos.disabled = !on;
+}
+function toggleAddonsInputs() {
+  const on = !!(bulkAddonsEnable && bulkAddonsEnable.checked);
+  if (bulkAddonsBtn)   bulkAddonsBtn.disabled = !on;
+  if (bulkClearAddons) bulkClearAddons.disabled = !on;
+}
+if (bulkPromosEnable) bulkPromosEnable.onchange = togglePromosInputs;
+if (bulkAddonsEnable) bulkAddonsEnable.onchange = toggleAddonsInputs;
+togglePromosInputs();
+toggleAddonsInputs();
+
+// Promotions chooser (coupons only)
+bulkPromosBtn.onclick = async () => {
+  const snap = await getDocs(collection(db, "promotions"));
+  const coupons = [];
+  snap.forEach(d => { const p = d.data(); if (p?.kind === "coupon") coupons.push({ id: d.id, p }); });
+  const current = (() => { try { return JSON.parse(bulkPromosInput.value || "[]"); } catch { return []; } })();
+  const set = new Set(current);
+
+  const rows = coupons.map(({id, p}) => {
+    const typeTxt = p.type === "percent" ? `${p.value}% off` : `₹${p.value} off`;
+    const chan = p.channel === "dining" ? "Dining" : "Delivery";
+    return `
+      <label style="display:flex; gap:10px; align-items:center; padding:6px 0; border-bottom:1px solid #f3f3f3;">
+        <input type="checkbox" value="${id}" ${set.has(id) ? "checked" : ""} />
+        <div style="display:flex; flex-direction:column;">
+          <div><strong>${p.code || "(no code)"} </strong>• <em>${chan}</em></div>
+          <div class="adm-muted" style="font-size:12px;">${typeTxt}${p.minOrder ? ` • Min ₹${p.minOrder}` : ""}${p.active===false ? " • inactive" : ""}</div>
+        </div>
+      </label>
+    `;
+  }).join("") || `<div class="adm-muted">No coupons found.</div>`;
+
+  const overlay = showOverlay(`
+    <h3 style="margin:0 0 10px">Choose coupon(s)</h3>
+    <div style="max-height:320px; overflow:auto; margin-bottom:10px;">${rows}</div>
+    <div style="display:flex; gap:8px; justify-content:flex-end;">
+      <button id="bulkPromosSave" class="adm-btn adm-btn--primary">Save</button>
+      <button id="bulkPromosCancel" class="adm-btn">Cancel</button>
+    </div>
+  `);
+
+  overlay.querySelector("#bulkPromosCancel").onclick = closeOverlay;
+  overlay.querySelector("#bulkPromosSave").onclick = () => {
+    const ids = [...overlay.querySelectorAll('input[type="checkbox"]:checked')].map(i => i.value);
+    bulkPromosInput.value = JSON.stringify(ids);
+    bulkPromosPreview.textContent = ids.length ? `${ids.length} selected` : "none selected";
+    closeOverlay();
+  };
+};
+
+// Add-ons chooser
+bulkAddonsBtn.onclick = async () => {
+  const snap = await getDocs(collection(db, "menuAddons"));
+  const addons = [];
+  snap.forEach(d => { const v = d.data() || {}; addons.push({ name: v.name || d.id, price: Number(v.price || 0) }); });
+  const current = (() => { try { return JSON.parse(bulkAddonsInput.value || "[]"); } catch { return []; } })();
+  const sel = new Set(current.map(a => a.name));
+
+  const rows = addons.map(a => `
+    <label style="display:flex; gap:10px; align-items:center; padding:6px 0; border-bottom:1px solid #f3f3f3;">
+      <input type="checkbox" value="${a.name}" ${sel.has(a.name) ? "checked" : ""} />
+      <span>${a.name} (₹${a.price})</span>
+    </label>
+  `).join("") || `<div class="adm-muted">No add-ons found.</div>`;
+
+  const overlay = showOverlay(`
+    <h3 style="margin:0 0 10px">Choose add-on(s)</h3>
+    <div style="max-height:320px; overflow:auto; margin-bottom:10px;">${rows}</div>
+    <div style="display:flex; gap:8px; justify-content:flex-end;">
+      <button id="bulkAddonsSave" class="adm-btn adm-btn--primary">Save</button>
+      <button id="bulkAddonsCancel" class="adm-btn">Cancel</button>
+    </div>
+  `);
+
+  overlay.querySelector("#bulkAddonsCancel").onclick = closeOverlay;
+  overlay.querySelector("#bulkAddonsSave").onclick = () => {
+    const chosenNames = [...overlay.querySelectorAll('input[type="checkbox"]:checked')].map(i => i.value);
+    const chosenObjs = addons.filter(a => chosenNames.includes(a.name));
+    bulkAddonsInput.value = JSON.stringify(chosenObjs);
+    bulkAddonsPreview.textContent = chosenObjs.length ? `${chosenObjs.length} selected` : "none selected";
+    closeOverlay();
+  };
+};
+
 
     // enable toggles
     const bulkCatEnable    = modal.querySelector("#bulkCatEnable");
@@ -822,20 +820,21 @@ display:grid; gap:10px; border-top:1px dashed #ddd; padding-top:12px;">
 
       
       // ✅ BULK EDIT/DELETE (Promotions & Add-ons) — align with other toggles
-      if (document.getElementById("bulkPromosEnable")?.checked) {
-        if (document.getElementById("bulkClearPromos")?.checked) {
-          updates.promotions = [];
-        } else {
-          updates.promotions = JSON.parse(document.getElementById("bulkPromos")?.value || "[]");
-        }
-      }
-      if (document.getElementById("bulkAddonsEnable")?.checked) {
-        if (document.getElementById("bulkClearAddons")?.checked) {
-          updates.addons = [];
-        } else {
-          updates.addons = JSON.parse(document.getElementById("bulkAddons")?.value || "[]");
-        }
-      }
+if (document.getElementById("bulkPromosEnable")?.checked) {
+  if (document.getElementById("bulkClearPromos")?.checked) {
+    updates.promotions = [];
+  } else {
+    updates.promotions = JSON.parse(document.getElementById("bulkPromos")?.value || "[]");
+  }
+}
+if (document.getElementById("bulkAddonsEnable")?.checked) {
+  if (document.getElementById("bulkClearAddons")?.checked) {
+    updates.addons = [];
+  } else {
+    updates.addons = JSON.parse(document.getElementById("bulkAddons")?.value || "[]");
+  }
+}
+
 
 
       if (!Object.keys(updates).length) return alert("Tick at least one field to update.");
@@ -859,33 +858,37 @@ display:grid; gap:10px; border-top:1px dashed #ddd; padding-top:12px;">
   }
 
   // open: refresh data
-  modal.querySelector("#bulkCount").textContent = String(selectedIds.size);
+  // open: refresh data
+modal.querySelector("#bulkCount").textContent = String(selectedIds.size);
 
-  const { bulkCategory, bulkCourse, bulkType, bulkQtyType, toggleBulkQtyInputs } = modal._refs;
-  loadCategories(bulkCategory);
-  loadCourses(bulkCourse);
-  bulkType.value = "";
-  bulkQtyType.value = "";
-  toggleBulkQtyInputs();
+const { bulkCategory, bulkCourse, bulkType, bulkQtyType, toggleBulkQtyInputs } = modal._refs;
+loadCategories(bulkCategory);
+loadCourses(bulkCourse);
+bulkType.value = "";
+bulkQtyType.value = "";
+toggleBulkQtyInputs();
 
-  modal.querySelector("#bulkCatEnable").checked = false;
- 
-  if (modal.querySelector("#bulkPromosEnable")) modal.querySelector("#bulkPromosEnable").checked = false;
-  if (modal.querySelector("#bulkAddonsEnable")) modal.querySelector("#bulkAddonsEnable").checked = false;
-  togglePromosInputs();
-  toggleAddonsInputs();
- modal.querySelector("#bulkCourseEnable").checked = false;
-  modal.querySelector("#bulkTypeEnable").checked = false;
-  modal.querySelector("#bulkStockEnable").checked = false;
-  modal.querySelector("#bulkQtyEnable").checked = false;
+modal.querySelector("#bulkCatEnable").checked = false;
+modal.querySelector("#bulkCourseEnable").checked = false;
+modal.querySelector("#bulkTypeEnable").checked = false;
+modal.querySelector("#bulkStockEnable").checked = false;
+modal.querySelector("#bulkQtyEnable").checked = false;
 
-  bulkCategory.disabled = true;
-  bulkCourse.disabled   = true;
-  bulkType.disabled     = true;
-  modal.querySelector("#bulkStock").disabled = true;
-  bulkQtyType.disabled  = true;
+if (modal.querySelector("#bulkPromosEnable")) modal.querySelector("#bulkPromosEnable").checked = false;
+if (modal.querySelector("#bulkAddonsEnable")) modal.querySelector("#bulkAddonsEnable").checked = false;
 
-  modal.style.display = "block";
+bulkCategory.disabled = true;
+bulkCourse.disabled   = true;
+bulkType.disabled     = true;
+modal.querySelector("#bulkStock").disabled = true;
+bulkQtyType.disabled  = true;
+
+// keep inputs visually/semantically in sync
+togglePromosInputs();
+toggleAddonsInputs();
+
+modal.style.display = "block";
+
 }
 
 /* =========================
