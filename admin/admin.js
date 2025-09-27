@@ -907,6 +907,31 @@ bulkQtyType.disabled  = true;
 togglePromosInputs();
 toggleAddonsInputs();
 
+  // Reset Promotions & Add-ons state on open (prevents stale values)
+const promosEnable   = modal.querySelector("#bulkPromosEnable");
+const promosClear    = modal.querySelector("#bulkClearPromos");
+const promosHidden   = modal.querySelector("#bulkPromos");
+const promosPreview  = modal.querySelector("#bulkPromosPreview");
+const promosBtn      = modal.querySelector("#bulkPromosBtn");
+
+const addonsEnable   = modal.querySelector("#bulkAddonsEnable");
+const addonsClear    = modal.querySelector("#bulkClearAddons");
+const addonsHidden   = modal.querySelector("#bulkAddons");
+const addonsPreview  = modal.querySelector("#bulkAddonsPreview");
+const addonsBtn      = modal.querySelector("#bulkAddonsBtn");
+
+// Clear values & previews every time the modal opens
+if (promosHidden)  promosHidden.value = "[]";
+if (addonsHidden)  addonsHidden.value = "[]";
+if (promosPreview) promosPreview.textContent = "none selected";
+if (addonsPreview) addonsPreview.textContent = "none selected";
+
+// Ensure controls reflect disabled state until user enables them
+if (promosBtn)   promosBtn.disabled = !(promosEnable?.checked);
+if (addonsBtn)   addonsBtn.disabled = !(addonsEnable?.checked);
+if (promosClear) promosClear.disabled = !(promosEnable?.checked);
+if (addonsClear) addonsClear.disabled = !(addonsEnable?.checked);
+
 modal.style.display = "block";
 
 }
