@@ -818,24 +818,44 @@ bulkAddonsBtn.onclick = async () => {
         }
       }
 
-      
-      // ✅ BULK EDIT/DELETE (Promotions & Add-ons) — align with other toggles
-if (document.getElementById("bulkPromosEnable")?.checked) {
-  if (document.getElementById("bulkClearPromos")?.checked) {
-    updates.promotions = [];
-  } else {
-    updates.promotions = JSON.parse(document.getElementById("bulkPromos")?.value || "[]");
-  }
-}
-if (document.getElementById("bulkAddonsEnable")?.checked) {
-  if (document.getElementById("bulkClearAddons")?.checked) {
-    updates.addons = [];
-  } else {
-    updates.addons = JSON.parse(document.getElementById("bulkAddons")?.value || "[]");
-  }
-}
+    // ✅ BULK EDIT/DELETE (Promotions & Add-ons) — modal-scoped & safe JSON
+(() => {
+  const promosEnable   = modal.querySelector("#bulkPromosEnable");
+  const promosClear    = modal.querySelector("#bulkClearPromos");
+  const promosHidden   = modal.querySelector("#bulkPromos");
 
+  const addonsEnable   = modal.querySelector("#bulkAddonsEnable");
+  const addonsClear    = modal.querySelector("#bulkClearAddons");
+  const addonsHidden   = modal.querySelector("#bulkAddons");
 
+  const safeParse = (txt, fallback) => {
+    try { return JSON.parse(txt ?? ""); } catch { return fallback; }
+  };
+
+  // Promotions
+  if (promosEnable?.checked) {
+    if (promosClear?.checked) {
+      updates.promotions = [];               // explicit clear
+    } else {
+      const selected = safeParse(promosHidden?.value, []);
+      updates.promotions = Array.isArray(selected) ? selected : [];
+    }
+  }
+
+  // Add-ons
+  if (addonsEnable?.checked) {
+    if (addonsClear?.checked) {
+      updates.addons = [];                   // explicit clear
+    } else {
+      const chosen = safeParse(addonsHidden?.value, []);
+      // menuItems schema expects [{name,price}], normalize defensively
+      updates.addons = (Array.isArray(chosen) ? chosen : []).map(a => {
+        if (typeof a === "string") return { name: a, price: 0 };
+        return { name: a?.name ?? "", price: Number(a?.price ?? 0) };
+      }).filter(a => a.name);
+    }
+  }
+})();
 
       if (!Object.keys(updates).length) return alert("Tick at least one field to update.");
 
