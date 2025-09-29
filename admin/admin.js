@@ -489,36 +489,41 @@ function ensureBulkBar() {
   bar.style.margin = "8px 0";
   bar.style.display = "flex";
   bar.style.gap = "8px";
-  bar.innerHTML = `
-    <button id="bulkEditBtn" disabled>Edit Selected (0)</button>
-    <button id="bulkDeleteBtn" disabled>Delete Selected (0)</button>
+bar.innerHTML = `
+    <button id="bulkEditBtn" type="button" disabled>Edit Selected (0)</button>
+    <button id="bulkDeleteBtn" type="button" disabled>Delete Selected (0)</button>
   `;
+
   const table = document.getElementById("menuTable");
   if (table && table.parentNode) table.parentNode.insertBefore(bar, table);
 
   const bulkEditBtn = document.getElementById("bulkEditBtn");
   const bulkDeleteBtn = document.getElementById("bulkDeleteBtn");
   
-  if (bulkEditBtn) {
+if (bulkEditBtn) {
   bulkEditBtn.onclick = (e) => {
+    e?.preventDefault?.();
     console.debug("[BulkEdit] clicked; selectedIds.size =", selectedIds.size);
     if (!selectedIds.size) return alert("Select at least one item.");
-    openBulkEditModal(e);
+    openBulkEditModal();
   };
 }
 
-  if (bulkDeleteBtn) bulkDeleteBtn.onclick = async () => {
-    if (!selectedIds.size) return;
-    if (!confirm(`Delete ${selectedIds.size} item(s)?`)) return;
 
-    const ops = [];
-    selectedIds.forEach((id) => ops.push(deleteDoc(doc(db, "menuItems", id))));
-    console.debug("[BulkEdit] applying to IDs =", Array.from(selectedIds));
-    await Promise.all(ops);
-    selectedIds.clear();
-    updateBulkBar();
-  };
-}
+if (bulkDeleteBtn) bulkDeleteBtn.onclick = async (e) => {
+  e?.preventDefault?.();
+  if (!selectedIds.size) return;
+  if (!confirm(`Delete ${selectedIds.size} item(s)?`)) return;
+
+  const ops = [];
+  selectedIds.forEach((id) => ops.push(deleteDoc(doc(db, "menuItems", id))));
+  console.debug("[BulkEdit] applying to IDs =", Array.from(selectedIds));
+  await Promise.all(ops);
+  selectedIds.clear();
+  updateBulkBar();
+};
+
+
 function updateBulkBar() {
   ensureBulkBar();
   const n = selectedIds.size;
@@ -618,7 +623,7 @@ function openBulkEditModal() {
 
     // === INSERT: Bulk Promotions & Add-ons controls (before footer buttons) ===
 {
-  const footer = modal.querySelector("form > div:last-child"); // button row
+  const footer = modal.querySelector("#bulkForm > div:last-of-type"); // button row
   const wrap = document.createElement("div");
   wrap.id = "bulkPromoAddonSection";
   wrap.style.marginTop = "14px";
