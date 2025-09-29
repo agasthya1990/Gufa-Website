@@ -161,61 +161,83 @@ function unlockBodyScroll() {
   window.scrollTo(0, y);
 }
 
+// ===== Modal base styles (one-time) & helpers =====
 function ensureModalStyles() {
-  if (document.getElementById("_adm_styles")) return;
-  const style = document.createElement("style");
-  style.id = "_adm_styles";
-  style.textContent = `
-    .adm-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:none}
-    .adm-modal{background:#fff;border-radius:12px;max-width:720px;margin:5% auto;padding:16px;box-shadow:0 10px 30px rgba(0,0,0,.2);transform-origin:center;}
-    .adm-anim-in{animation:admPopIn .18s ease-out both}
-    .adm-anim-out{animation:admPopOut .16s ease-in both}
-    @keyframes admPopIn{from{opacity:.2;transform:scale(.96)}to{opacity:1;transform:scale(1)}}
-    @keyframes admPopOut{from{opacity:1;transform:scale(1)}to{opacity:.0;transform:scale(.98)}}
+  if (document.getElementById("admModalStyles")) return;
+
+  const css = `
+    .adm-lock { overflow: hidden; }
+    .adm-overlay {
+      position: fixed; inset: 0; z-index: 9999;
+      background: rgba(0,0,0,.55);
+      display: none; /* shown per open */
+    }
+    .adm-modal {
+      background: #fff; color: #111;
+      border-radius: 12px;
+      max-width: 720px; width: min(720px, 92vw);
+      margin: 6vh auto 0;
+      padding: 16px;
+      box-shadow: 0 14px 40px rgba(0,0,0,.25);
+      transform-origin: var(--adm-origin, 50% 0%);
+    }
+    @keyframes admGenieIn {
+      from { opacity: 0; transform: translate(var(--adm-dx,0), var(--adm-dy,0)) scale(.96); }
+      to   { opacity: 1; transform: translate(0,0) scale(1); }
+    }
+    @keyframes admGenieOut {
+      from { opacity: 1; transform: translate(0,0) scale(1); }
+      to   { opacity: 0; transform: translate(var(--adm-dx,0), var(--adm-dy,0)) scale(.96); }
+    }
+    .adm-anim-in  { animation: admGenieIn 220ms ease-out both; }
+    .adm-anim-out { animation: admGenieOut 180ms ease-in both; }
+
     .adm-btn{border:1px solid #ddd;border-radius:8px;padding:8px 12px;background:#fff;cursor:pointer}
     .adm-btn--primary{background:#111;color:#fff;border-color:#111}
-    .adm-muted{color:#888}
-    .adm-pill{display:inline-block;padding:2px 8px;border-radius:999px;border:1px solid #ddd;font-size:12px}
-    .adm-pill--dining{background:#f3fff3;border-color:#bde0bd}
-    .adm-pill--delivery{background:#f3f7ff;border-color:#bed2ff}
-    .cat-check.checked,.course-check.checked,.addon-check.checked{background:#111;color:#fff}
-
-    /* Genie trail helper (origin dot) */
-    .adm-genie-origin{position:absolute;width:6px;height:6px;border-radius:50%;background:#111;pointer-events:none;opacity:.12}
-
-    /* Bulk bar */
-    #bulkBar{display:flex;gap:8px;margin:8px 0;flex-wrap:wrap}
+    .adm-muted{color:#777}
   `;
+  const style = document.createElement("style");
+  style.id = "admModalStyles";
+  style.textContent = css;
   document.head.appendChild(style);
 }
+function lockBodyScroll(){ document.body.classList.add("adm-lock"); }
+function unlockBodyScroll(){ document.body.classList.remove("adm-lock"); }
 
-/**
- * setGenieFrom(triggerEl, overlayEl, boxEl)
- * Slightly animates the modal from the trigger element's position.
- */
-function setGenieFrom(triggerEl, overlayEl, boxEl) {
+// origin “genie” offset from a trigger button (optional nicety)
+function setGenieFrom(triggerEl, overlayEl, modalEl) {
   try {
-    if (!triggerEl || !boxEl) { overlayEl?.style?.removeProperty("--adm-genie"); return; }
-    const t = triggerEl.getBoundingClientRect();
-    const o = document.createElement("div");
-    o.className = "adm-genie-origin";
-    o.style.left = `${t.left + t.width/2}px`;
-    o.style.top = `${t.top + t.height/2 + window.scrollY}px`;
-    document.body.appendChild(o);
-    setTimeout(()=>{ o.remove(); }, 300);
+    if (!triggerEl || !overlayEl || !modalEl) return;
+    const r = triggerEl.getBoundingClientRect();
+    const cx = r.left + r.width/2;
+    const vw = Math.max(1, window.innerWidth);
+    modalEl.style.setProperty("--adm-origin", `${(cx/vw)*100}% 0%`);
+    modalEl.style.setProperty("--adm-dx", "0px");
+    modalEl.style.setProperty("--adm-dy", "6px");
   } catch {}
 }
 
+
 function setHiddenValue(selectEl, val) {
-  if (!selectEl) return; selectEl.value = val || "";
-  selectEl.dispatchEvent(new Event("change"));
-}
-function setMultiHiddenValue(selectEl, values) {
   if (!selectEl) return;
-  const set = new Set(values || []);
-  Array.from(selectEl.options || []).forEach(o => o.selected = set.has(o.value));
+  // ensure option exists so .value assignment never fails for custom values
+  if (![...selectEl.options].some(o => o.value === val)) {
+    const opt = document.createElement("option");
+    opt.value = val; opt.textContent = val;
+    selectEl.appendChild(opt);
+  }
+  selectEl.value = val || "";
+  selectEl.dispatchEvent(new Event("change"));
+
+}
+
+function setMultiHiddenValue(selectEl, values = []) {
+  if (!selectEl) return;
+  const set = new Set(values);
+  [...selectEl.options].forEach(o => { o.selected = set.has(o.value); });
   selectEl.dispatchEvent(new Event("change"));
 }
+
 
 /* =========================
    Auth
@@ -550,14 +572,10 @@ function updateBulkBar() {
   const delBtn    = document.getElementById("bulkDeleteBtn");
   const promosBtn = document.getElementById("bulkPromosBulkBtn");
   const addonsBtn = document.getElementById("bulkAddonsBulkBtn");
-  const slideBtn  = document.getElementById("bulkSlideBtn");
-  const funcBtn   = document.getElementById("bulkFunctionBtn");
-  if (editBtn)   { editBtn.textContent   = `Edit Selected (${n})`; editBtn.disabled   = n === 0; }
+    if (editBtn)   { editBtn.textContent   = `Edit Selected (${n})`; editBtn.disabled   = n === 0; }
   if (delBtn)    { delBtn.textContent    = `Delete Selected (${n})`; delBtn.disabled  = n === 0; }
   if (promosBtn) { promosBtn.disabled    = n === 0; }
   if (addonsBtn) { addonsBtn.disabled    = n === 0; }
-  if (slideBtn)  { slideBtn.disabled     = n === 0; }
-  if (funcBtn)   { funcBtn.disabled      = n === 0; }
 }
 
 function syncSelectAllHeader(itemsRendered) {
@@ -575,8 +593,6 @@ function ensureBulkBar() {
     <button id="bulkDeleteBtn" type="button" disabled>Delete Selected (0)</button>
     <button id="bulkPromosBulkBtn" type="button" disabled>Bulk Promotions</button>
     <button id="bulkAddonsBulkBtn" type="button" disabled>Bulk Add-ons</button>
-    <button id="bulkSlideBtn" type="button" disabled>Slide Action</button>
-    <button id="bulkFunctionBtn" type="button" disabled>Function Action</button>
   `;
   const table = document.getElementById("menuTable"); if (table && table.parentNode) table.parentNode.insertBefore(bar, table);
 
