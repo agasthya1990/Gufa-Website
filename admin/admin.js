@@ -919,7 +919,7 @@ async function loadAddonsOptions() {
   });
 }
 
-modal._togglePromosInputs = function () {
+modal._ = function () {
   const on = !!(bulkPromosEnable && bulkPromosEnable.checked);
   if (bulkPromosSelect) bulkPromosSelect.disabled = !on;
   if (bulkClearPromos)  bulkClearPromos.disabled  = !on;
@@ -1103,10 +1103,6 @@ bulkType.disabled     = true;
 modal.querySelector("#bulkStock").disabled = true;
 bulkQtyType.disabled  = true;
 
-// keep inputs visually/semantically in sync
-modal._togglePromosInputs?.();
-modal._toggleAddonsInputs?.();
-
   // Reset Promotions & Add-ons UI on open
 const promosEnable   = modal.querySelector("#bulkPromosEnable");
 const promosClear    = modal.querySelector("#bulkClearPromos");
@@ -1127,7 +1123,7 @@ if (promosSelect) { promosSelect.innerHTML = `<option value="">-- Select Promoti
 if (addonsSelect) { addonsSelect.innerHTML = `<option value="">-- Select Add-on(s) --</option>`; addonsSelect.disabled = true; }
 
 // Keep other fields’ resets as-is, then:
-modal._togglePromosInputs?.();
+modal._?.();
 modal._toggleAddonsInputs?.();
 
 
