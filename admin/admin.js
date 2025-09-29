@@ -37,17 +37,20 @@ import { initPromotions } from "./promotions.js";
 /* =========================
    Promo cache (for chips in menu table)
    ========================= */
+
 let PROMOS_BY_ID = {}; // { promoId: {code, channel, type, value, ...} }
 
 /* =========================
    DOM
    ========================= */
+
 const loginBox = document.getElementById("loginBox");
 const adminContent = document.getElementById("adminContent");
 const email = document.getElementById("email");
 const password = document.getElementById("password");
 const loginBtn = document.getElementById("loginBtn");
 const logoutBtn = document.getElementById("logoutBtn");
+const loginStatus = document.getElementById("loginStatus");
 
 const form = document.getElementById("menuForm");
 const statusMsg = document.getElementById("statusMsg");
@@ -123,23 +126,35 @@ if (loginBtn) {
     e?.preventDefault?.();
     const em = (email?.value || "").trim();
     const pw = (password?.value || "");
-    if (!em || !pw) {
-      alert("Please enter both email and password.");
-      return;
-    }
+    if (!em || !pw) { alert("Please enter both email and password."); return; }
+
+    loginBtn.disabled = true;
+    loginBtn.setAttribute("aria-busy", "true");
+    const oldLabel = loginBtn.textContent;
+    loginBtn.textContent = "Signing in…";
+    if (loginStatus) loginStatus.textContent = `Attempting login for ${em}…`;
+
     console.debug("[Auth] attempting login:", em);
     signInWithEmailAndPassword(auth, em, pw)
       .then(() => {
         console.debug("[Auth] login success:", em);
+        if (loginStatus) loginStatus.textContent = "Login successful.";
         if (email) email.value = "";
         if (password) password.value = "";
       })
       .catch(err => {
         console.error("[Auth] login failed:", err?.code, err?.message);
+        if (loginStatus) loginStatus.textContent = `Login failed: ${err?.code || ""} ${err?.message || ""}`.trim();
         alert(`Login failed: ${err?.code || ""} ${err?.message || ""}`.trim());
+      })
+      .finally(() => {
+        loginBtn.disabled = false;
+        loginBtn.removeAttribute("aria-busy");
+        loginBtn.textContent = oldLabel;
       });
   };
 }
+
 
 
 if (logoutBtn) {
@@ -531,7 +546,7 @@ if (bulkDeleteBtn) bulkDeleteBtn.onclick = async (e) => {
   selectedIds.clear();
   updateBulkBar();
 };
-
+}
 
 function updateBulkBar() {
   ensureBulkBar();
@@ -747,24 +762,24 @@ async function loadAddonsOptions() {
   });
 }
 
-function togglePromosInputs() {
+modal._togglePromosInputs = function () {
   const on = !!(bulkPromosEnable && bulkPromosEnable.checked);
   if (bulkPromosSelect) bulkPromosSelect.disabled = !on;
   if (bulkClearPromos)  bulkClearPromos.disabled  = !on;
   if (on) { loadPromotionsOptions().catch(console.error); }
-}
-function toggleAddonsInputs() {
+};
+modal._toggleAddonsInputs = function () {
   const on = !!(bulkAddonsEnable && bulkAddonsEnable.checked);
   if (bulkAddonsSelect) bulkAddonsSelect.disabled = !on;
   if (bulkClearAddons)  bulkClearAddons.disabled  = !on;
   if (on) { loadAddonsOptions().catch(console.error); }
-}
+};
 
+if (bulkPromosEnable) bulkPromosEnable.onchange = modal._togglePromosInputs;
+if (bulkAddonsEnable) bulkAddonsEnable.onchange = modal._toggleAddonsInputs;
+modal._togglePromosInputs();
+modal._toggleAddonsInputs();
 
-if (bulkPromosEnable) bulkPromosEnable.onchange = togglePromosInputs;
-if (bulkAddonsEnable) bulkAddonsEnable.onchange = toggleAddonsInputs;
-togglePromosInputs();
-toggleAddonsInputs();
 
     // enable toggles
     const bulkCatEnable    = modal.querySelector("#bulkCatEnable");
@@ -928,9 +943,8 @@ modal.querySelector("#bulkStock").disabled = true;
 bulkQtyType.disabled  = true;
 
 // keep inputs visually/semantically in sync
-togglePromosInputs();
-toggleAddonsInputs();
-
+modal._togglePromosInputs?.();
+modal._toggleAddonsInputs?.();
 
   // Reset Promotions & Add-ons UI on open
 const promosEnable   = modal.querySelector("#bulkPromosEnable");
@@ -952,8 +966,9 @@ if (promosSelect) { promosSelect.innerHTML = `<option value="">-- Select Promoti
 if (addonsSelect) { addonsSelect.innerHTML = `<option value="">-- Select Add-on(s) --</option>`; addonsSelect.disabled = true; }
 
 // Keep other fields’ resets as-is, then:
-togglePromosInputs();
-toggleAddonsInputs();
+modal._togglePromosInputs?.();
+modal._toggleAddonsInputs?.();
+
 
 console.debug("[BulkEdit] modal opened; selectedIds.size =", selectedIds.size);
 
