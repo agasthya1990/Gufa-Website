@@ -148,20 +148,14 @@ function debounce(fn, wait = 250) {
   let t; return (...args) => { clearTimeout(t); t = setTimeout(() => fn.apply(null, args), wait); };
 }
 
-function lockBodyScroll() {
-  const scTop = window.scrollY || document.documentElement.scrollTop;
-  document.documentElement.style.top = `-${scTop}px`;
+function lockBodyScroll(){ document.body.classList.add('adm-lock'); }
+px`;
   document.documentElement.dataset._scrollLockY = String(scTop);
   document.documentElement.classList.add("_adm-scroll-lock");
 }
-function unlockBodyScroll() {
-  const y = Number(document.documentElement.dataset._scrollLockY || 0);
-  document.documentElement.classList.remove("_adm-scroll-lock");
-  document.documentElement.style.top = "";
-  window.scrollTo(0, y);
-}
-
+function unlockBodyScroll(){ document.body.classList.remove('adm-lock'); }
 // ===== Modal base styles (one-time) & helpers =====
+
 function ensureModalStyles() {
   if (document.getElementById("admModalStyles")) return;
 
@@ -201,10 +195,44 @@ function ensureModalStyles() {
   style.textContent = css;
   document.head.appendChild(style);
 }
-function lockBodyScroll(){ document.body.classList.add("adm-lock"); }
-function unlockBodyScroll(){ document.body.classList.remove("adm-lock"); }
+.adm-overlay {
+      position: fixed; inset: 0; z-index: 9999;
+      background: rgba(0,0,0,.55);
+      display: none; /* shown per open */
+    }
+    .adm-modal {
+      background: #fff; color: #111;
+      border-radius: 12px;
+      max-width: 720px; width: min(720px, 92vw);
+      margin: 6vh auto 0;
+      padding: 16px;
+      box-shadow: 0 14px 40px rgba(0,0,0,.25);
+      transform-origin: var(--adm-origin, 50% 0%);
+    }
+    @keyframes admGenieIn {
+      from { opacity: 0; transform: translate(var(--adm-dx,0), var(--adm-dy,0)) scale(.96); }
+      to   { opacity: 1; transform: translate(0,0) scale(1); }
+    }
+    @keyframes admGenieOut {
+      from { opacity: 1; transform: translate(0,0) scale(1); }
+      to   { opacity: 0; transform: translate(var(--adm-dx,0), var(--adm-dy,0)) scale(.96); }
+    }
+    .adm-anim-in  { animation: admGenieIn 220ms ease-out both; }
+    .adm-anim-out { animation: admGenieOut 180ms ease-in both; }
 
+    .adm-btn{border:1px solid #ddd;border-radius:8px;padding:8px 12px;background:#fff;cursor:pointer}
+    .adm-btn--primary{background:#111;color:#fff;border-color:#111}
+    .adm-muted{color:#777}
+  `;
+  const style = document.createElement("style");
+  style.id = "admModalStyles";
+  style.textContent = css;
+  document.head.appendChild(style);
+}
+function lockBodyScroll(){ document.body.classList.add('adm-lock'); }
+function unlockBodyScroll(){ document.body.classList.remove('adm-lock'); }
 // origin “genie” offset from a trigger button (optional nicety)
+
 function setGenieFrom(triggerEl, overlayEl, modalEl) {
   try {
     if (!triggerEl || !overlayEl || !modalEl) return;
@@ -216,25 +244,37 @@ function setGenieFrom(triggerEl, overlayEl, modalEl) {
     modalEl.style.setProperty("--adm-dy", "6px");
   } catch {}
 }
+% 0%`);
+    modalEl.style.setProperty("--adm-dx", "0px");
+    modalEl.style.setProperty("--adm-dy", "6px");
+  } catch {}
+}
+
 
 
 function setHiddenValue(selectEl, val) {
   if (!selectEl) return;
-  // ensure option exists so .value assignment never fails for custom values
-  if (![...selectEl.options].some(o => o.value === val)) {
+  if (val && ![...selectEl.options].some(o => o.value === val)) {
     const opt = document.createElement("option");
     opt.value = val; opt.textContent = val;
     selectEl.appendChild(opt);
   }
   selectEl.value = val || "";
   selectEl.dispatchEvent(new Event("change"));
+}
+selectEl.value = val || "";
+  selectEl.dispatchEvent(new Event("change"));
 
 }
+
 
 function setMultiHiddenValue(selectEl, values = []) {
   if (!selectEl) return;
   const set = new Set(values);
   [...selectEl.options].forEach(o => { o.selected = set.has(o.value); });
+  selectEl.dispatchEvent(new Event("change"));
+}
+);
   selectEl.dispatchEvent(new Event("change"));
 }
 
@@ -632,15 +672,7 @@ function ensureBulkBar() {
     };
   }
 
-  if (bulkSlideBtn) {
-    bulkSlideBtn.onclick = (e) => {
-      e?.preventDefault?.(); if (!selectedIds.size) return alert("Select at least one item.");
-      // Demo: show a tiny slide-in pop card listing how many selected. You can customize later.
-      ensureModalStyles();
-      let ov = document.getElementById("bulkSlideOverlay");
-      if (!ov) {
-        ov = document.createElement("div"); ov.id = "bulkSlideOverlay"; ov.className = "adm-overlay";
-        ov.innerHTML = `<div class="adm-modal"><h3 style="margin:0 0 10px">Slide Action</h3><p class="adm-muted">Selected: ${selectedIds.size}</p><div style="text-align:right"><button id="bulkSlideClose" class="adm-btn">Close</button></div></div>`;
+  </p><div style="text-align:right"><button id="bulkSlideClose" class="adm-btn">Close</button></div></div>`;
         document.body.appendChild(ov);
         ov.querySelector('#bulkSlideClose').onclick = () => { const box = ov.querySelector('.adm-modal'); box.classList.remove('adm-anim-in'); box.classList.add('adm-anim-out'); setTimeout(()=>{ ov.style.display='none'; unlockBodyScroll(); }, 180); };
       } else {
@@ -650,13 +682,7 @@ function ensureBulkBar() {
     };
   }
 
-  if (bulkFunctionBtn) {
-    bulkFunctionBtn.onclick = async (e) => {
-      e?.preventDefault?.(); if (!selectedIds.size) return alert("Select at least one item.");
-      // Demo function: toggle inStock for selected (flip current state). You can replace with any custom bulk logic.
-      const ops = [];
-      for (const id of selectedIds) {
-        try { const snap = await getDoc(doc(db, 'menuItems', id)); if (!snap.exists()) continue; const cur = !!snap.data().inStock; ops.push(updateDoc(doc(db,'menuItems',id), { inStock: !cur })); } catch(e){ console.error(e); }
+  )); } catch(e){ console.error(e); }
       }
       await Promise.all(ops);
       ensureModalStyles();
@@ -680,6 +706,7 @@ function ensureBulkBar() {
 
 // Standalone: Bulk Promotions Modal
 async function openBulkPromosModal(triggerEl) {
+  ensureModalStyles();
   ensureModalStyles();
   let ov = document.getElementById("bulkPromosModal");
   if (!ov) {
@@ -730,6 +757,7 @@ async function openBulkPromosModal(triggerEl) {
 // Standalone: Bulk Add-ons Modal
 async function openBulkAddonsModal(triggerEl) {
   ensureModalStyles();
+  ensureModalStyles();
   let ov = document.getElementById('bulkAddonsModal');
   if (!ov) {
     ov = document.createElement('div'); ov.id = 'bulkAddonsModal'; ov.className = 'adm-overlay';
@@ -776,6 +804,7 @@ async function openBulkAddonsModal(triggerEl) {
 
 // Bulk Edit Modal (with fields + embedded promos & add-ons selectors)
 function openBulkEditModal(triggerEl) {
+  ensureModalStyles();
   ensureModalStyles();
   let modal = document.getElementById('bulkModal');
   if (!modal) {
@@ -977,6 +1006,7 @@ function openBulkEditModal(triggerEl) {
    ========================= */
 function openAssignAddonsModal(itemId, current) {
   ensureModalStyles();
+  ensureModalStyles();
   let modal = document.getElementById('addonAssignModal');
   if (!modal) {
     modal = document.createElement('div'); modal.id = 'addonAssignModal'; modal.className = 'adm-overlay';
@@ -1010,6 +1040,7 @@ function openAssignAddonsModal(itemId, current) {
 }
 
 async function openAssignPromotionsModal(itemId, currentIds) {
+  ensureModalStyles();
   ensureModalStyles();
   let modal = document.getElementById('promoAssignModal');
   if (!modal) {
