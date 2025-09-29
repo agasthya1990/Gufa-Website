@@ -141,6 +141,7 @@ let allItems = []; // [{id, data}]
 let selectedIds = new Set();
 let editingId = null;
 
+
 /* =========================
    Helpers (centralized)
    ========================= */
@@ -148,33 +149,18 @@ function debounce(fn, wait = 250) {
   let t; return (...args) => { clearTimeout(t); t = setTimeout(() => fn.apply(null, args), wait); };
 }
 
+// Scroll lock via body class (simple & reliable)
 function lockBodyScroll(){ document.body.classList.add('adm-lock'); }
-px`;
-  document.documentElement.dataset._scrollLockY = String(scTop);
-  document.documentElement.classList.add("_adm-scroll-lock");
-}
 function unlockBodyScroll(){ document.body.classList.remove('adm-lock'); }
-// ===== Modal base styles (one-time) & helpers =====
 
+// ===== Modal base styles (one-time) & helpers =====
 function ensureModalStyles() {
   if (document.getElementById("admModalStyles")) return;
 
   const css = `
-    .adm-lock { overflow: hidden; }
-    .adm-overlay {
-      position: fixed; inset: 0; z-index: 9999;
-      background: rgba(0,0,0,.55);
-      display: none; /* shown per open */
-    }
-    .adm-modal {
-      background: #fff; color: #111;
-      border-radius: 12px;
-      max-width: 720px; width: min(720px, 92vw);
-      margin: 6vh auto 0;
-      padding: 16px;
-      box-shadow: 0 14px 40px rgba(0,0,0,.25);
-      transform-origin: var(--adm-origin, 50% 0%);
-    }
+
+
+
     @keyframes admGenieIn {
       from { opacity: 0; transform: translate(var(--adm-dx,0), var(--adm-dy,0)) scale(.96); }
       to   { opacity: 1; transform: translate(0,0) scale(1); }
@@ -183,75 +169,34 @@ function ensureModalStyles() {
       from { opacity: 1; transform: translate(0,0) scale(1); }
       to   { opacity: 0; transform: translate(var(--adm-dx,0), var(--adm-dy,0)) scale(.96); }
     }
-    .adm-anim-in  { animation: admGenieIn 220ms ease-out both; }
-    .adm-anim-out { animation: admGenieOut 180ms ease-in both; }
 
-    .adm-btn{border:1px solid #ddd;border-radius:8px;padding:8px 12px;background:#fff;cursor:pointer}
-    .adm-btn--primary{background:#111;color:#fff;border-color:#111}
-    .adm-muted{color:#777}
+
+
+
+
+
+
   `;
   const style = document.createElement("style");
   style.id = "admModalStyles";
   style.textContent = css;
   document.head.appendChild(style);
 }
-.adm-overlay {
-      position: fixed; inset: 0; z-index: 9999;
-      background: rgba(0,0,0,.55);
-      display: none; /* shown per open */
-    }
-    .adm-modal {
-      background: #fff; color: #111;
-      border-radius: 12px;
-      max-width: 720px; width: min(720px, 92vw);
-      margin: 6vh auto 0;
-      padding: 16px;
-      box-shadow: 0 14px 40px rgba(0,0,0,.25);
-      transform-origin: var(--adm-origin, 50% 0%);
-    }
-    @keyframes admGenieIn {
-      from { opacity: 0; transform: translate(var(--adm-dx,0), var(--adm-dy,0)) scale(.96); }
-      to   { opacity: 1; transform: translate(0,0) scale(1); }
-    }
-    @keyframes admGenieOut {
-      from { opacity: 1; transform: translate(0,0) scale(1); }
-      to   { opacity: 0; transform: translate(var(--adm-dx,0), var(--adm-dy,0)) scale(.96); }
-    }
-    .adm-anim-in  { animation: admGenieIn 220ms ease-out both; }
-    .adm-anim-out { animation: admGenieOut 180ms ease-in both; }
 
-    .adm-btn{border:1px solid #ddd;border-radius:8px;padding:8px 12px;background:#fff;cursor:pointer}
-    .adm-btn--primary{background:#111;color:#fff;border-color:#111}
-    .adm-muted{color:#777}
-  `;
-  const style = document.createElement("style");
-  style.id = "admModalStyles";
-  style.textContent = css;
-  document.head.appendChild(style);
-}
-function lockBodyScroll(){ document.body.classList.add('adm-lock'); }
-function unlockBodyScroll(){ document.body.classList.remove('adm-lock'); }
 // origin “genie” offset from a trigger button (optional nicety)
-
 function setGenieFrom(triggerEl, overlayEl, modalEl) {
   try {
     if (!triggerEl || !overlayEl || !modalEl) return;
     const r = triggerEl.getBoundingClientRect();
     const cx = r.left + r.width/2;
     const vw = Math.max(1, window.innerWidth);
-    modalEl.style.setProperty("--adm-origin", `${(cx/vw)*100}% 0%`);
-    modalEl.style.setProperty("--adm-dx", "0px");
-    modalEl.style.setProperty("--adm-dy", "6px");
-  } catch {}
-}
-% 0%`);
+    modalEl.style.setProperty("--adm-origin", `${(cx/vw)*100}
     modalEl.style.setProperty("--adm-dx", "0px");
     modalEl.style.setProperty("--adm-dy", "6px");
   } catch {}
 }
 
-
-
+// Hidden value helpers for our native <select>s
 function setHiddenValue(selectEl, val) {
   if (!selectEl) return;
   if (val && ![...selectEl.options].some(o => o.value === val)) {
@@ -262,11 +207,6 @@ function setHiddenValue(selectEl, val) {
   selectEl.value = val || "";
   selectEl.dispatchEvent(new Event("change"));
 }
-selectEl.value = val || "";
-  selectEl.dispatchEvent(new Event("change"));
-
-}
-
 
 function setMultiHiddenValue(selectEl, values = []) {
   if (!selectEl) return;
@@ -274,13 +214,11 @@ function setMultiHiddenValue(selectEl, values = []) {
   [...selectEl.options].forEach(o => { o.selected = set.has(o.value); });
   selectEl.dispatchEvent(new Event("change"));
 }
-);
-  selectEl.dispatchEvent(new Event("change"));
-}
 
 
 /* =========================
    Auth
+   ========================= */
    ========================= */
 if (loginBtn) {
   loginBtn.setAttribute("type", "button"); // avoid implicit form submit
@@ -751,7 +689,8 @@ async function openBulkPromosModal(triggerEl) {
   rows.forEach(r => { const o=document.createElement('option'); o.value=r.id; o.textContent=r.label; sel.appendChild(o); });
   ov.querySelector('#bpCount').textContent = String(selectedIds.size);
 
-  lockBodyScroll(); ov.style.display = 'block'; setGenieFrom(triggerEl, ov, ov.querySelector('.adm-modal')); const box = ov.querySelector('.adm-modal'); box.classList.remove('adm-anim-out'); box.classList.add('adm-anim-in');
+  lockBodyScroll(); lockBodyScroll();
+ov.style.display = 'block'; setGenieFrom(triggerEl, ov, ov.querySelector('.adm-modal')); const box = ov.querySelector('.adm-modal'); box.classList.remove('adm-anim-out'); box.classList.add('adm-anim-in');
 }
 
 // Standalone: Bulk Add-ons Modal
@@ -799,7 +738,8 @@ async function openBulkAddonsModal(triggerEl) {
   rows.forEach(a => { const row = document.createElement('label'); row.className = 'ba-row'; row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:6px 4px;'; row.innerHTML = `<input type="checkbox" value="${a.name}" data-price="${a.price}"/><span>${a.name} (₹${a.price})</span>`; list.appendChild(row); });
   ov.querySelector('#baCount').textContent = String(selectedIds.size);
 
-  lockBodyScroll(); ov.style.display = 'block'; setGenieFrom(triggerEl, ov, ov.querySelector('.adm-modal')); const box = ov.querySelector('.adm-modal'); box.classList.remove('adm-anim-out'); box.classList.add('adm-anim-in');
+  lockBodyScroll(); lockBodyScroll();
+ov.style.display = 'block'; setGenieFrom(triggerEl, ov, ov.querySelector('.adm-modal')); const box = ov.querySelector('.adm-modal'); box.classList.remove('adm-anim-out'); box.classList.add('adm-anim-in');
 }
 
 // Bulk Edit Modal (with fields + embedded promos & add-ons selectors)
