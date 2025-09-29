@@ -623,7 +623,6 @@ function openBulkEditModal() {
   wrap.id = "bulkPromoAddonSection";
   wrap.style.marginTop = "14px";
   wrap.innerHTML = `
-    wrap.innerHTML = `
   <div style="display:grid; gap:10px; border-top:1px dashed #ddd; padding-top:12px;">
     <div>
       <label style="display:flex; gap:8px; align-items:center;">
@@ -663,12 +662,6 @@ function openBulkEditModal() {
 
 
 // === INSERT: bulk chooser wiring (Promotions & Add-ons) ===
-const bulkPromosBtn      = modal.querySelector("#bulkPromosBtn");
-const bulkAddonsBtn      = modal.querySelector("#bulkAddonsBtn");
-const bulkPromosInput    = modal.querySelector("#bulkPromos");
-const bulkAddonsInput    = modal.querySelector("#bulkAddons");
-const bulkPromosPreview  = modal.querySelector("#bulkPromosPreview");
-const bulkAddonsPreview  = modal.querySelector("#bulkAddonsPreview");
 
 function showOverlay(html) {
   let lay = document.getElementById("bulkChooserOverlay");
@@ -695,7 +688,6 @@ const bulkAddonsEnable   = modal.querySelector("#bulkAddonsEnable");
 const bulkClearPromos    = modal.querySelector("#bulkClearPromos");
 const bulkClearAddons    = modal.querySelector("#bulkClearAddons");
 
-function togglePromosInputs() {
 // New selects
 const bulkPromosSelect = modal.querySelector("#bulkPromosSelect");
 const bulkAddonsSelect = modal.querySelector("#bulkAddonsSelect");
@@ -754,10 +746,6 @@ function toggleAddonsInputs() {
   if (on) { loadAddonsOptions().catch(console.error); }
 }
 
-if (bulkPromosEnable) bulkPromosEnable.onchange = togglePromosInputs;
-if (bulkAddonsEnable) bulkAddonsEnable.onchange = toggleAddonsInputs;
-togglePromosInputs();
-toggleAddonsInputs();
 
 if (bulkPromosEnable) bulkPromosEnable.onchange = togglePromosInputs;
 if (bulkAddonsEnable) bulkAddonsEnable.onchange = toggleAddonsInputs;
@@ -929,32 +917,8 @@ bulkQtyType.disabled  = true;
 togglePromosInputs();
 toggleAddonsInputs();
 
-  // Reset Promotions & Add-ons state on open (prevents stale values)
-const promosEnable   = modal.querySelector("#bulkPromosEnable");
-const promosClear    = modal.querySelector("#bulkClearPromos");
-const promosHidden   = modal.querySelector("#bulkPromos");
-const promosPreview  = modal.querySelector("#bulkPromosPreview");
-const promosBtn      = modal.querySelector("#bulkPromosBtn");
 
-const addonsEnable   = modal.querySelector("#bulkAddonsEnable");
-const addonsClear    = modal.querySelector("#bulkClearAddons");
-const addonsHidden   = modal.querySelector("#bulkAddons");
-const addonsPreview  = modal.querySelector("#bulkAddonsPreview");
-const addonsBtn      = modal.querySelector("#bulkAddonsBtn");
-
-// Clear values & previews every time the modal opens
-if (promosHidden)  promosHidden.value = "[]";
-if (addonsHidden)  addonsHidden.value = "[]";
-if (promosPreview) promosPreview.textContent = "none selected";
-if (addonsPreview) addonsPreview.textContent = "none selected";
-
-// Ensure controls reflect disabled state until user enables them
-if (promosBtn)   promosBtn.disabled = !(promosEnable?.checked);
-if (addonsBtn)   addonsBtn.disabled = !(addonsEnable?.checked);
-if (promosClear) promosClear.disabled = !(promosEnable?.checked);
-if (addonsClear) addonsClear.disabled = !(addonsEnable?.checked);
-
-    // Reset Promotions & Add-ons UI on open
+  // Reset Promotions & Add-ons UI on open
 const promosEnable   = modal.querySelector("#bulkPromosEnable");
 const promosClear    = modal.querySelector("#bulkClearPromos");
 const promosSelect   = modal.querySelector("#bulkPromosSelect");
