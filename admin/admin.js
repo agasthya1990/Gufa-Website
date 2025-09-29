@@ -464,12 +464,22 @@ function ensureBulkBar() {
 
   const bulkEditBtn = document.getElementById("bulkEditBtn");
   const bulkDeleteBtn = document.getElementById("bulkDeleteBtn");
-  if (bulkEditBtn) bulkEditBtn.onclick = openBulkEditModal;
+  
+  if (bulkEditBtn) {
+  bulkEditBtn.onclick = (e) => {
+    console.debug("[BulkEdit] clicked; selectedIds.size =", selectedIds.size);
+    if (!selectedIds.size) return alert("Select at least one item.");
+    openBulkEditModal(e);
+  };
+}
+
   if (bulkDeleteBtn) bulkDeleteBtn.onclick = async () => {
     if (!selectedIds.size) return;
     if (!confirm(`Delete ${selectedIds.size} item(s)?`)) return;
+
     const ops = [];
     selectedIds.forEach((id) => ops.push(deleteDoc(doc(db, "menuItems", id))));
+    console.debug("[BulkEdit] applying to IDs =", Array.from(selectedIds));
     await Promise.all(ops);
     selectedIds.clear();
     updateBulkBar();
@@ -579,41 +589,41 @@ function openBulkEditModal() {
   wrap.id = "bulkPromoAddonSection";
   wrap.style.marginTop = "14px";
   wrap.innerHTML = `
-    <div style="
-      display:grid; gap:10px; border-top:1px dashed #ddd; padding-top:12px;">
-      <div>
-        <label style="display:flex; gap:8px; align-items:center;">
-          <input type="checkbox" id="bulkPromosEnable" />
-          <span>Promotions</span>
-        </label>
-        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-          <label style="display:flex; align-items:center; gap:6px;">
-            <input type="checkbox" id="bulkClearPromos" disabled />
-            <span>Clear promotions</span>
-          </label>
-          <button type="button" id="bulkPromosBtn" disabled>Choose coupon(s)</button>
-          <input type="hidden" id="bulkPromos" value="[]"/>
-          <span id="bulkPromosPreview" class="adm-muted">none selected</span>
-        </div>
-      </div>
-
-      <div>
-        <label style="display:flex; gap:8px; align-items:center;">
-          <input type="checkbox" id="bulkAddonsEnable" />
-          <span>Add-ons</span>
-        </label>
-        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-          <label style="display:flex; align-items:center; gap:6px;">
-            <input type="checkbox" id="bulkClearAddons" disabled />
-            <span>Clear add-ons</span>
-          </label>
-          <button type="button" id="bulkAddonsBtn" disabled>Choose add-on(s)</button>
-          <input type="hidden" id="bulkAddons" value="[]"/>
-          <span id="bulkAddonsPreview" class="adm-muted">none selected</span>
-        </div>
-      </div>
+    wrap.innerHTML = `
+  <div style="display:grid; gap:10px; border-top:1px dashed #ddd; padding-top:12px;">
+    <div>
+      <label style="display:flex; gap:8px; align-items:center;">
+        <input type="checkbox" id="bulkPromosEnable" />
+        <span>Promotions</span>
+      </label>
+      <label style="display:flex; align-items:center; gap:6px; margin-bottom:6px;">
+        <input type="checkbox" id="bulkClearPromos" disabled />
+        <span>Clear promotions</span>
+      </label>
+      <select id="bulkPromosSelect" multiple size="6" disabled>
+        <option value="">-- Select Promotion(s) --</option>
+      </select>
+      <small class="adm-muted">Tip: hold Ctrl/⌘ to select multiple</small>
     </div>
-  `;
+
+    <div>
+      <label style="display:flex; gap:8px; align-items:center;">
+        <input type="checkbox" id="bulkAddonsEnable" />
+        <span>Add-ons</span>
+      </label>
+      <label style="display:flex; align-items:center; gap:6px; margin-bottom:6px;">
+        <input type="checkbox" id="bulkClearAddons" disabled />
+        <span>Clear add-ons</span>
+      </label>
+      <select id="bulkAddonsSelect" multiple size="6" disabled>
+        <option value="">-- Select Add-on(s) --</option>
+      </select>
+      <small class="adm-muted">Tip: hold Ctrl/⌘ to select multiple</small>
+    </div>
+  </div>
+`;
+
+  
   footer.parentNode.insertBefore(wrap, footer);
 }
 
@@ -652,94 +662,73 @@ const bulkClearPromos    = modal.querySelector("#bulkClearPromos");
 const bulkClearAddons    = modal.querySelector("#bulkClearAddons");
 
 function togglePromosInputs() {
+// New selects
+const bulkPromosSelect = modal.querySelector("#bulkPromosSelect");
+const bulkAddonsSelect = modal.querySelector("#bulkAddonsSelect");
+
+async function loadPromotionsOptions() {
+  if (!bulkPromosSelect) return;
+  bulkPromosSelect.innerHTML = `<option value="">-- Select Promotion(s) --</option>`;
+  const snap = await getDocs(collection(db, "promotions"));
+  const rows = [];
+  snap.forEach(d => {
+    const p = d.data();
+    if (p?.kind === "coupon") {
+      const typeTxt = p.type === "percent" ? `${p.value}% off` : `₹${p.value} off`;
+      const chan = p.channel === "dining" ? "Dining" : "Delivery";
+      rows.push({ id: d.id, label: `${p.code || "(no code)"} • ${chan} • ${typeTxt}` });
+    }
+  });
+  rows.forEach(r => {
+    const opt = document.createElement("option");
+    opt.value = r.id;
+    opt.textContent = r.label;
+    bulkPromosSelect.appendChild(opt);
+  });
+}
+
+async function loadAddonsOptions() {
+  if (!bulkAddonsSelect) return;
+  bulkAddonsSelect.innerHTML = `<option value="">-- Select Add-on(s) --</option>`;
+  const snap = await getDocs(collection(db, "menuAddons"));
+  const rows = [];
+  snap.forEach(d => {
+    const v = d.data() || {};
+    const name = v.name || d.id;
+    const price = Number(v.price || 0);
+    rows.push({ name, price });
+  });
+  rows.forEach(a => {
+    const opt = document.createElement("option");
+    opt.value = a.name;              // we store name as identifier for add-ons
+    opt.textContent = `${a.name} (₹${a.price})`;
+    opt.dataset.price = String(a.price);
+    bulkAddonsSelect.appendChild(opt);
+  });
+}
+
+function togglePromosInputs() {
   const on = !!(bulkPromosEnable && bulkPromosEnable.checked);
-  if (bulkPromosBtn)   bulkPromosBtn.disabled = !on;
-  if (bulkClearPromos) bulkClearPromos.disabled = !on;
+  if (bulkPromosSelect) bulkPromosSelect.disabled = !on;
+  if (bulkClearPromos)  bulkClearPromos.disabled  = !on;
+  if (on) { loadPromotionsOptions().catch(console.error); }
 }
 function toggleAddonsInputs() {
   const on = !!(bulkAddonsEnable && bulkAddonsEnable.checked);
-  if (bulkAddonsBtn)   bulkAddonsBtn.disabled = !on;
-  if (bulkClearAddons) bulkClearAddons.disabled = !on;
+  if (bulkAddonsSelect) bulkAddonsSelect.disabled = !on;
+  if (bulkClearAddons)  bulkClearAddons.disabled  = !on;
+  if (on) { loadAddonsOptions().catch(console.error); }
 }
+
 if (bulkPromosEnable) bulkPromosEnable.onchange = togglePromosInputs;
 if (bulkAddonsEnable) bulkAddonsEnable.onchange = toggleAddonsInputs;
 togglePromosInputs();
 toggleAddonsInputs();
 
-// Promotions chooser (coupons only)
-bulkPromosBtn.onclick = async () => {
-  const snap = await getDocs(collection(db, "promotions"));
-  const coupons = [];
-  snap.forEach(d => { const p = d.data(); if (p?.kind === "coupon") coupons.push({ id: d.id, p }); });
-  const current = (() => { try { return JSON.parse(bulkPromosInput.value || "[]"); } catch { return []; } })();
-  const set = new Set(current);
-
-  const rows = coupons.map(({id, p}) => {
-    const typeTxt = p.type === "percent" ? `${p.value}% off` : `₹${p.value} off`;
-    const chan = p.channel === "dining" ? "Dining" : "Delivery";
-    return `
-      <label style="display:flex; gap:10px; align-items:center; padding:6px 0; border-bottom:1px solid #f3f3f3;">
-        <input type="checkbox" value="${id}" ${set.has(id) ? "checked" : ""} />
-        <div style="display:flex; flex-direction:column;">
-          <div><strong>${p.code || "(no code)"} </strong>• <em>${chan}</em></div>
-          <div class="adm-muted" style="font-size:12px;">${typeTxt}${p.minOrder ? ` • Min ₹${p.minOrder}` : ""}${p.active===false ? " • inactive" : ""}</div>
-        </div>
-      </label>
-    `;
-  }).join("") || `<div class="adm-muted">No coupons found.</div>`;
-
-  const overlay = showOverlay(`
-    <h3 style="margin:0 0 10px">Choose coupon(s)</h3>
-    <div style="max-height:320px; overflow:auto; margin-bottom:10px;">${rows}</div>
-    <div style="display:flex; gap:8px; justify-content:flex-end;">
-      <button id="bulkPromosSave" class="adm-btn adm-btn--primary">Save</button>
-      <button id="bulkPromosCancel" class="adm-btn">Cancel</button>
-    </div>
-  `);
-
-  overlay.querySelector("#bulkPromosCancel").onclick = closeOverlay;
-  overlay.querySelector("#bulkPromosSave").onclick = () => {
-    const ids = [...overlay.querySelectorAll('input[type="checkbox"]:checked')].map(i => i.value);
-    bulkPromosInput.value = JSON.stringify(ids);
-    bulkPromosPreview.textContent = ids.length ? `${ids.length} selected` : "none selected";
-    closeOverlay();
-  };
-};
-
-// Add-ons chooser
-bulkAddonsBtn.onclick = async () => {
-  const snap = await getDocs(collection(db, "menuAddons"));
-  const addons = [];
-  snap.forEach(d => { const v = d.data() || {}; addons.push({ name: v.name || d.id, price: Number(v.price || 0) }); });
-  const current = (() => { try { return JSON.parse(bulkAddonsInput.value || "[]"); } catch { return []; } })();
-  const sel = new Set(current.map(a => a.name));
-
-  const rows = addons.map(a => `
-    <label style="display:flex; gap:10px; align-items:center; padding:6px 0; border-bottom:1px solid #f3f3f3;">
-      <input type="checkbox" value="${a.name}" ${sel.has(a.name) ? "checked" : ""} />
-      <span>${a.name} (₹${a.price})</span>
-    </label>
-  `).join("") || `<div class="adm-muted">No add-ons found.</div>`;
-
-  const overlay = showOverlay(`
-    <h3 style="margin:0 0 10px">Choose add-on(s)</h3>
-    <div style="max-height:320px; overflow:auto; margin-bottom:10px;">${rows}</div>
-    <div style="display:flex; gap:8px; justify-content:flex-end;">
-      <button id="bulkAddonsSave" class="adm-btn adm-btn--primary">Save</button>
-      <button id="bulkAddonsCancel" class="adm-btn">Cancel</button>
-    </div>
-  `);
-
-  overlay.querySelector("#bulkAddonsCancel").onclick = closeOverlay;
-  overlay.querySelector("#bulkAddonsSave").onclick = () => {
-    const chosenNames = [...overlay.querySelectorAll('input[type="checkbox"]:checked')].map(i => i.value);
-    const chosenObjs = addons.filter(a => chosenNames.includes(a.name));
-    bulkAddonsInput.value = JSON.stringify(chosenObjs);
-    bulkAddonsPreview.textContent = chosenObjs.length ? `${chosenObjs.length} selected` : "none selected";
-    closeOverlay();
-  };
-};
-
+if (bulkPromosEnable) bulkPromosEnable.onchange = togglePromosInputs;
+if (bulkAddonsEnable) bulkAddonsEnable.onchange = toggleAddonsInputs;
+togglePromosInputs();
+toggleAddonsInputs();
 
     // enable toggles
     const bulkCatEnable    = modal.querySelector("#bulkCatEnable");
@@ -818,44 +807,43 @@ bulkAddonsBtn.onclick = async () => {
         }
       }
 
-    // ✅ BULK EDIT/DELETE (Promotions & Add-ons) — modal-scoped & safe JSON
+    // ✅ BULK EDIT/DELETE (Promotions & Add-ons) — dropdown-based, normalized
 (() => {
   const promosEnable   = modal.querySelector("#bulkPromosEnable");
   const promosClear    = modal.querySelector("#bulkClearPromos");
-  const promosHidden   = modal.querySelector("#bulkPromos");
+  const promosSelect   = modal.querySelector("#bulkPromosSelect");
 
   const addonsEnable   = modal.querySelector("#bulkAddonsEnable");
   const addonsClear    = modal.querySelector("#bulkClearAddons");
-  const addonsHidden   = modal.querySelector("#bulkAddons");
+  const addonsSelect   = modal.querySelector("#bulkAddonsSelect");
 
-  const safeParse = (txt, fallback) => {
-    try { return JSON.parse(txt ?? ""); } catch { return fallback; }
-  };
-
-  // Promotions
+  // Promotions → store array of promotion IDs (same as before)
   if (promosEnable?.checked) {
     if (promosClear?.checked) {
-      updates.promotions = [];               // explicit clear
-    } else {
-      const selected = safeParse(promosHidden?.value, []);
-      updates.promotions = Array.isArray(selected) ? selected : [];
+      updates.promotions = [];
+    } else if (promosSelect) {
+      const ids = [...promosSelect.selectedOptions]
+        .map(o => o.value)
+        .filter(v => v && v !== "");
+      updates.promotions = ids;
     }
   }
 
-  // Add-ons
+  // Add-ons → store array of {name, price}
   if (addonsEnable?.checked) {
     if (addonsClear?.checked) {
-      updates.addons = [];                   // explicit clear
-    } else {
-      const chosen = safeParse(addonsHidden?.value, []);
-      // menuItems schema expects [{name,price}], normalize defensively
-      updates.addons = (Array.isArray(chosen) ? chosen : []).map(a => {
-        if (typeof a === "string") return { name: a, price: 0 };
-        return { name: a?.name ?? "", price: Number(a?.price ?? 0) };
-      }).filter(a => a.name);
+      updates.addons = [];
+    } else if (addonsSelect) {
+      const chosen = [...addonsSelect.selectedOptions]
+        .map(o => ({ name: o.value, price: Number(o.dataset.price || 0) }))
+        .filter(a => a.name);
+      updates.addons = chosen;
     }
   }
+
+  console.debug("[BulkEdit] computed updates =", JSON.stringify(updates));
 })();
+
 
       if (!Object.keys(updates).length) return alert("Tick at least one field to update.");
 
@@ -931,6 +919,31 @@ if (promosBtn)   promosBtn.disabled = !(promosEnable?.checked);
 if (addonsBtn)   addonsBtn.disabled = !(addonsEnable?.checked);
 if (promosClear) promosClear.disabled = !(promosEnable?.checked);
 if (addonsClear) addonsClear.disabled = !(addonsEnable?.checked);
+
+    // Reset Promotions & Add-ons UI on open
+const promosEnable   = modal.querySelector("#bulkPromosEnable");
+const promosClear    = modal.querySelector("#bulkClearPromos");
+const promosSelect   = modal.querySelector("#bulkPromosSelect");
+
+const addonsEnable   = modal.querySelector("#bulkAddonsEnable");
+const addonsClear    = modal.querySelector("#bulkClearAddons");
+const addonsSelect   = modal.querySelector("#bulkAddonsSelect");
+
+// Uncheck toggles & clear
+if (promosEnable) promosEnable.checked = false;
+if (addonsEnable) addonsEnable.checked = false;
+if (promosClear)  promosClear.checked  = false;
+if (addonsClear)  addonsClear.checked  = false;
+
+// Empty & disable selects (they’ll load when toggled on)
+if (promosSelect) { promosSelect.innerHTML = `<option value="">-- Select Promotion(s) --</option>`; promosSelect.disabled = true; }
+if (addonsSelect) { addonsSelect.innerHTML = `<option value="">-- Select Add-on(s) --</option>`; addonsSelect.disabled = true; }
+
+// Keep other fields’ resets as-is, then:
+togglePromosInputs();
+toggleAddonsInputs();
+
+console.debug("[BulkEdit] modal opened; selectedIds.size =", selectedIds.size);
 
 modal.style.display = "block";
 
