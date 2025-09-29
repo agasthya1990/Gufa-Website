@@ -118,20 +118,29 @@ let editingId = null;
    ========================= */
 
 if (loginBtn) {
-  loginBtn.onclick = () => {
-    const em = email.value;
+  loginBtn.setAttribute("type", "button"); // avoid implicit form submit
+  loginBtn.onclick = (e) => {
+    e?.preventDefault?.();
+    const em = (email?.value || "").trim();
+    const pw = (password?.value || "");
+    if (!em || !pw) {
+      alert("Please enter both email and password.");
+      return;
+    }
     console.debug("[Auth] attempting login:", em);
-    signInWithEmailAndPassword(auth, em, password.value)
+    signInWithEmailAndPassword(auth, em, pw)
       .then(() => {
         console.debug("[Auth] login success:", em);
-        email.value = ""; password.value = "";
+        if (email) email.value = "";
+        if (password) password.value = "";
       })
       .catch(err => {
         console.error("[Auth] login failed:", err?.code, err?.message);
-        alert("Login failed: " + (err?.message || err));
+        alert(`Login failed: ${err?.code || ""} ${err?.message || ""}`.trim());
       });
   };
 }
+
 
 if (logoutBtn) {
   logoutBtn.onclick = () => signOut(auth);
