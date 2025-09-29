@@ -516,13 +516,19 @@ function ensureBulkBar() {
 bar.innerHTML = `
     <button id="bulkEditBtn" type="button" disabled>Edit Selected (0)</button>
     <button id="bulkDeleteBtn" type="button" disabled>Delete Selected (0)</button>
+    <button id="bulkPromosBulkBtn" type="button" disabled>Bulk Promotions</button>
+    <button id="bulkAddonsBulkBtn" type="button" disabled>Bulk Add-ons</button>
   `;
+
 
   const table = document.getElementById("menuTable");
   if (table && table.parentNode) table.parentNode.insertBefore(bar, table);
 
-  const bulkEditBtn = document.getElementById("bulkEditBtn");
-  const bulkDeleteBtn = document.getElementById("bulkDeleteBtn");
+ const bulkEditBtn = document.getElementById("bulkEditBtn");
+const bulkDeleteBtn = document.getElementById("bulkDeleteBtn");
+const bulkPromosBulkBtn = document.getElementById("bulkPromosBulkBtn");
+const bulkAddonsBulkBtn = document.getElementById("bulkAddonsBulkBtn");
+
   
 if (bulkEditBtn) {
   bulkEditBtn.onclick = (e) => {
@@ -548,13 +554,33 @@ if (bulkDeleteBtn) bulkDeleteBtn.onclick = async (e) => {
 };
 }
 
+if (bulkPromosBulkBtn) {
+  bulkPromosBulkBtn.onclick = (e) => {
+    e?.preventDefault?.();
+    if (!selectedIds.size) return alert("Select at least one item.");
+    openBulkPromosModal(e?.currentTarget || e?.target || null);
+  };
+}
+if (bulkAddonsBulkBtn) {
+  bulkAddonsBulkBtn.onclick = (e) => {
+    e?.preventDefault?.();
+    if (!selectedIds.size) return alert("Select at least one item.");
+    openBulkAddonsModal(e?.currentTarget || e?.target || null);
+  };
+}
+
 function updateBulkBar() {
   ensureBulkBar();
   const n = selectedIds.size;
   const editBtn = document.getElementById("bulkEditBtn");
-  const delBtn  = document.getElementById("bulkDeleteBtn");
-  if (editBtn) { editBtn.textContent = `Edit Selected (${n})`; editBtn.disabled = n === 0; }
-  if (delBtn)  { delBtn.textContent  = `Delete Selected (${n})`; delBtn.disabled  = n === 0; }
+const delBtn  = document.getElementById("bulkDeleteBtn");
+const promosBtn = document.getElementById("bulkPromosBulkBtn");
+const addonsBtn = document.getElementById("bulkAddonsBulkBtn");
+if (editBtn)   { editBtn.textContent   = `Edit Selected (${n})`;    editBtn.disabled   = n === 0; }
+if (delBtn)    { delBtn.textContent    = `Delete Selected (${n})`;  delBtn.disabled    = n === 0; }
+if (promosBtn) { promosBtn.disabled    = n === 0; }
+if (addonsBtn) { addonsBtn.disabled    = n === 0; }
+}
 }
 function syncSelectAllHeader(itemsRendered) {
   const cb = document.getElementById("selectAll");
@@ -575,6 +601,7 @@ function syncSelectAllHeader(itemsRendered) {
    Bulk Edit modal
    ========================= */
 function openBulkEditModal() {
+  ensureModalStyles();
   let modal = document.getElementById("bulkModal");
   if (!modal) {
     modal = document.createElement("div");
@@ -583,7 +610,7 @@ function openBulkEditModal() {
       position: "fixed", inset: "0", background: "rgba(0,0,0,.6)", display: "none", zIndex: "9999"
     });
     modal.innerHTML = `
-      <div style="background:#fff; padding:18px; max-width:560px; margin:5% auto; border-radius:8px;">
+      <div class="adm-modal" style="padding:18px;">
         <h3 style="margin-top:0">Bulk Edit (<span id="bulkCount">0</span> items)</h3>
         <form id="bulkForm">
           <div style="display:grid; gap:10px;">
@@ -821,7 +848,11 @@ modal._toggleAddonsInputs();
     }
     bulkQtyType.onchange = toggleBulkQtyInputs;
 
-    modal.querySelector("#bulkCancelBtn").onclick = () => { modal.style.display = "none"; };
+    modal.querySelector("#bulkCancelBtn").onclick = () => {
+  const box = modal.querySelector(".adm-modal") || modal.querySelector("div");
+  if (box) { box.classList.remove("adm-anim-in"); box.classList.add("adm-anim-out"); }
+  setTimeout(() => { modal.style.display = "none"; unlockBodyScroll(); }, 190);
+};
     modal.querySelector("#bulkForm").onsubmit = async (e) => {
       e.preventDefault();
       if (!selectedIds.size) { alert("No items selected."); return; }
@@ -972,7 +1003,11 @@ modal._toggleAddonsInputs?.();
 
 console.debug("[BulkEdit] modal opened; selectedIds.size =", selectedIds.size);
 
+lockBodyScroll();
+setGenieFrom(null, modal, modal.querySelector(".adm-modal") || null);
 modal.style.display = "block";
+const box = modal.querySelector(".adm-modal") || modal.querySelector("div");
+if (box) { box.classList.remove("adm-anim-out"); box.classList.add("adm-anim-in"); }
 
 }
 
@@ -1544,6 +1579,137 @@ async function openAssignPromotionsModal(itemId, currentIds) {
     document.body.appendChild(modal);
   }
 
+  async function openBulkPromosModal(triggerEl) {
+  ensureModalStyles();
+  let ov = document.getElementById("bulkPromosModal");
+  if (!ov) {
+    ov = document.createElement("div");
+    ov.id = "bulkPromosModal";
+    ov.className = "adm-overlay";
+    ov.innerHTML = `
+      <div class="adm-modal">
+        <h3 style="margin:0 0 10px">Bulk Promotions (<span id="bulkPromosCount">0</span> items)</h3>
+        <label style="display:flex; align-items:center; gap:6px; margin:8px 0 4px;">
+          <input type="checkbox" id="bpClear"/> <span>Clear promotions</span>
+        </label>
+        <select id="bpSelect" multiple size="8" style="width:100%;"></select>
+        <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:12px;">
+          <button id="bpApply" class="adm-btn adm-btn--primary">Apply</button>
+          <button id="bpCancel" class="adm-btn">Cancel</button>
+        </div>
+      </div>`;
+    document.body.appendChild(ov);
+    ov.querySelector("#bpCancel").onclick = () => {
+      const box = ov.querySelector(".adm-modal");
+      if (box) { box.classList.remove("adm-anim-in"); box.classList.add("adm-anim-out"); }
+      setTimeout(()=>{ ov.style.display="none"; unlockBodyScroll(); }, 190);
+    };
+    ov.querySelector("#bpApply").onclick = async () => {
+      const clear = ov.querySelector("#bpClear").checked;
+      const sel = ov.querySelector("#bpSelect");
+      const ids = clear ? [] : [...sel.selectedOptions].map(o=>o.value).filter(Boolean);
+      if (!selectedIds.size) { alert("No items selected."); return; }
+      try {
+        ov.querySelector("#bpApply").disabled = true;
+        const ops = [];
+        selectedIds.forEach((id)=> ops.push(updateDoc(doc(db,"menuItems",id), { promotions: ids })));
+        await Promise.all(ops);
+        const box = ov.querySelector(".adm-modal");
+        if (box) { box.classList.remove("adm-anim-in"); box.classList.add("adm-anim-out"); }
+        setTimeout(()=>{ ov.style.display="none"; unlockBodyScroll(); }, 150);
+      } catch(e){ console.error(e); alert("Failed to update promotions: " + (e?.message || e)); }
+      finally { ov.querySelector("#bpApply").disabled = false; }
+    };
+  }
+  // load options
+  const sel = ov.querySelector("#bpSelect");
+  sel.innerHTML = "";
+  const snap = await getDocs(collection(db,"promotions"));
+  const rows = [];
+  snap.forEach(d => {
+    const p = d.data();
+    if (p?.kind === "coupon") {
+      const typeTxt = p.type === "percent" ? `${p.value}% off` : `₹${p.value} off`;
+      const chan = p.channel === "dining" ? "Dining" : "Delivery";
+      rows.push({ id: d.id, label: `${p.code || "(no code)"} • ${chan} • ${typeTxt}` });
+    }
+  });
+  if (!rows.length) sel.innerHTML = `<option value="">(No promotions found)</option>`;
+  rows.forEach(r => { const o=document.createElement("option"); o.value=r.id; o.textContent=r.label; sel.appendChild(o); });
+  ov.querySelector("#bulkPromosCount").textContent = String(selectedIds.size);
+
+  lockBodyScroll();
+  ov.style.display = "block";
+  setGenieFrom(triggerEl, ov, ov.querySelector(".adm-modal"));
+  const box = ov.querySelector(".adm-modal"); box.classList.remove("adm-anim-out"); box.classList.add("adm-anim-in");
+}
+
+async function openBulkAddonsModal(triggerEl) {
+  ensureModalStyles();
+  let ov = document.getElementById("bulkAddonsModal");
+  if (!ov) {
+    ov = document.createElement("div");
+    ov.id = "bulkAddonsModal";
+    ov.className = "adm-overlay";
+    ov.innerHTML = `
+      <div class="adm-modal">
+        <h3 style="margin:0 0 10px">Bulk Add-ons (<span id="bulkAddonsCount">0</span> items)</h3>
+        <label style="display:flex; align-items:center; gap:6px; margin:8px 0 4px;">
+          <input type="checkbox" id="baClear"/> <span>Clear add-ons</span>
+        </label>
+        <div style="max-height:48vh; overflow:auto; border:1px solid #eee; border-radius:8px; padding:8px;" id="baList"></div>
+        <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:12px;">
+          <button id="baApply" class="adm-btn adm-btn--primary">Apply</button>
+          <button id="baCancel" class="adm-btn">Cancel</button>
+        </div>
+      </div>`;
+    document.body.appendChild(ov);
+    ov.querySelector("#baCancel").onclick = () => {
+      const box = ov.querySelector(".adm-modal");
+      if (box) { box.classList.remove("adm-anim-in"); box.classList.add("adm-anim-out"); }
+      setTimeout(()=>{ ov.style.display="none"; unlockBodyScroll(); }, 190);
+    };
+    ov.querySelector("#baApply").onclick = async () => {
+      if (!selectedIds.size) { alert("No items selected."); return; }
+      const clear = ov.querySelector("#baClear").checked;
+      const chosen = clear ? [] : [...ov.querySelectorAll('.ba-row input[type="checkbox"]:checked')]
+        .map(i => ({ name: i.value, price: Number(i.dataset.price || 0) }));
+      try {
+        ov.querySelector("#baApply").disabled = true;
+        const ops = [];
+        selectedIds.forEach((id)=> ops.push(updateDoc(doc(db,"menuItems",id), { addons: chosen })));
+        await Promise.all(ops);
+        const box = ov.querySelector(".adm-modal");
+        if (box) { box.classList.remove("adm-anim-in"); box.classList.add("adm-anim-out"); }
+        setTimeout(()=>{ ov.style.display="none"; unlockBodyScroll(); }, 150);
+      } catch(e){ console.error(e); alert("Failed to update add-ons: " + (e?.message || e)); }
+      finally { ov.querySelector("#baApply").disabled = false; }
+    };
+  }
+  // Load add-ons list
+  const list = ov.querySelector("#baList");
+  list.innerHTML = "";
+  const snap = await getDocs(collection(db, "menuAddons"));
+  const rows = [];
+  snap.forEach(d => {
+    const v = d.data() || {}; rows.push({ name: v.name || d.id, price: Number(v.price || 0) });
+  });
+  if (!rows.length) list.innerHTML = `<div class="adm-muted">(No add-ons found)</div>`;
+  rows.forEach(a => {
+    const row = document.createElement("label");
+    row.className = "ba-row";
+    row.style.cssText = "display:flex;align-items:center;gap:8px;padding:6px 4px;";
+    row.innerHTML = `<input type="checkbox" value="${a.name}" data-price="${a.price}"/><span>${a.name} (₹${a.price})</span>`;
+    list.appendChild(row);
+  });
+  ov.querySelector("#bulkAddonsCount").textContent = String(selectedIds.size);
+
+  lockBodyScroll();
+  ov.style.display = "block";
+  setGenieFrom(triggerEl, ov, ov.querySelector(".adm-modal"));
+  const box = ov.querySelector(".adm-modal"); box.classList.remove("adm-anim-out"); box.classList.add("adm-anim-in");
+}
+
   const listEl = modal.querySelector("#promoAssignList");
   listEl.innerHTML = "";
   const set = new Set(Array.isArray(currentIds) ? currentIds : []);
@@ -1584,6 +1750,49 @@ async function openAssignPromotionsModal(itemId, currentIds) {
 /* =========================
    Helpers
    ========================= */
+function ensureModalStyles() {
+  if (document.getElementById("admModalStyles")) return;
+  const css = `
+    body.adm-lock { overflow: hidden !important; }
+    .adm-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.55); display:none; z-index: 10000; }
+    .adm-modal { background:#fff; margin:5% auto; max-width:560px; border-radius:14px;
+                 border:2px solid #111; box-shadow:6px 6px 0 #111; padding:18px;
+                 max-height:80vh; overflow:auto; transform-origin: var(--adm-origin, 50% 0%); }
+    @keyframes admGenieIn {
+      from { opacity: 0; transform: translate(var(--adm-dx,0), var(--adm-dy,0)) scale(0.85); }
+      to   { opacity: 1; transform: translate(0,0) scale(1); }
+    }
+    @keyframes admGenieOut {
+      from { opacity: 1; transform: translate(0,0) scale(1); }
+      to   { opacity: 0; transform: translate(var(--adm-dx,0), var(--adm-dy,0)) scale(0.85); }
+    }
+    .adm-anim-in  { animation: admGenieIn 240ms ease-out both; }
+    .adm-anim-out { animation: admGenieOut 200ms ease-in both; }
+  `;
+  const style = document.createElement("style");
+  style.id = "admModalStyles";
+  style.textContent = css;
+  document.head.appendChild(style);
+}
+function lockBodyScroll()   { document.body.classList.add("adm-lock"); }
+function unlockBodyScroll() { document.body.classList.remove("adm-lock"); }
+
+/** optional “genie from button” offsets */
+function setGenieFrom(el, overlay, modal) {
+  try {
+    if (!el || !overlay || !modal) return;
+    const r = el.getBoundingClientRect();
+    const cx = r.left + r.width/2;
+    const cy = r.top + r.height/2;
+    const vw = window.innerWidth;
+    const dy = Math.max(0, cy - (window.innerHeight * 0.12)); // small vertical bias
+    modal.style.setProperty("--adm-origin", `${(cx/vw)*100}% 0%`);
+    modal.style.setProperty("--adm-dx", "0px");
+    modal.style.setProperty("--adm-dy", `${dy * 0.12}px`);
+  } catch {}
+}
+
+
 function setHiddenValue(selectEl, val) {
   if (!selectEl) return;
   let opt = [...selectEl.options].find(o => o.value === val);
