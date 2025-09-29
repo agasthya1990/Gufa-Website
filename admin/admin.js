@@ -182,12 +182,11 @@ onAuthStateChanged(auth, async (user) => {
     wireSearchAndFilters();
 
     // ✅ Always attach menu listener FIRST so items render even if Promotions fails
-    attachSnapshot();
+attachSnapshot();
 
-    // Live coupon map for chips
-
-  onSnapshot(
-   collection(db, "promotions"),
+// Live coupon map for chips
+onSnapshot(
+  collection(db, "promotions"),
   (snap) => {
     const map = {};
     snap.forEach((d) => {
@@ -199,17 +198,16 @@ onAuthStateChanged(auth, async (user) => {
   },
   (err) => {
     console.error("promotions snapshot error", err?.code, err?.message);
-    // Keep the admin usable even if promotions are blocked by rules
     PROMOS_BY_ID = {};
     renderTable();
   }
 );
 
+// Promotions UI — guarded so it can’t break the rest
+try { initPromotions(); } catch (e) {
+  console.error("Promotions init failed — continuing:", e);
+}
 
-    // Promotions UI — guarded so it can’t break the rest
-    try { initPromotions(); } catch (e) {
-      console.error("Promotions init failed — continuing:", e);
-    }
 
   } else {
     if (loginBox) loginBox.style.display = "block";
@@ -524,36 +522,184 @@ bar.innerHTML = `
   const table = document.getElementById("menuTable");
   if (table && table.parentNode) table.parentNode.insertBefore(bar, table);
 
- const bulkEditBtn = document.getElementById("bulkEditBtn");
+const bulkEditBtn = document.getElementById("bulkEditBtn");
 const bulkDeleteBtn = document.getElementById("bulkDeleteBtn");
 const bulkPromosBulkBtn = document.getElementById("bulkPromosBulkBtn");
 const bulkAddonsBulkBtn = document.getElementById("bulkAddonsBulkBtn");
 
-  
 if (bulkEditBtn) {
   bulkEditBtn.onclick = (e) => {
     e?.preventDefault?.();
     console.debug("[BulkEdit] clicked; selectedIds.size =", selectedIds.size);
     if (!selectedIds.size) return alert("Select at least one item.");
     openBulkEditModal();
+     async function openBulkPromosModal(triggerEl) {
+  ensureModalStyles();
+  let ov = document.getElementById("bulkPromosModal");
+  if (!ov) {
+    ov = document.createElement("div");
+    ov.id = "bulkPromosModal";
+    ov.className = "adm-overlay";
+    ov.innerHTML = `
+      <div class="adm-modal">
+        <h3 style="margin:0 0 10px">Bulk Promotions (<span id="bulkPromosCount">0</span> items)</h3>
+        <label style="display:flex; align-items:center; gap:6px; margin:8px 0 4px;">
+          <input type="checkbox" id="bpClear"/> <span>Clear promotions</span>
+        </label>
+        <select id="bpSelect" multiple size="8" style="width:100%;"></select>
+        <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:12px;">
+          <button id="bpApply" class="adm-btn adm-btn--primary">Apply</button>
+          <button id="bpCancel" class="adm-btn">Cancel</button>
+        </div>
+      </div>`;
+    document.body.appendChild(ov);
+    ov.querySelector("#bpCancel").onclick = () => {
+      const box = ov.querySelector(".adm-modal");
+      if (box) { box.classList.remove("adm-anim-in"); box.classList.add("adm-anim-out"); }
+      setTimeout(()=>{ ov.style.display="none"; unlockBodyScroll(); }, 190);
+    };
+    ov.querySelector("#bpApply").onclick = async () => {
+      const clear = ov.querySelector("#bpClear").checked;
+      const sel = ov.querySelector("#bpSelect");
+      const ids = clear ? [] : [...sel.selectedOptions].map(o=>o.value).filter(Boolean);
+      if (!selectedIds.size) { alert("No items selected."); return; }
+      try {
+        ov.querySelector("#bpApply").disabled = true;
+        const ops = [];
+        selectedIds.forEach((id)=> ops.push(updateDoc(doc(db,"menuItems",id), { promotions: ids })));
+        await Promise.all(ops);
+        const box = ov.querySelector(".adm-modal");
+        if (box) { box.classList.remove("adm-anim-in"); box.classList.add("adm-anim-out"); }
+        setTimeout(()=>{ ov.style.display="none"; unlockBodyScroll(); }, 150);
+      } catch(e){ console.error(e); alert("Failed to update promotions: " + (e?.message || e)); }
+      finally { ov.querySelector("#bpApply").disabled = false; }
+    };
+  }
+  // load options
+  const sel = ov.querySelector("#bpSelect");
+  sel.innerHTML = "";
+  const snap = await getDocs(collection(db,"promotions"));
+  const rows = [];
+  snap.forEach(d => {
+    const p = d.data();
+    if (p?.kind === "coupon") {
+      const typeTxt = p.type === "percent" ? `${p.value}% off` : `₹${p.value} off`;
+      const chan = p.channel === "dining" ? "Dining" : "Delivery";
+      rows.push({ id: d.id, label: `${p.code || "(no code)"} • ${chan} • ${typeTxt}` });
+    }
+  });
+  if (!rows.length) sel.innerHTML = `<option value="">(No promotions found)</option>`;
+  rows.forEach(r => { const o=document.createElement("option"); o.value=r.id; o.textContent=r.label; sel.appendChild(o); });
+  ov.querySelector("#bulkPromosCount").textContent = String(selectedIds.size);
+
+  lockBodyScroll();
+  ov.style.display = "block";
+  setGenieFrom(triggerEl, ov, ov.querySelector(".adm-modal"));
+  const box = ov.querySelector(".adm-modal"); box.classList.remove("adm-anim-out"); box.classList.add("adm-anim-in");
+}
+
+async function openBulkAddonsModal(triggerEl) {
+  ensureModalStyles();
+  let ov = document.getElementById("bulkAddonsModal");
+  if (!ov) {
+    ov = document.createElement("div");
+    ov.id = "bulkAddonsModal";
+    ov.className = "adm-overlay";
+    ov.innerHTML = `
+      <div class="adm-modal">
+        <h3 style="margin:0 0 10px">Bulk Add-ons (<span id="bulkAddonsCount">0</span> items)</h3>
+        <label style="display:flex; align-items:center; gap:6px; margin:8px 0 4px;">
+          <input type="checkbox" id="baClear"/> <span>Clear add-ons</span>
+        </label>
+        <div style="max-height:48vh; overflow:auto; border:1px solid #eee; border-radius:8px; padding:8px;" id="baList"></div>
+        <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:12px;">
+          <button id="baApply" class="adm-btn adm-btn--primary">Apply</button>
+          <button id="baCancel" class="adm-btn">Cancel</button>
+        </div>
+      </div>`;
+    document.body.appendChild(ov);
+    ov.querySelector("#baCancel").onclick = () => {
+      const box = ov.querySelector(".adm-modal");
+      if (box) { box.classList.remove("adm-anim-in"); box.classList.add("adm-anim-out"); }
+      setTimeout(()=>{ ov.style.display="none"; unlockBodyScroll(); }, 190);
+    };
+    ov.querySelector("#baApply").onclick = async () => {
+      if (!selectedIds.size) { alert("No items selected."); return; }
+      const clear = ov.querySelector("#baClear").checked;
+      const chosen = clear ? [] : [...ov.querySelectorAll('.ba-row input[type="checkbox"]:checked')]
+        .map(i => ({ name: i.value, price: Number(i.dataset.price || 0) }));
+      try {
+        ov.querySelector("#baApply").disabled = true;
+        const ops = [];
+        selectedIds.forEach((id)=> ops.push(updateDoc(doc(db,"menuItems",id), { addons: chosen })));
+        await Promise.all(ops);
+        const box = ov.querySelector(".adm-modal");
+        if (box) { box.classList.remove("adm-anim-in"); box.classList.add("adm-anim-out"); }
+        setTimeout(()=>{ ov.style.display="none"; unlockBodyScroll(); }, 150);
+      } catch(e){ console.error(e); alert("Failed to update add-ons: " + (e?.message || e)); }
+      finally { ov.querySelector("#baApply").disabled = false; }
+    };
+  }
+  // Load add-ons list
+  const list = ov.querySelector("#baList");
+  list.innerHTML = "";
+  const snap = await getDocs(collection(db, "menuAddons"));
+  const rows = [];
+  snap.forEach(d => {
+    const v = d.data() || {}; rows.push({ name: v.name || d.id, price: Number(v.price || 0) });
+  });
+  if (!rows.length) list.innerHTML = `<div class="adm-muted">(No add-ons found)</div>`;
+  rows.forEach(a => {
+    const row = document.createElement("label");
+    row.className = "ba-row";
+    row.style.cssText = "display:flex;align-items:center;gap:8px;padding:6px 4px;";
+    row.innerHTML = `<input type="checkbox" value="${a.name}" data-price="${a.price}"/><span>${a.name} (₹${a.price})</span>`;
+    list.appendChild(row);
+  });
+  ov.querySelector("#bulkAddonsCount").textContent = String(selectedIds.size);
+
+  lockBodyScroll();
+  ov.style.display = "block";
+  setGenieFrom(triggerEl, ov, ov.querySelector(".adm-modal"));
+  const box = ov.querySelector(".adm-modal"); box.classList.remove("adm-anim-out"); box.classList.add("adm-anim-in");
+}
+
+  const listEl = modal.querySelector("#promoAssignList");
+  listEl.innerHTML = "";
+  const set = new Set(Array.isArray(currentIds) ? currentIds : []);
+  if (!coupons.length) {
+    listEl.innerHTML = `<div class="adm-muted">No promotions found. Create a coupon in Promotions first.</div>`;
+  } else {
+    coupons.forEach(({ id, p }) => {
+      const row = document.createElement("label");
+      row.style.cssText = "display:flex; align-items:center; gap:10px; padding:6px 8px; border-bottom:1px solid #f1f1f1;";
+      const typeText = p.type === "percent" ? `${p.value}% off` : `₹${p.value} off`;
+      const chan = (p.channel || "").toLowerCase() === "dining" ? "Dining" : "Delivery";
+      row.innerHTML = `
+        <input type="checkbox" class="promoAssignChk" value="${id}" ${ set.has(id) ? "checked" : "" }/>
+        <div style="display:flex; flex-direction:column;">
+          <div><strong>${p.code || "(no code)"}</strong> • <em>${chan}</em></div>
+          <div style="font-size:12px; color:#555;">${typeText}${p.minOrder ? ` • Min ₹${p.minOrder}` : ""}${p.active === false ? ` • inactive` : ""}</div>
+        </div>
+      `;
+      listEl.appendChild(row);
+    });
+  }
   };
 }
-
-
-if (bulkDeleteBtn) bulkDeleteBtn.onclick = async (e) => {
-  e?.preventDefault?.();
-  if (!selectedIds.size) return;
-  if (!confirm(`Delete ${selectedIds.size} item(s)?`)) return;
-
-  const ops = [];
-  selectedIds.forEach((id) => ops.push(deleteDoc(doc(db, "menuItems", id))));
-  console.debug("[BulkEdit] applying to IDs =", Array.from(selectedIds));
-  await Promise.all(ops);
-  selectedIds.clear();
-  updateBulkBar();
-};
+if (bulkDeleteBtn) {
+  bulkDeleteBtn.onclick = async (e) => {
+    e?.preventDefault?.();
+    if (!selectedIds.size) return;
+    if (!confirm(`Delete ${selectedIds.size} item(s)?`)) return;
+    const ops = [];
+    selectedIds.forEach((id) => ops.push(deleteDoc(doc(db, "menuItems", id))));
+    console.debug("[BulkEdit] applying to IDs =", Array.from(selectedIds));
+    await Promise.all(ops);
+    selectedIds.clear();
+    updateBulkBar();
+  };
 }
-
 if (bulkPromosBulkBtn) {
   bulkPromosBulkBtn.onclick = (e) => {
     e?.preventDefault?.();
@@ -568,6 +714,8 @@ if (bulkAddonsBulkBtn) {
     openBulkAddonsModal(e?.currentTarget || e?.target || null);
   };
 }
+} 
+
 
 function updateBulkBar() {
   ensureBulkBar();
@@ -581,7 +729,7 @@ if (delBtn)    { delBtn.textContent    = `Delete Selected (${n})`;  delBtn.disab
 if (promosBtn) { promosBtn.disabled    = n === 0; }
 if (addonsBtn) { addonsBtn.disabled    = n === 0; }
 }
-}
+
 function syncSelectAllHeader(itemsRendered) {
   const cb = document.getElementById("selectAll");
   if (!cb) return;
@@ -1577,159 +1725,6 @@ async function openAssignPromotionsModal(itemId, currentIds) {
       </div>
     `;
     document.body.appendChild(modal);
-  }
-
-  async function openBulkPromosModal(triggerEl) {
-  ensureModalStyles();
-  let ov = document.getElementById("bulkPromosModal");
-  if (!ov) {
-    ov = document.createElement("div");
-    ov.id = "bulkPromosModal";
-    ov.className = "adm-overlay";
-    ov.innerHTML = `
-      <div class="adm-modal">
-        <h3 style="margin:0 0 10px">Bulk Promotions (<span id="bulkPromosCount">0</span> items)</h3>
-        <label style="display:flex; align-items:center; gap:6px; margin:8px 0 4px;">
-          <input type="checkbox" id="bpClear"/> <span>Clear promotions</span>
-        </label>
-        <select id="bpSelect" multiple size="8" style="width:100%;"></select>
-        <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:12px;">
-          <button id="bpApply" class="adm-btn adm-btn--primary">Apply</button>
-          <button id="bpCancel" class="adm-btn">Cancel</button>
-        </div>
-      </div>`;
-    document.body.appendChild(ov);
-    ov.querySelector("#bpCancel").onclick = () => {
-      const box = ov.querySelector(".adm-modal");
-      if (box) { box.classList.remove("adm-anim-in"); box.classList.add("adm-anim-out"); }
-      setTimeout(()=>{ ov.style.display="none"; unlockBodyScroll(); }, 190);
-    };
-    ov.querySelector("#bpApply").onclick = async () => {
-      const clear = ov.querySelector("#bpClear").checked;
-      const sel = ov.querySelector("#bpSelect");
-      const ids = clear ? [] : [...sel.selectedOptions].map(o=>o.value).filter(Boolean);
-      if (!selectedIds.size) { alert("No items selected."); return; }
-      try {
-        ov.querySelector("#bpApply").disabled = true;
-        const ops = [];
-        selectedIds.forEach((id)=> ops.push(updateDoc(doc(db,"menuItems",id), { promotions: ids })));
-        await Promise.all(ops);
-        const box = ov.querySelector(".adm-modal");
-        if (box) { box.classList.remove("adm-anim-in"); box.classList.add("adm-anim-out"); }
-        setTimeout(()=>{ ov.style.display="none"; unlockBodyScroll(); }, 150);
-      } catch(e){ console.error(e); alert("Failed to update promotions: " + (e?.message || e)); }
-      finally { ov.querySelector("#bpApply").disabled = false; }
-    };
-  }
-  // load options
-  const sel = ov.querySelector("#bpSelect");
-  sel.innerHTML = "";
-  const snap = await getDocs(collection(db,"promotions"));
-  const rows = [];
-  snap.forEach(d => {
-    const p = d.data();
-    if (p?.kind === "coupon") {
-      const typeTxt = p.type === "percent" ? `${p.value}% off` : `₹${p.value} off`;
-      const chan = p.channel === "dining" ? "Dining" : "Delivery";
-      rows.push({ id: d.id, label: `${p.code || "(no code)"} • ${chan} • ${typeTxt}` });
-    }
-  });
-  if (!rows.length) sel.innerHTML = `<option value="">(No promotions found)</option>`;
-  rows.forEach(r => { const o=document.createElement("option"); o.value=r.id; o.textContent=r.label; sel.appendChild(o); });
-  ov.querySelector("#bulkPromosCount").textContent = String(selectedIds.size);
-
-  lockBodyScroll();
-  ov.style.display = "block";
-  setGenieFrom(triggerEl, ov, ov.querySelector(".adm-modal"));
-  const box = ov.querySelector(".adm-modal"); box.classList.remove("adm-anim-out"); box.classList.add("adm-anim-in");
-}
-
-async function openBulkAddonsModal(triggerEl) {
-  ensureModalStyles();
-  let ov = document.getElementById("bulkAddonsModal");
-  if (!ov) {
-    ov = document.createElement("div");
-    ov.id = "bulkAddonsModal";
-    ov.className = "adm-overlay";
-    ov.innerHTML = `
-      <div class="adm-modal">
-        <h3 style="margin:0 0 10px">Bulk Add-ons (<span id="bulkAddonsCount">0</span> items)</h3>
-        <label style="display:flex; align-items:center; gap:6px; margin:8px 0 4px;">
-          <input type="checkbox" id="baClear"/> <span>Clear add-ons</span>
-        </label>
-        <div style="max-height:48vh; overflow:auto; border:1px solid #eee; border-radius:8px; padding:8px;" id="baList"></div>
-        <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:12px;">
-          <button id="baApply" class="adm-btn adm-btn--primary">Apply</button>
-          <button id="baCancel" class="adm-btn">Cancel</button>
-        </div>
-      </div>`;
-    document.body.appendChild(ov);
-    ov.querySelector("#baCancel").onclick = () => {
-      const box = ov.querySelector(".adm-modal");
-      if (box) { box.classList.remove("adm-anim-in"); box.classList.add("adm-anim-out"); }
-      setTimeout(()=>{ ov.style.display="none"; unlockBodyScroll(); }, 190);
-    };
-    ov.querySelector("#baApply").onclick = async () => {
-      if (!selectedIds.size) { alert("No items selected."); return; }
-      const clear = ov.querySelector("#baClear").checked;
-      const chosen = clear ? [] : [...ov.querySelectorAll('.ba-row input[type="checkbox"]:checked')]
-        .map(i => ({ name: i.value, price: Number(i.dataset.price || 0) }));
-      try {
-        ov.querySelector("#baApply").disabled = true;
-        const ops = [];
-        selectedIds.forEach((id)=> ops.push(updateDoc(doc(db,"menuItems",id), { addons: chosen })));
-        await Promise.all(ops);
-        const box = ov.querySelector(".adm-modal");
-        if (box) { box.classList.remove("adm-anim-in"); box.classList.add("adm-anim-out"); }
-        setTimeout(()=>{ ov.style.display="none"; unlockBodyScroll(); }, 150);
-      } catch(e){ console.error(e); alert("Failed to update add-ons: " + (e?.message || e)); }
-      finally { ov.querySelector("#baApply").disabled = false; }
-    };
-  }
-  // Load add-ons list
-  const list = ov.querySelector("#baList");
-  list.innerHTML = "";
-  const snap = await getDocs(collection(db, "menuAddons"));
-  const rows = [];
-  snap.forEach(d => {
-    const v = d.data() || {}; rows.push({ name: v.name || d.id, price: Number(v.price || 0) });
-  });
-  if (!rows.length) list.innerHTML = `<div class="adm-muted">(No add-ons found)</div>`;
-  rows.forEach(a => {
-    const row = document.createElement("label");
-    row.className = "ba-row";
-    row.style.cssText = "display:flex;align-items:center;gap:8px;padding:6px 4px;";
-    row.innerHTML = `<input type="checkbox" value="${a.name}" data-price="${a.price}"/><span>${a.name} (₹${a.price})</span>`;
-    list.appendChild(row);
-  });
-  ov.querySelector("#bulkAddonsCount").textContent = String(selectedIds.size);
-
-  lockBodyScroll();
-  ov.style.display = "block";
-  setGenieFrom(triggerEl, ov, ov.querySelector(".adm-modal"));
-  const box = ov.querySelector(".adm-modal"); box.classList.remove("adm-anim-out"); box.classList.add("adm-anim-in");
-}
-
-  const listEl = modal.querySelector("#promoAssignList");
-  listEl.innerHTML = "";
-  const set = new Set(Array.isArray(currentIds) ? currentIds : []);
-  if (!coupons.length) {
-    listEl.innerHTML = `<div class="adm-muted">No promotions found. Create a coupon in Promotions first.</div>`;
-  } else {
-    coupons.forEach(({ id, p }) => {
-      const row = document.createElement("label");
-      row.style.cssText = "display:flex; align-items:center; gap:10px; padding:6px 8px; border-bottom:1px solid #f1f1f1;";
-      const typeText = p.type === "percent" ? `${p.value}% off` : `₹${p.value} off`;
-      const chan = (p.channel || "").toLowerCase() === "dining" ? "Dining" : "Delivery";
-      row.innerHTML = `
-        <input type="checkbox" class="promoAssignChk" value="${id}" ${ set.has(id) ? "checked" : "" }/>
-        <div style="display:flex; flex-direction:column;">
-          <div><strong>${p.code || "(no code)"}</strong> • <em>${chan}</em></div>
-          <div style="font-size:12px; color:#555;">${typeText}${p.minOrder ? ` • Min ₹${p.minOrder}` : ""}${p.active === false ? ` • inactive` : ""}</div>
-        </div>
-      `;
-      listEl.appendChild(row);
-    });
   }
 
   modal.querySelector("#promoAssignCancel").onclick = () => (modal.style.display = "none");
