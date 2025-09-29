@@ -533,7 +533,73 @@ if (bulkEditBtn) {
     console.debug("[BulkEdit] clicked; selectedIds.size =", selectedIds.size);
     if (!selectedIds.size) return alert("Select at least one item.");
     openBulkEditModal();
-     async function openBulkPromosModal(triggerEl) {
+     onst box = ov.querySelector(".adm-modal"); box.classList.remove("adm-anim-out"); box.classList.add("adm-anim-in");
+  };
+}
+
+if (bulkDeleteBtn) {
+  bulkDeleteBtn.onclick = async (e) => {
+    e?.preventDefault?.();
+    if (!selectedIds.size) return;
+    if (!confirm(`Delete ${selectedIds.size} item(s)?`)) return;
+    const ops = [];
+    selectedIds.forEach((id) => ops.push(deleteDoc(doc(db, "menuItems", id))));
+    console.debug("[BulkEdit] applying to IDs =", Array.from(selectedIds));
+    await Promise.all(ops);
+    selectedIds.clear();
+    updateBulkBar();
+  };
+}
+if (bulkPromosBulkBtn) {
+  bulkPromosBulkBtn.onclick = (e) => {
+    e?.preventDefault?.();
+    if (!selectedIds.size) return alert("Select at least one item.");
+    openBulkPromosModal(e?.currentTarget || e?.target || null);
+  };
+}
+if (bulkAddonsBulkBtn) {
+  bulkAddonsBulkBtn.onclick = (e) => {
+    e?.preventDefault?.();
+    if (!selectedIds.size) return alert("Select at least one item.");
+    openBulkAddonsModal(e?.currentTarget || e?.target || null);
+  };
+}
+} 
+
+
+function updateBulkBar() {
+  ensureBulkBar();
+  const n = selectedIds.size;
+  const editBtn = document.getElementById("bulkEditBtn");
+const delBtn  = document.getElementById("bulkDeleteBtn");
+const promosBtn = document.getElementById("bulkPromosBulkBtn");
+const addonsBtn = document.getElementById("bulkAddonsBulkBtn");
+if (editBtn)   { editBtn.textContent   = `Edit Selected (${n})`;    editBtn.disabled   = n === 0; }
+if (delBtn)    { delBtn.textContent    = `Delete Selected (${n})`;  delBtn.disabled    = n === 0; }
+if (promosBtn) { promosBtn.disabled    = n === 0; }
+if (addonsBtn) { addonsBtn.disabled    = n === 0; }
+}
+
+function syncSelectAllHeader(itemsRendered) {
+  const cb = document.getElementById("selectAll");
+  if (!cb) return;
+  if (!itemsRendered.length) {
+    cb.checked = false;
+    cb.indeterminate = false;
+    return;
+  }
+  const total = itemsRendered.length;
+  let selected = 0;
+  for (const { id } of itemsRendered) if (selectedIds.has(id)) selected++;
+  cb.checked = selected === total;
+  cb.indeterminate = selected > 0 && selected < total;
+}
+
+/* =========================
+   Bulk Edit modal
+   ========================= */
+function openBulkEditModal() {
+  async function openBulkPromosModal(triggerEl) {
   ensureModalStyles();
   let ov = document.getElementById("bulkPromosModal");
   if (!ov) {
@@ -598,7 +664,7 @@ if (bulkEditBtn) {
   const box = ov.querySelector(".adm-modal"); box.classList.remove("adm-anim-out"); box.classList.add("adm-anim-in");
 }
 
-async function openBulkAddonsModal(triggerEl) {
+  async function openBulkAddonsModal(triggerEl) {
   ensureModalStyles();
   let ov = document.getElementById("bulkAddonsModal");
   if (!ov) {
@@ -664,91 +730,6 @@ async function openBulkAddonsModal(triggerEl) {
   const box = ov.querySelector(".adm-modal"); box.classList.remove("adm-anim-out"); box.classList.add("adm-anim-in");
 }
 
-  const listEl = modal.querySelector("#promoAssignList");
-  listEl.innerHTML = "";
-  const set = new Set(Array.isArray(currentIds) ? currentIds : []);
-  if (!coupons.length) {
-    listEl.innerHTML = `<div class="adm-muted">No promotions found. Create a coupon in Promotions first.</div>`;
-  } else {
-    coupons.forEach(({ id, p }) => {
-      const row = document.createElement("label");
-      row.style.cssText = "display:flex; align-items:center; gap:10px; padding:6px 8px; border-bottom:1px solid #f1f1f1;";
-      const typeText = p.type === "percent" ? `${p.value}% off` : `₹${p.value} off`;
-      const chan = (p.channel || "").toLowerCase() === "dining" ? "Dining" : "Delivery";
-      row.innerHTML = `
-        <input type="checkbox" class="promoAssignChk" value="${id}" ${ set.has(id) ? "checked" : "" }/>
-        <div style="display:flex; flex-direction:column;">
-          <div><strong>${p.code || "(no code)"}</strong> • <em>${chan}</em></div>
-          <div style="font-size:12px; color:#555;">${typeText}${p.minOrder ? ` • Min ₹${p.minOrder}` : ""}${p.active === false ? ` • inactive` : ""}</div>
-        </div>
-      `;
-      listEl.appendChild(row);
-    });
-  }
-  };
-}
-if (bulkDeleteBtn) {
-  bulkDeleteBtn.onclick = async (e) => {
-    e?.preventDefault?.();
-    if (!selectedIds.size) return;
-    if (!confirm(`Delete ${selectedIds.size} item(s)?`)) return;
-    const ops = [];
-    selectedIds.forEach((id) => ops.push(deleteDoc(doc(db, "menuItems", id))));
-    console.debug("[BulkEdit] applying to IDs =", Array.from(selectedIds));
-    await Promise.all(ops);
-    selectedIds.clear();
-    updateBulkBar();
-  };
-}
-if (bulkPromosBulkBtn) {
-  bulkPromosBulkBtn.onclick = (e) => {
-    e?.preventDefault?.();
-    if (!selectedIds.size) return alert("Select at least one item.");
-    openBulkPromosModal(e?.currentTarget || e?.target || null);
-  };
-}
-if (bulkAddonsBulkBtn) {
-  bulkAddonsBulkBtn.onclick = (e) => {
-    e?.preventDefault?.();
-    if (!selectedIds.size) return alert("Select at least one item.");
-    openBulkAddonsModal(e?.currentTarget || e?.target || null);
-  };
-}
-} 
-
-
-function updateBulkBar() {
-  ensureBulkBar();
-  const n = selectedIds.size;
-  const editBtn = document.getElementById("bulkEditBtn");
-const delBtn  = document.getElementById("bulkDeleteBtn");
-const promosBtn = document.getElementById("bulkPromosBulkBtn");
-const addonsBtn = document.getElementById("bulkAddonsBulkBtn");
-if (editBtn)   { editBtn.textContent   = `Edit Selected (${n})`;    editBtn.disabled   = n === 0; }
-if (delBtn)    { delBtn.textContent    = `Delete Selected (${n})`;  delBtn.disabled    = n === 0; }
-if (promosBtn) { promosBtn.disabled    = n === 0; }
-if (addonsBtn) { addonsBtn.disabled    = n === 0; }
-}
-
-function syncSelectAllHeader(itemsRendered) {
-  const cb = document.getElementById("selectAll");
-  if (!cb) return;
-  if (!itemsRendered.length) {
-    cb.checked = false;
-    cb.indeterminate = false;
-    return;
-  }
-  const total = itemsRendered.length;
-  let selected = 0;
-  for (const { id } of itemsRendered) if (selectedIds.has(id)) selected++;
-  cb.checked = selected === total;
-  cb.indeterminate = selected > 0 && selected < total;
-}
-
-/* =========================
-   Bulk Edit modal
-   ========================= */
-function openBulkEditModal() {
   ensureModalStyles();
   let modal = document.getElementById("bulkModal");
   if (!modal) {
@@ -1700,47 +1681,69 @@ function openAssignAddonsModal(itemId, current) {
    Assign Promotions modal
    ========================= */
 async function openAssignPromotionsModal(itemId, currentIds) {
-  const promosSnap = await getDocs(collection(db, "promotions"));
-  const coupons = [];
-  promosSnap.forEach((d) => {
-    const p = d.data();
-    if (p && p.kind === "coupon") coupons.push({ id: d.id, p });
-  });
-
   let modal = document.getElementById("promoAssignModal");
   if (!modal) {
     modal = document.createElement("div");
     modal.id = "promoAssignModal";
-    Object.assign(modal.style, {
-      position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", display: "none", zIndex: 9999,
-    });
+    Object.assign(modal.style, { position:"fixed", inset:0, background:"rgba(0,0,0,.6)", display:"none", zIndex:9999 });
     modal.innerHTML = `
-      <div style="background:#fff; padding:18px; max-width:520px; margin:5% auto; border-radius:12px; border:2px solid #111; box-shadow:5px 5px 0 #111;">
-        <h3 style="margin:0 0 10px">Attach Promotions</h3>
-        <div id="promoAssignList" style="max-height:340px; overflow:auto; border:1px solid #eee; border-radius:8px; padding:8px;"></div>
-        <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:12px;">
-          <button id="promoAssignSave" class="adm-btn adm-btn--primary">Save</button>
-          <button id="promoAssignCancel" class="adm-btn">Cancel</button>
+      <div class="adm-modal" style="padding:18px; max-width:520px; margin:5% auto;">
+        <h3 style="margin-top:0">Attach promotions</h3>
+        <div id="promoAssignList" style="max-height:300px; overflow:auto; border:1px solid #eee; padding:8px; border-radius:6px;"></div>
+        <div style="margin-top:12px; display:flex; gap:8px; justify-content:flex-end;">
+          <button id="promoAssignSave">Save</button>
+          <button id="promoAssignCancel">Cancel</button>
         </div>
       </div>
     `;
     document.body.appendChild(modal);
+    modal.querySelector("#promoAssignCancel").onclick = () => { modal.style.display = "none"; unlockBodyScroll?.(); };
   }
 
-  modal.querySelector("#promoAssignCancel").onclick = () => (modal.style.display = "none");
+  // Source coupons: prefer live map, fallback to a fetch
+  let coupons = [];
+  if (PROMOS_BY_ID && Object.keys(PROMOS_BY_ID).length) {
+    coupons = Object.entries(PROMOS_BY_ID).map(([id, p]) => ({ id, p }));
+  } else {
+    const snap = await getDocs(collection(db,"promotions"));
+    snap.forEach(d => { const p = d.data(); if (p?.kind === "coupon") coupons.push({ id:d.id, p }); });
+  }
+
+  const listEl = modal.querySelector("#promoAssignList");
+  listEl.innerHTML = "";
+  const set = new Set(Array.isArray(currentIds) ? currentIds : []);
+  if (!coupons.length) {
+    listEl.innerHTML = `<div class="adm-muted">No promotions found. Create a coupon in Promotions first.</div>`;
+  } else {
+    coupons.forEach(({ id, p }) => {
+      const row = document.createElement("label");
+      row.style.cssText = "display:flex; align-items:center; gap:10px; padding:6px 8px; border-bottom:1px solid #f1f1f1;";
+      const typeText = p.type === "percent" ? `${p.value}% off` : `₹${p.value} off`;
+      const chan = (p.channel || "").toLowerCase() === "dining" ? "Dining" : "Delivery";
+      row.innerHTML = `
+        <input type="checkbox" class="promoAssignChk" value="${id}" ${ set.has(id) ? "checked" : "" }/>
+        <div style="display:flex; flex-direction:column;">
+          <div><strong>${p.code || "(no code)"}</strong> • <em>${chan}</em></div>
+          <div style="font-size:12px; color:#555;">${typeText}${p.minOrder ? ` • Min ₹${p.minOrder}` : ""}${p.active === false ? ` • inactive` : ""}</div>
+        </div>
+      `;
+      listEl.appendChild(row);
+    });
+  }
+
+  // Save
   modal.querySelector("#promoAssignSave").onclick = async () => {
-    const ids = [...modal.querySelectorAll(".promoAssignChk:checked")].map((i) => i.value);
-    try {
-      await updateDoc(doc(db, "menuItems", itemId), { promotions: ids });
-      modal.style.display = "none";
-    } catch (err) {
-      console.error(err);
-      alert("Failed to save promotions: " + (err?.message || err));
-    }
+    const ids = [...modal.querySelectorAll('.promoAssignChk:checked')].map(i=>i.value);
+    await updateDoc(doc(db,"menuItems", itemId), { promotions: ids });
+    modal.style.display = "none";
+    unlockBodyScroll?.();
   };
 
+  lockBodyScroll?.();
   modal.style.display = "block";
+  const box = modal.querySelector(".adm-modal"); if (box) { box.classList.remove("adm-anim-out"); box.classList.add("adm-anim-in"); }
 }
+
 
 /* =========================
    Helpers
