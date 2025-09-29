@@ -570,15 +570,16 @@ if (bulkAddonsBulkBtn) {
 function updateBulkBar() {
   ensureBulkBar();
   const n = selectedIds.size;
-  const editBtn = document.getElementById("bulkEditBtn");
-const delBtn  = document.getElementById("bulkDeleteBtn");
-const promosBtn = document.getElementById("bulkPromosBulkBtn");
-const addonsBtn = document.getElementById("bulkAddonsBulkBtn");
-if (editBtn)   { editBtn.textContent   = `Edit Selected (${n})`;    editBtn.disabled   = n === 0; }
-if (delBtn)    { delBtn.textContent    = `Delete Selected (${n})`;  delBtn.disabled    = n === 0; }
-if (promosBtn) { promosBtn.disabled    = n === 0; }
-if (addonsBtn) { addonsBtn.disabled    = n === 0; }
+  const editBtn   = document.getElementById("bulkEditBtn");
+  const delBtn    = document.getElementById("bulkDeleteBtn");
+  const promosBtn = document.getElementById("bulkPromosBulkBtn");
+  const addonsBtn = document.getElementById("bulkAddonsBulkBtn");
+  if (editBtn)   { editBtn.textContent   = `Edit Selected (${n})`; editBtn.disabled   = n === 0; }
+  if (delBtn)    { delBtn.textContent    = `Delete Selected (${n})`; delBtn.disabled  = n === 0; }
+  if (promosBtn) { promosBtn.disabled    = n === 0; }
+  if (addonsBtn) { addonsBtn.disabled    = n === 0; }
 }
+
 
 function syncSelectAllHeader(itemsRendered) {
   const cb = document.getElementById("selectAll");
