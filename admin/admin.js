@@ -1,6 +1,6 @@
 /*
   ADMIN.JS — CLEAN FULL REWRITE (PART 1 of 3)
-  ------------------------------------------------------------
+  -----------------------------------------------------------
   Goals:
   - Preserve ALL features (Auth, Categories, Courses, Add-ons, CRUD, Image resize/upload,
     Filters, Search, Promotions, Bulk Edit/Delete/Promos/Add-ons, Slide & Function buttons,
