@@ -116,18 +116,29 @@ let editingId = null;
 /* =========================
    Auth
    ========================= */
+
 if (loginBtn) {
   loginBtn.onclick = () => {
-    signInWithEmailAndPassword(auth, email.value, password.value)
-      .then(() => { email.value = ""; password.value = ""; })
-      .catch(err => alert("Login failed: " + err.message));
+    const em = email.value;
+    console.debug("[Auth] attempting login:", em);
+    signInWithEmailAndPassword(auth, em, password.value)
+      .then(() => {
+        console.debug("[Auth] login success:", em);
+        email.value = ""; password.value = "";
+      })
+      .catch(err => {
+        console.error("[Auth] login failed:", err?.code, err?.message);
+        alert("Login failed: " + (err?.message || err));
+      });
   };
 }
+
 if (logoutBtn) {
   logoutBtn.onclick = () => signOut(auth);
 }
 
 onAuthStateChanged(auth, async (user) => {
+  console.debug("[Auth] state changed:", user ? "signed-in" : "signed-out", user?.uid || "");
   if (user) {
     if (loginBox) loginBox.style.display = "none";
     if (adminContent) adminContent.style.display = "block";
@@ -150,15 +161,26 @@ onAuthStateChanged(auth, async (user) => {
     attachSnapshot();
 
     // Live coupon map for chips
-    onSnapshot(collection(db, "promotions"), (snap) => {
-      const map = {};
-      snap.forEach((d) => {
-        const p = d.data();
-        if (p?.kind === "coupon") map[d.id] = p;
-      });
-      PROMOS_BY_ID = map;
-      renderTable(); // update chips
+
+  onSnapshot(
+   collection(db, "promotions"),
+  (snap) => {
+    const map = {};
+    snap.forEach((d) => {
+      const p = d.data();
+      if (p?.kind === "coupon") map[d.id] = p;
     });
+    PROMOS_BY_ID = map;
+    renderTable(); // update chips
+  },
+  (err) => {
+    console.error("promotions snapshot error", err?.code, err?.message);
+    // Keep the admin usable even if promotions are blocked by rules
+    PROMOS_BY_ID = {};
+    renderTable();
+  }
+);
+
 
     // Promotions UI — guarded so it can’t break the rest
     try { initPromotions(); } catch (e) {
@@ -296,16 +318,28 @@ if (form) {
 /* =========================
    Live snapshot + render
    ========================= */
+
 function attachSnapshot() {
-  onSnapshot(collection(db, "menuItems"), (snapshot) => {
+ onSnapshot(
+  collection(db, "menuItems"),
+  (snapshot) => {
     allItems = [];
     snapshot.forEach((docSnap) => allItems.push({ id: docSnap.id, data: docSnap.data() }));
     ensureSelectAllHeader();
     renderTable();
     updateBulkBar();
-  }, (err) => {
-    console.error("menuItems snapshot error", err);
-  });
+  },
+  (err) => {
+    console.error("menuItems snapshot error", err?.code, err?.message);
+    
+    // Keep UI visible; show empty list but do not “sign out” visually
+    
+    allItems = [];
+    ensureSelectAllHeader();
+    renderTable();
+    updateBulkBar();
+  }
+);
 }
 
 function ensureSelectAllHeader() {
