@@ -1,235 +1,175 @@
-import {
-  collection,
-  doc,
-  getDocs,
-  setDoc,
-  updateDoc,
-  deleteDoc,
-  query,
-  where,
-} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+// /admin/categoryCourse.js
 import { db } from "./firebase.js";
+import {
+  collection, addDoc, getDocs, updateDoc, deleteDoc, doc, query, where
+} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
-/** =========================
- *  Hidden-select loaders
- *  =======================*/
-export async function loadCategories(selectEl) {
-  if (!selectEl) return;
-  selectEl.innerHTML = '<option value="">-- Select Category --</option>';
-  const snapshot = await getDocs(collection(db, "menuCategories"));
-  snapshot.forEach((d) => {
-    const opt = document.createElement("option");
-    opt.value = d.id;
-    opt.textContent = d.id;
-    selectEl.appendChild(opt);
-  });
-}
-
-export async function loadCourses(selectEl) {
-  if (!selectEl) return;
-  selectEl.innerHTML = '<option value="">-- Select Food Course --</option>';
-  const snapshot = await getDocs(collection(db, "menuCourses"));
-  snapshot.forEach((d) => {
-    const opt = document.createElement("option");
-    opt.value = d.id;
-    opt.textContent = d.id;
-    selectEl.appendChild(opt);
-  });
-}
-
-/** Add-ons (multi) */
-export async function loadAddons(selectEl) {
-  if (!selectEl) return;
-  const prev = new Set(
-    [...selectEl.options].filter((o) => o.selected).map((o) => o.value)
-  );
-  selectEl.innerHTML = ""; // reset options
-  const snapshot = await getDocs(collection(db, "menuAddons"));
-  snapshot.forEach((d) => {
-    const data = d.data();
-    const opt = document.createElement("option");
-    opt.value = d.id;
-    opt.textContent = data?.price
-      ? `${d.id} (₹${data.price})`
-      : d.id;
-    if (prev.has(d.id)) opt.selected = true;
-    selectEl.appendChild(opt);
-  });
-}
-
-/** =========================
- *  List fetchers (arrays)
- *  =======================*/
+// ===== fetchers =====
 export async function fetchCategories() {
-  const out = [];
-  const snap = await getDocs(collection(db, "menuCategories"));
-  snap.forEach((d) => out.push(d.id));
-  return out;
+  const out = []; const snap = await getDocs(collection(db, "menuCategories"));
+  snap.forEach(d => { const v=d.data(); if (v?.name) out.push(v.name); });
+  return out.sort((a,b)=>a.localeCompare(b));
 }
-
 export async function fetchCourses() {
-  const out = [];
-  const snap = await getDocs(collection(db, "menuCourses"));
-  snap.forEach((d) => out.push(d.id));
-  return out;
+  const out = []; const snap = await getDocs(collection(db, "foodCourses"));
+  snap.forEach(d => { const v=d.data(); if (v?.name) out.push(v.name); });
+  return out.sort((a,b)=>a.localeCompare(b));
 }
 
-/** Get full addon objects */
-export async function fetchAddons() {
-  const out = [];
-  const snap = await getDocs(collection(db, "menuAddons"));
-  snap.forEach((d) => out.push({ id: d.id, ...d.data() }));
-  return out;
+// ===== loaders (native selects) =====
+export async function loadCategories(select) {
+  if (!select) return; const prev = select.value; const cats = await fetchCategories();
+  select.innerHTML = `<option value="">-- Select Category --</option>` + cats.map(c=>`<option>${c}</option>`).join("");
+  select.value = prev || "";
+}
+export async function loadCourses(select) {
+  if (!select) return; const prev = select.value; const courses = await fetchCourses();
+  select.innerHTML = `<option value="">-- Select Food Course --</option>` + courses.map(c=>`<option>${c}</option>`).join("");
+  select.value = prev || "";
 }
 
-/** =========================
- *  Add new entries
- *  =======================*/
-export async function addCategory(input, after) {
-  const value = (input?.value || "").trim();
-  if (!value) return alert("Enter category");
-  await setDoc(doc(db, "menuCategories", value), { name: value });
-  if (input) input.value = "";
-  if (after) after();
+// ===== creators =====
+export async function addCategory(inputEl) {
+  const name = (inputEl?.value || "").trim();
+  if (!name) return alert("Enter category name");
+  await addDoc(collection(db, "menuCategories"), { name });
+  inputEl.value = "";
+}
+export async function addCourse(inputEl) {
+  const name = (inputEl?.value || "").trim();
+  if (!name) return alert("Enter course name");
+  await addDoc(collection(db, "foodCourses"), { name });
+  inputEl.value = "";
 }
 
-export async function addCourse(input, after) {
-  const value = (input?.value || "").trim();
-  if (!value) return alert("Enter course");
-  await setDoc(doc(db, "menuCourses", value), { name: value });
-  if (input) input.value = "";
-  if (after) after();
-}
-
-export async function addAddon(nameInput, priceInput, after) {
-  const name = (nameInput?.value || "").trim();
-  const price = parseFloat(priceInput?.value);
-
-  if (!name || isNaN(price) || price <= 0) {
-    return alert("Enter valid add-on name & price");
-  }
-
-  await setDoc(doc(db, "menuAddons", name), { name, price });
-
-  if (nameInput) nameInput.value = "";
-  if (priceInput) priceInput.value = "";
-  if (after) after();
-}
-
-/** =========================
- *  Rename everywhere (safe)
- *  =======================*/
-export async function renameCategoryEverywhere(oldName, newName) {
-  const newId = (newName || "").trim();
-  if (!newId || newId === oldName) return;
-
-  await setDoc(doc(db, "menuCategories", newId), { name: newId });
-
-  const qCat = query(
-    collection(db, "menuItems"),
-    where("category", "==", oldName)
-  );
-  const snap = await getDocs(qCat);
+// ===== rename everywhere =====
+export async function renameCategoryEverywhere(oldName, newName){
+  // update masters
+  const qs = query(collection(db, "menuCategories"), where("name","==", oldName));
+  const snap = await getDocs(qs);
   const ops = [];
-  snap.forEach((s) => ops.push(updateDoc(s.ref, { category: newId })));
+  snap.forEach(d => ops.push(updateDoc(doc(db,"menuCategories", d.id), { name:newName })));
   await Promise.all(ops);
 
-  if (newId !== oldName)
-    await deleteDoc(doc(db, "menuCategories", oldName));
-}
-
-export async function renameCourseEverywhere(oldName, newName) {
-  const newId = (newName || "").trim();
-  if (!newId || newId === oldName) return;
-
-  await setDoc(doc(db, "menuCourses", newId), { name: newId });
-
-  const qCrs = query(
-    collection(db, "menuItems"),
-    where("foodCourse", "==", oldName)
-  );
-  const snap = await getDocs(qCrs);
-  const ops = [];
-  snap.forEach((s) => ops.push(updateDoc(s.ref, { foodCourse: newId })));
-  await Promise.all(ops);
-
-  if (newId !== oldName)
-    await deleteDoc(doc(db, "menuCourses", oldName));
-}
-
-/** Add-ons rename across arrays */
-export async function renameAddonEverywhere(oldName, newName) {
-  const newId = (newName || "").trim();
-  if (!newId || newId === oldName) return;
-
-  await setDoc(doc(db, "menuAddons", newId), { name: newId });
-
-  const qAdd = query(
-    collection(db, "menuItems"),
-    where("addons", "array-contains", oldName)
-  );
-  const snap = await getDocs(qAdd);
-  const ops = [];
-  snap.forEach((s) => {
-    const data = s.data();
-    const arr = Array.isArray(data.addons) ? data.addons : [];
-    const next = Array.from(
-      new Set(arr.map((a) => (a === oldName ? newId : a)))
-    );
-    ops.push(updateDoc(s.ref, { addons: next }));
+  // NOTE: menu items’ category is a string field; only update those matching oldName
+  const itemsSnap = await getDocs(collection(db,"menuItems"));
+  const itemOps = [];
+  itemsSnap.forEach(d => {
+    const val = d.data()?.category || "";
+    if (val === oldName) itemOps.push(updateDoc(doc(db,"menuItems", d.id), { category:newName }));
   });
+  await Promise.all(itemOps);
+}
+export async function renameCourseEverywhere(oldName, newName){
+  const qs = query(collection(db, "foodCourses"), where("name","==", oldName));
+  const snap = await getDocs(qs);
+  const ops = [];
+  snap.forEach(d => ops.push(updateDoc(doc(db,"foodCourses", d.id), { name:newName })));
   await Promise.all(ops);
 
-  if (newId !== oldName) await deleteDoc(doc(db, "menuAddons", oldName));
-}
-
-/** =========================
- *  Delete everywhere (non-destructive)
- *  =======================*/
-export async function deleteCategoryEverywhere(name) {
-  const id = (name || "").trim();
-  if (!id) return;
-  const q = query(
-    collection(db, "menuItems"),
-    where("category", "==", id)
-  );
-  const snap = await getDocs(q);
-  const ops = [];
-  snap.forEach((s) => ops.push(updateDoc(s.ref, { category: "" })));
-  await Promise.all(ops);
-  await deleteDoc(doc(db, "menuCategories", id));
-}
-
-export async function deleteCourseEverywhere(name) {
-  const id = (name || "").trim();
-  if (!id) return;
-  const q = query(
-    collection(db, "menuItems"),
-    where("foodCourse", "==", id)
-  );
-  const snap = await getDocs(q);
-  const ops = [];
-  snap.forEach((s) => ops.push(updateDoc(s.ref, { foodCourse: "" })));
-  await Promise.all(ops);
-  await deleteDoc(doc(db, "menuCourses", id));
-}
-
-/** Add-ons: remove from arrays; do not delete items */
-export async function deleteAddonEverywhere(name) {
-  const id = (name || "").trim();
-  if (!id) return;
-  const q = query(
-    collection(db, "menuItems"),
-    where("addons", "array-contains", id)
-  );
-  const snap = await getDocs(q);
-  const ops = [];
-  snap.forEach((s) => {
-    const data = s.data();
-    const arr = Array.isArray(data.addons) ? data.addons : [];
-    const next = arr.filter((a) => a !== id);
-    ops.push(updateDoc(s.ref, { addons: next }));
+  const itemsSnap = await getDocs(collection(db,"menuItems"));
+  const itemOps = [];
+  itemsSnap.forEach(d => {
+    const val = d.data()?.foodCourse || "";
+    if (val === oldName) itemOps.push(updateDoc(doc(db,"menuItems", d.id), { foodCourse:newName }));
   });
+  await Promise.all(itemOps);
+}
+
+// ===== delete everywhere =====
+export async function deleteCategoryEverywhere(name){
+  const qs = query(collection(db, "menuCategories"), where("name","==", name));
+  const snap = await getDocs(qs);
+  const ops = [];
+  snap.forEach(d => ops.push(deleteDoc(doc(db,"menuCategories", d.id))));
   await Promise.all(ops);
-  await deleteDoc(doc(db, "menuAddons", id));
+
+  // clear category field on matching menu items (don’t delete items)
+  const itemsSnap = await getDocs(collection(db,"menuItems"));
+  const itemOps = [];
+  itemsSnap.forEach(d => {
+    const val = d.data()?.category || "";
+    if (val === name) itemOps.push(updateDoc(doc(db,"menuItems", d.id), { category:"" }));
+  });
+  await Promise.all(itemOps);
+}
+export async function deleteCourseEverywhere(name){
+  const qs = query(collection(db, "foodCourses"), where("name","==", name));
+  const snap = await getDocs(qs);
+  const ops = [];
+  snap.forEach(d => ops.push(deleteDoc(doc(db,"foodCourses", d.id))));
+  await Promise.all(ops);
+
+  const itemsSnap = await getDocs(collection(db,"menuItems"));
+  const itemOps = [];
+  itemsSnap.forEach(d => {
+    const val = d.data()?.foodCourse || "";
+    if (val === name) itemOps.push(updateDoc(doc(db,"menuItems", d.id), { foodCourse:"" }));
+  });
+  await Promise.all(itemOps);
+}
+
+// ===== add-ons helpers (so admin.js has a single import place) =====
+export async function fetchAddons(){
+  const out = []; const snap = await getDocs(collection(db, "menuAddons"));
+  snap.forEach(d => { const v=d.data()||{}; out.push({ name: v.name || d.id, price: Number(v.price || 0) }); });
+  return out.sort((a,b)=>a.name.localeCompare(b.name));
+}
+export async function loadAddons(select){
+  if (!select) return;
+  const keep = new Set(Array.from(select.selectedOptions || []).map(o=>o.value));
+  const rows = await fetchAddons();
+  select.innerHTML = rows.map(a => `<option value="${a.name}" data-price="${a.price}">${a.name} (₹${a.price})</option>`).join("");
+  Array.from(select.options).forEach(o => o.selected = keep.has(o.value));
+}
+export async function addAddon(nameEl, priceEl){
+  const name = (nameEl?.value || "").trim();
+  const price = Number(priceEl?.value || 0);
+  if (!name) return alert("Enter add-on name");
+  if (!Number.isFinite(price) || price < 0) return alert("Enter valid price");
+  await addDoc(collection(db, "menuAddons"), { name, price });
+  nameEl.value = ""; if (priceEl) priceEl.value = "";
+}
+
+export async function renameAddonEverywhere(oldName, newName, newPrice){
+  // update masters
+  const qref = query(collection(db,"menuAddons"), where("name","==", oldName));
+  const snap = await getDocs(qref);
+  const ops = [];
+  snap.forEach(d => ops.push(updateDoc(doc(db,"menuAddons", d.id), { ...(d.data()||{}), name:newName, price:Number(newPrice) })));
+  await Promise.all(ops);
+  // update items
+  const itemsSnap = await getDocs(collection(db,"menuItems"));
+  const itemOps = [];
+  itemsSnap.forEach(d => {
+    const data = d.data() || {};
+    if (!Array.isArray(data.addons)) return;
+    let changed = false;
+    const updated = data.addons.map(a => {
+      if (a == null) return a;
+      if (typeof a === "string") { if (a === oldName) { changed = true; return newName; } return a; }
+      if (a.name === oldName) { changed = true; return { ...a, name:newName, price:Number(newPrice) }; }
+      return a;
+    });
+    if (changed) itemOps.push(updateDoc(doc(db,"menuItems", d.id), { addons: updated }));
+  });
+  await Promise.all(itemOps);
+}
+export async function deleteAddonEverywhere(name){
+  // delete master
+  const qref = query(collection(db,"menuAddons"), where("name","==", name));
+  const snap = await getDocs(qref);
+  const ops = [];
+  snap.forEach(d => ops.push(deleteDoc(doc(db,"menuAddons", d.id))));
+  await Promise.all(ops);
+  // clean items
+  const itemsSnap = await getDocs(collection(db,"menuItems"));
+  const itemOps = [];
+  itemsSnap.forEach(d => {
+    const data = d.data() || {};
+    if (!Array.isArray(data.addons)) return;
+    const updated = data.addons.filter(a => (typeof a === "string") ? (a !== name) : (a?.name !== name));
+    if (updated.length !== data.addons.length) itemOps.push(updateDoc(doc(db,"menuItems", d.id), { addons: updated }));
+  });
+  await Promise.all(itemOps);
 }
