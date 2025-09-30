@@ -185,3 +185,6 @@ export function initPromotions() {
     };
   }
 }
+// at end of promotions.js
+import { initPromotions } from "./promotions.js"; // if split file, otherwise just call directly
+initPromotions();
