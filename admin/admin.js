@@ -449,7 +449,6 @@ if (menuForm) menuForm.onsubmit = async (e) => {
   const foodType    = foodTypeSelect?.value;
   const qtyTypeVal  = qtyTypeSelect?.value;
   const imageFile   = itemImage?.files?.[0];
-  const addonNames  = Array.from(addonsSelect?.selectedOptions || []).map(o=>o.value);
 
   if (!name || !description || !category || !foodCourse || !foodType || !qtyTypeVal || !imageFile) {
     statusMsg && (statusMsg.innerText = "❌ Fill all fields"); return;
