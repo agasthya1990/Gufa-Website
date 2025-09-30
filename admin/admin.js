@@ -1322,8 +1322,7 @@ async function renderCustomAddonDropdown() {
 
   // Checkbox → selection sync (fixes earlier `.addonPanel` typo)
   addonPanel.onchange = () => {
-    const values = Array.from(addonPanel.querySelectorAll('input[type="checkbox"]:checked'))
-      .map(i => i.value);
+    const values = Array.from(addonPanel.querySelectorAll('input[type="checkbox"]:checked')).map(i => i.value);
     setMultiHiddenValue(addonsSelect, values);
     updateAddonBtnLabel();
   };
@@ -1385,7 +1384,6 @@ async function renderCustomAddonDropdown() {
           }
         }
       };
-
       return;
     }
 
@@ -1428,6 +1426,7 @@ async function renameAddonEverywhere(oldName, newName, newPrice) {
     const snap = await getDocs(q);
     const masterOps = [];
     snap.forEach(d => {
+      
       // Keep any extra fields; only update name/price
       const next = { ...(d.data() || {}), name: newName };
       if (newPrice !== undefined && newPrice !== null) next.price = Number(newPrice);
