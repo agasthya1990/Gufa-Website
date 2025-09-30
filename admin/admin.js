@@ -42,7 +42,7 @@ import { auth, db, storage } from "./firebase.js";
 import {
   signInWithEmailAndPassword,
   signOut,
-  onAuthStateChanged,
+  ,
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
 import {
@@ -108,12 +108,13 @@ const filterCourse        = el("filterCourse");
 const filterType          = el("filterType");
 
 // Optional “comic dropdown” trigger+panel elements (if you use custom popovers)
-const catBtn    = el("catBtn");
-const catPanel  = el("catPanel");
-const courseBtn = el("courseBtn");
-const coursePanel = el("coursePanel");
-const addonBtn  = el("addonBtn");
-const addonPanel = el("addonPanel");
+const catBtn     = el("categoryDropdownBtn");
+const catPanel   = el("categoryDropdownPanel");
+const courseBtn  = el("courseDropdownBtn");
+const coursePanel= el("courseDropdownPanel");
+const addonBtn   = el("addonDropdownBtn");
+const addonPanel = el("addonDropdownPanel");
+
 
 /* =========================
    Utilities & helpers (single source of truth)
@@ -220,6 +221,32 @@ onAuthStateChanged(auth, async (user) => {
   if (user) {
     if (loginBox) loginBox.style.display = "none";
     if (adminContent) adminContent.style.display = "block";
+     // Wire inline “add” controls (IDs from admin.html)
+const addCategoryBtn  = document.getElementById("addCategoryBtn");
+const newCategoryInput= document.getElementById("newCategoryInput");
+addCategoryBtn && (addCategoryBtn.onclick = async () => {
+  await addCategoryFromInput(newCategoryInput);
+  await loadCategories(categoryDropdown);
+  // re-render custom list
+  renderCustomCategoryDropdown();
+});
+
+const addCourseBtn  = document.getElementById("addCourseBtn");
+const newCourseInput= document.getElementById("newCourseInput");
+addCourseBtn && (addCourseBtn.onclick = async () => {
+  await addCourseFromInput(newCourseInput);
+  await loadCourses(foodCourseDropdown);
+  renderCustomCourseDropdown();
+});
+
+const addAddonBtn   = document.getElementById("addAddonBtn");
+const newAddonInput = document.getElementById("newAddonInput");
+const newAddonPrice = document.getElementById("newAddonPrice");
+addAddonBtn && (addAddonBtn.onclick = async () => {
+  await addAddonFromInputs(newAddonInput, newAddonPrice);
+  await loadAddons(addonsSelect);
+  renderCustomAddonDropdown();
+});
 
     // Initialize masters → dropdowns
     await Promise.all([
