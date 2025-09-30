@@ -185,6 +185,11 @@ export function initPromotions() {
     };
   }
 }
-// at end of promotions.js
-import { initPromotions } from "./promotions.js"; // if split file, otherwise just call directly
-initPromotions();
+// Boot once (no self-import)
+if (typeof window !== "undefined") {
+  if (!window.__PROMOTIONS_BOOTED__) {
+    window.__PROMOTIONS_BOOTED__ = true;
+    try { initPromotions?.(); } catch (e) { console.error(e); }
+  }
+}
+
