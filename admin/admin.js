@@ -1420,3 +1420,67 @@ ensureBulkBar();
 renderCustomCategoryDropdown();
 renderCustomCourseDropdown();
 renderCustomAddonDropdown();
+// --- Helper: rename an add-on everywhere (master list + all menu items) ---
+async function renameAddonEverywhere(oldName, newName, newPrice) {
+  // 1) Update master records in menuAddons (match by 'name' field)
+  try {
+    const q = query(collection(db, 'menuAddons'), where('name', '==', oldName));
+    const snap = await getDocs(q);
+    const masterOps = [];
+    snap.forEach(d => {
+      // Keep any extra fields; only update name/price
+      const next = { ...(d.data() || {}), name: newName };
+      if (newPrice !== undefined && newPrice !== null) next.price = Number(newPrice);
+      masterOps.push(updateDoc(doc(db, 'menuAddons', d.id), next));
+    });
+    await Promise.all(masterOps);
+  } catch (err) {
+    console.error('[Addons] master rename failed', err);
+    // continue to items anyway so UI stays consistent
+  }
+
+  // 2) Update all menuItems that reference this add-on
+  const itemsSnap = await getDocs(collection(db, 'menuItems'));
+  const itemOps = [];
+  itemsSnap.forEach(d => {
+    const data = d.data() || {};
+    if (!Array.isArray(data.addons)) return;
+
+    let changed = false;
+    const updated = data.addons.map(a => {
+      if (a == null) return a;
+
+      // Support legacy string form: ["Cheese", "Sauce"]
+      if (typeof a === 'string') {
+        if (a === oldName) {
+          changed = true;
+          // preserve legacy string if your schema still accepts it,
+          // but prefer object form to carry price forward:
+          return newName; // or: { name: newName, price: Number(newPrice ?? 0) }
+        }
+        return a;
+      }
+
+      // Object form: [{ name, price, ... }]
+      const nm = a.name;
+      if (nm === oldName) {
+        changed = true;
+        return {
+          ...a,
+          name: newName,
+          // If a new price was provided, apply it; else keep existing
+          price: (newPrice !== undefined && newPrice !== null)
+            ? Number(newPrice)
+            : Number(a.price ?? 0),
+        };
+      }
+      return a;
+    });
+
+    if (changed) {
+      itemOps.push(updateDoc(doc(db, 'menuItems', d.id), { addons: updated }));
+    }
+  });
+
+  await Promise.all(itemOps);
+}
