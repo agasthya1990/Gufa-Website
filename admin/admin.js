@@ -123,7 +123,14 @@ const addonPanel = el("addonDropdownPanel");
 const qs  = (sel, ctx=document) => ctx.querySelector(sel);
 const qsa = (sel, ctx=document) => Array.from(ctx.querySelectorAll(sel));
 
-function debounce(fn, wait = 250) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), wait); }; }
+function debounce(fn, wait = 250) {
+  let t;
+  return (...a) => {
+    clearTimeout(t);
+    t = setTimeout(() => fn(...a), wait);
+  };
+}
+
 
 // Scroll lock on body while modals/popovers are open
 function lockBodyScroll(){ document.body.classList.add("adm-lock"); }
@@ -1519,11 +1526,13 @@ addonBtn.onclick = (e) => {
 /* =========================
    Boot: ensure styles, bulk bar, and render optional popovers
    ========================= */
+
 ensureModalStyles();
 ensureBulkBar();
 renderCustomCategoryDropdown();
-renderCustomCourseDropdown();
+renderCustomCourseDropdown();  // safe to call again
 renderCustomAddonDropdown();
+
 // --- Helper: delete an add-on everywhere (master list + all menu items) ---
 async function deleteAddonEverywhere(name) {
   // 1) Remove from master (menuAddons by name)
@@ -1558,7 +1567,7 @@ async function deleteAddonEverywhere(name) {
 
 // --- Helper: rename an add-on everywhere (master list + all menu items) ---
 async function renameAddonEverywhere(oldName, newName, newPrice) {
-  // 1) Update master records in menuAddons (match by 'name' field)
+  // 1) Update master records in menuAddons (match by 'name')
   try {
     const q = query(collection(db, 'menuAddons'), where('name', '==', oldName));
     const snap = await getDocs(q);
@@ -1571,8 +1580,48 @@ async function renameAddonEverywhere(oldName, newName, newPrice) {
     await Promise.all(masterOps);
   } catch (err) {
     console.error('[Addons] master rename failed', err);
-    // continue to items anyway so UI stays consistent
   }
+
+  // 2) Update all menuItems that reference this add-on
+  const itemsSnap = await getDocs(collection(db, 'menuItems'));
+  const itemOps = [];
+  itemsSnap.forEach(d => {
+    const data = d.data() || {};
+    if (!Array.isArray(data.addons)) return;
+
+    let changed = false;
+    const updated = data.addons.map(a => {
+      if (a == null) return a;
+
+      if (typeof a === 'string') {           // legacy string form
+        if (a === oldName) { changed = true; return newName; }
+        return a;
+      }
+
+      if (a.name === oldName) {              // object form
+        changed = true;
+        return {
+          ...a,
+          name: newName,
+          price: (newPrice !== undefined && newPrice !== null)
+            ? Number(newPrice)
+            : Number(a.price ?? 0),
+        };
+      }
+      return a;
+    });
+
+    if (changed) {
+      itemOps.push(updateDoc(doc(db, 'menuItems', d.id), {
+        addons: updated,
+        updatedAt: serverTimestamp(),
+      }));
+    }
+  });
+
+  await Promise.all(itemOps);
+}
+
 
   // 2) Update all menuItems that reference this add-on
   const itemsSnap = await getDocs(collection(db, 'menuItems'));
