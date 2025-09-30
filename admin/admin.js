@@ -312,7 +312,10 @@ addAddonBtn && (addAddonBtn.onclick = async () => {
       loadCategories(categoryDropdown),
       loadCourses(foodCourseDropdown),
       loadAddons(addonsSelect),
+
     ]);
+   renderCustomCategoryDropdown?.();
+   renderCustomCourseDropdown?.();
     await populateFilterDropdowns();
     wireSearchAndFilters();
 
@@ -1133,23 +1136,21 @@ catPanel.innerHTML = categories
     catPanel.style.display = open ? 'block' : 'none';
     setGenieFrom(catBtn, catPanel, catPanel);
     if (open) {
-      lockBodyScroll();
-      catPanel.classList.remove('adm-anim-out');
-      catPanel.classList.add('adm-anim-in');
-      const close = ev => {
-        if (!catPanel.contains(ev.target) && ev.target !== catBtn) {
-          catPanel.classList.remove('adm-anim-in');
-          catPanel.classList.add('adm-anim-out');
-          setTimeout(() => {
-            catPanel.style.display = 'none';
-            unlockBodyScroll();
-            document.removeEventListener('mousedown', close);
-          }, 160);
-        }
-      };
-      document.addEventListener('mousedown', close);
+  coursePanel.classList.remove('adm-anim-out');
+  coursePanel.classList.add('adm-anim-in');
+  const close = ev => {
+    if (!coursePanel.contains(ev.target) && ev.target !== courseBtn) {
+      coursePanel.classList.remove('adm-anim-in');
+      coursePanel.classList.add('adm-anim-out');
+      setTimeout(() => {
+        coursePanel.style.display = 'none';
+        document.removeEventListener('mousedown', close);
+      }, 160);
     }
   };
+  document.addEventListener('mousedown', close);
+}
+// Might be strayed
   catPanel.onclick = async e => {
   const row = e.target.closest('.adm-list-row');
   if (!row) return;
@@ -1257,30 +1258,98 @@ async function renderCustomCourseDropdown() {
     const open = coursePanel.style.display !== 'block';
     coursePanel.style.display = open ? 'block' : 'none';
     setGenieFrom(courseBtn, coursePanel, coursePanel);
-    if (open) {
-      lockBodyScroll();
-      coursePanel.classList.remove('adm-anim-out');
-      coursePanel.classList.add('adm-anim-in');
-      const close = ev => {
-        if (!coursePanel.contains(ev.target) && ev.target !== courseBtn) {
-          coursePanel.classList.remove('adm-anim-in');
-          coursePanel.classList.add('adm-anim-out');
-          setTimeout(() => {
-            coursePanel.style.display = 'none';
-            unlockBodyScroll();
-            document.removeEventListener('mousedown', close);
-          }, 160);
-        }
-      };
-      document.addEventListener('mousedown', close);
+  if (open) {
+  coursePanel.classList.remove('adm-anim-out');
+  coursePanel.classList.add('adm-anim-in');
+  const close = ev => {
+    if (!coursePanel.contains(ev.target) && ev.target !== courseBtn) {
+      coursePanel.classList.remove('adm-anim-in');
+      coursePanel.classList.add('adm-anim-out');
+      setTimeout(() => {
+        coursePanel.style.display = 'none';
+        document.removeEventListener('mousedown', close);
+      }, 160);
     }
   };
+  document.addEventListener('mousedown', close);
+}
+// Might be strayed
+     
   coursePanel.onclick = e => {
     const row = e.target.closest('.adm-list-row');
     if (!row) return;
     const role = e.target.getAttribute('data-role');
     const name = row.getAttribute('data-name');
     if (role === 'select') {
+      if (role === 'edit') {
+  const labelEl = row.querySelector('[data-role="label"]');
+  const cur = labelEl?.textContent || name;
+  labelEl.innerHTML = `<input type="text" class="adm-input" value="${cur}" style="min-width:160px" />`;
+  row.classList.add('is-editing');
+
+  // swap icons to ✓ / ✕
+  row.querySelector('[data-role="edit"]').style.display   = 'none';
+  row.querySelector('[data-role="delete"]').style.display = 'none';
+
+  const saveBtn = document.createElement('span');
+  saveBtn.className = 'adm-icon'; saveBtn.setAttribute('data-role','save');   saveBtn.textContent = '✓';
+  const cancelBtn = document.createElement('span');
+  cancelBtn.className='adm-icon'; cancelBtn.setAttribute('data-role','cancel'); cancelBtn.textContent = '✕';
+  row.appendChild(saveBtn); row.appendChild(cancelBtn);
+
+  saveBtn.onclick = async () => {
+    const val = labelEl.querySelector('input')?.value.trim();
+    if (!val) return alert('Enter a name');
+    // rename course doc: create new, delete old (since name is the only field)
+    try {
+      const { addDoc, collection, deleteDoc, query, where, getDocs, doc } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js");
+      // find doc(s) with this name
+      const q = query(collection(db, "menuCourses"), where("name", "==", name));
+      const snap = await getDocs(q);
+      // update by replacing the document(s)
+      const ops = [];
+      snap.forEach(d => { ops.push(updateDoc(doc(db,"menuCourses", d.id), { name: val })); });
+      await Promise.all(ops);
+
+      // reflect in UI
+      row.setAttribute('data-name', val);
+      labelEl.textContent = val;
+      row.classList.remove('is-editing');
+      saveBtn.remove(); cancelBtn.remove();
+      row.querySelector('[data-role="edit"]').style.display   = '';
+      row.querySelector('[data-role="delete"]').style.display = '';
+      // sync hidden select + trigger label
+      setHiddenValue(foodCourseDropdown, val);
+      courseBtn.textContent = `${val} ▾`;
+    } catch (e) { console.error(e); alert('Rename failed'); }
+  };
+
+  cancelBtn.onclick = () => {
+    labelEl.textContent = name;
+    row.classList.remove('is-editing');
+    saveBtn.remove(); cancelBtn.remove();
+    row.querySelector('[data-role="edit"]').style.display   = '';
+    row.querySelector('[data-role="delete"]').style.display = '';
+  };
+}
+
+if (role === 'delete') {
+  if (!confirm(`Delete course "${name}"?`)) return;
+  try {
+    const { query, where, getDocs, collection, deleteDoc, doc } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js");
+    const q = query(collection(db, "menuCourses"), where("name", "==", name));
+    const snap = await getDocs(q);
+    const ops = [];
+    snap.forEach(d => ops.push(deleteDoc(doc(db,"menuCourses", d.id))));
+    await Promise.all(ops);
+    row.remove();
+    if (foodCourseDropdown?.value === name) {
+      setHiddenValue(foodCourseDropdown, "");
+      courseBtn.textContent = `Select Course ▾`;
+    }
+  } catch (e) { console.error(e); alert('Delete failed'); }
+}
+
       setHiddenValue(foodCourseDropdown, name);
       courseBtn.textContent = `${name} ▾`;
       coursePanel.style.display = 'none';
