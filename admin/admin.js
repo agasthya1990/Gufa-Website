@@ -1242,124 +1242,145 @@ return;
 
 async function renderCustomCourseDropdown() {
   if (!courseBtn || !coursePanel) return;
+
   const courses = await fetchCourses();
   coursePanel.innerHTML = courses
-  .map(
-    name => `
-    <div class="adm-list-row" data-name="${name}">
-      <span class="_name" data-role="label" title="${name}">${name}</span>
-      <button class="adm-chip-btn" data-role="select" title="Use">Use</button>
-      <span class="adm-icon" data-role="edit"   aria-label="Edit"   title="Edit">🖉</span>
-      <span class="adm-icon" data-role="delete" aria-label="Delete" title="Delete">🗑</span>
-    </div>`
-  )
-  .join('');
-   
-  courseBtn.onclick = e => {
+    .map(
+      name => `
+      <div class="adm-list-row" data-name="${name}">
+        <span class="_name" data-role="label" title="${name}">${name}</span>
+        <button class="adm-chip-btn" data-role="select" title="Use">Use</button>
+        <span class="adm-icon" data-role="edit"   aria-label="Edit"   title="Edit">🖉</span>
+        <span class="adm-icon" data-role="delete" aria-label="Delete" title="Delete">🗑</span>
+      </div>`
+    )
+    .join('');
+
+  courseBtn.onclick = (e) => {
     e.stopPropagation();
     ensureModalStyles();
     const open = coursePanel.style.display !== 'block';
     coursePanel.style.display = open ? 'block' : 'none';
     setGenieFrom(courseBtn, coursePanel, coursePanel);
-  if (open) {
-  coursePanel.classList.remove('adm-anim-out');
-  coursePanel.classList.add('adm-anim-in');
-  const close = ev => {
-    if (!coursePanel.contains(ev.target) && ev.target !== courseBtn) {
-      coursePanel.classList.remove('adm-anim-in');
-      coursePanel.classList.add('adm-anim-out');
-      setTimeout(() => {
+
+    if (open) {
+      coursePanel.classList.remove('adm-anim-out');
+      coursePanel.classList.add('adm-anim-in');
+
+      const close = (ev) => {
+        if (!coursePanel.contains(ev.target) && ev.target !== courseBtn) {
+          coursePanel.classList.remove('adm-anim-in');
+          coursePanel.classList.add('adm-anim-out');
+          setTimeout(() => {
+            coursePanel.style.display = 'none';
+            document.removeEventListener('mousedown', close);
+          }, 160);
+        }
+      };
+      document.addEventListener('mousedown', close);
+    }
+
+    // NOTE: This handler is inside courseBtn.onclick (no stray braces below)
+    coursePanel.onclick = (ev) => {
+      const row  = ev.target.closest('.adm-list-row');
+      if (!row) return;
+      const role = ev.target.getAttribute('data-role');
+      const name = row.getAttribute('data-name');
+
+      if (role === 'select') {
+        setHiddenValue(foodCourseDropdown, name);
+        courseBtn.textContent = `${name} ▾`;
         coursePanel.style.display = 'none';
-        document.removeEventListener('mousedown', close);
-      unlockBodyScroll();
-      }, 160);
-    }
-  };
-  document.addEventListener('mousedown', close);
-}    
-
- coursePanel.onclick = e => {
-  const row = e.target.closest('.adm-list-row');
-  if (!row) return;
-  const role = e.target.getAttribute('data-role');
-  const name = row.getAttribute('data-name');
-
-  if (role === 'select') {
-    setHiddenValue(foodCourseDropdown, name);
-    courseBtn.textContent = `${name} ▾`;
-    coursePanel.style.display = 'none';
-    unlockBodyScroll();
-    return;
-  }
-
-  if (role === 'edit') {
-    const labelEl = row.querySelector('[data-role="label"]');
-    const cur = labelEl?.textContent || name;
-    labelEl.innerHTML = `<input type="text" class="adm-input" value="${cur}" style="min-width:160px" />`;
-    row.classList.add('is-editing');
-
-    // swap icons
-    row.querySelector('[data-role="edit"]').style.display   = 'none';
-    row.querySelector('[data-role="delete"]').style.display = 'none';
-
-    const saveBtn = document.createElement('span');
-    saveBtn.className = 'adm-icon'; saveBtn.setAttribute('data-role','save');   saveBtn.textContent = '✓';
-    const cancelBtn = document.createElement('span');
-    cancelBtn.className='adm-icon'; cancelBtn.setAttribute('data-role','cancel'); cancelBtn.textContent = '✕';
-    row.appendChild(saveBtn); row.appendChild(cancelBtn);
-
-    saveBtn.onclick = async () => {
-      const val = labelEl.querySelector('input')?.value.trim();
-      if (!val) return alert('Enter a name');
-      try {
-        const q = query(collection(db, "menuCourses"), where("name", "==", name));
-        const snap = await getDocs(q);
-        const ops = [];
-        snap.forEach(d => { ops.push(updateDoc(doc(db,"menuCourses", d.id), { name: val })); });
-        await Promise.all(ops);
-
-        row.setAttribute('data-name', val);
-        labelEl.textContent = val;
-        row.classList.remove('is-editing');
-        saveBtn.remove(); cancelBtn.remove();
-        row.querySelector('[data-role="edit"]').style.display   = '';
-        row.querySelector('[data-role="delete"]').style.display = '';
-        setHiddenValue(foodCourseDropdown, val);
-        courseBtn.textContent = `${val} ▾`;
-      } catch (e) { console.error(e); alert('Rename failed'); }
-    };
-
-    cancelBtn.onclick = () => {
-      labelEl.textContent = name;
-      row.classList.remove('is-editing');
-      saveBtn.remove(); cancelBtn.remove();
-      row.querySelector('[data-role="edit"]').style.display   = '';
-      row.querySelector('[data-role="delete"]').style.display = '';
-    };
-    return;
-  }
-
-    if (role === 'delete') {
-    if (!confirm(`Delete course "${name}"?`)) return;
-    try {
-      const q = query(collection(db, "menuCourses"), where("name", "==", name));
-      const snap = await getDocs(q);
-      const ops = [];
-      snap.forEach(d => ops.push(deleteDoc(doc(db,"menuCourses", d.id))));
-      await Promise.all(ops);
-      row.remove();
-      if (foodCourseDropdown?.value === name) {
-        setHiddenValue(foodCourseDropdown, "");
-        courseBtn.textContent = `Select Course ▾`;
+        return;
       }
-        } catch (e) { 
-      console.error(e); 
-      alert('Delete failed'); 
-    }
-    return;
-  }
-}; // closes coursePanel.onclick
-}   // closes async function renderCustomCourseDropdown
+
+      if (role === 'edit') {
+        const labelEl = row.querySelector('[data-role="label"]');
+        const cur = labelEl?.textContent || name;
+        labelEl.innerHTML = `<input type="text" class="adm-input" value="${cur}" style="min-width:160px" />`;
+        row.classList.add('is-editing');
+
+        // swap icons
+        row.querySelector('[data-role="edit"]').style.display   = 'none';
+        row.querySelector('[data-role="delete"]').style.display = 'none';
+
+        const saveBtn = document.createElement('span');
+        saveBtn.className = 'adm-icon';
+        saveBtn.setAttribute('data-role','save');
+        saveBtn.textContent = '✓';
+
+        const cancelBtn = document.createElement('span');
+        cancelBtn.className = 'adm-icon';
+        cancelBtn.setAttribute('data-role','cancel');
+        cancelBtn.textContent = '✕';
+
+        row.appendChild(saveBtn);
+        row.appendChild(cancelBtn);
+
+        // save
+        saveBtn.onclick = async () => {
+          const val = labelEl.querySelector('input')?.value.trim();
+          if (!val) return alert('Enter a name');
+
+          try {
+            const qref = query(collection(db, "menuCourses"), where("name", "==", name));
+            const snap = await getDocs(qref);
+            const ops  = [];
+            snap.forEach(d => ops.push(updateDoc(doc(db, "menuCourses", d.id), { name: val })));
+            await Promise.all(ops);
+
+            row.setAttribute('data-name', val);
+            labelEl.textContent = val;
+            row.classList.remove('is-editing');
+            saveBtn.remove(); cancelBtn.remove();
+            row.querySelector('[data-role="edit"]').style.display   = '';
+            row.querySelector('[data-role="delete"]').style.display = '';
+
+            setHiddenValue(foodCourseDropdown, val);
+            courseBtn.textContent = `${val} ▾`;
+          } catch (e) {
+            console.error(e);
+            alert('Rename failed');
+          }
+        };
+
+        // cancel
+        cancelBtn.onclick = () => {
+          labelEl.textContent = name;
+          row.classList.remove('is-editing');
+          saveBtn.remove(); cancelBtn.remove();
+          row.querySelector('[data-role="edit"]').style.display   = '';
+          row.querySelector('[data-role="delete"]').style.display = '';
+        };
+
+        return;
+      }
+
+      if (role === 'delete') {
+        if (!confirm(`Delete course "${name}"?`)) return;
+        (async () => {
+          try {
+            const qref = query(collection(db, "menuCourses"), where("name", "==", name));
+            const snap = await getDocs(qref);
+            const ops  = [];
+            snap.forEach(d => ops.push(deleteDoc(doc(db, "menuCourses", d.id))));
+            await Promise.all(ops);
+
+            row.remove();
+            if (foodCourseDropdown?.value === name) {
+              setHiddenValue(foodCourseDropdown, "");
+              courseBtn.textContent = `Select Course ▾`;
+            }
+          } catch (e) {
+            console.error(e);
+            alert('Delete failed');
+          }
+        })();
+        return;
+      }
+    }; // ← end coursePanel.onclick
+  };   // ← end courseBtn.onclick
+}
 
 
 
