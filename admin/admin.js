@@ -1301,11 +1301,7 @@ async function renderCustomAddonDropdown() {
     const open = addonPanel.style.display !== 'block';
     addonPanel.style.display = open ? 'block' : 'none';
     setGenieFrom(addonBtn, addonPanel, addonPanel);
-    if (open) {
-      lockBodyScroll();
-      addonPanel.classList.remove('adm-anim-out');
-      addonPanel.classList.add('adm-anim-in');
-      const close = ev => {
+
         if (!addonPanel.contains(ev.target) && ev.target !== addonBtn) {
           addonPanel.classList.remove('adm-anim-in');
           addonPanel.classList.add('adm-anim-out');
