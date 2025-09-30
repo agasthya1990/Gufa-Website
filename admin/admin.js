@@ -1419,14 +1419,16 @@ renderCustomCategoryDropdown();
 renderCustomCourseDropdown();
 renderCustomAddonDropdown();
 // --- Helper: rename an add-on everywhere (master list + all menu items) ---
+
 async function renameAddonEverywhere(oldName, newName, newPrice) {
+   
   // 1) Update master records in menuAddons (match by 'name' field)
+   
   try {
     const q = query(collection(db, 'menuAddons'), where('name', '==', oldName));
     const snap = await getDocs(q);
     const masterOps = [];
     snap.forEach(d => {
-      
       // Keep any extra fields; only update name/price
       const next = { ...(d.data() || {}), name: newName };
       if (newPrice !== undefined && newPrice !== null) next.price = Number(newPrice);
@@ -1449,25 +1451,21 @@ async function renameAddonEverywhere(oldName, newName, newPrice) {
     const updated = data.addons.map(a => {
       if (a == null) return a;
 
-      // Support legacy string form: ["Cheese", "Sauce"]
+      // Legacy string form: ["Cheese", "Sauce"]
       if (typeof a === 'string') {
         if (a === oldName) {
           changed = true;
-          // preserve legacy string if your schema still accepts it,
-          // but prefer object form to carry price forward:
-          return newName; // or: { name: newName, price: Number(newPrice ?? 0) }
+          return newName; // keep legacy form if present
         }
         return a;
       }
 
       // Object form: [{ name, price, ... }]
-      const nm = a.name;
-      if (nm === oldName) {
+      if (a.name === oldName) {
         changed = true;
         return {
           ...a,
           name: newName,
-          // If a new price was provided, apply it; else keep existing
           price: (newPrice !== undefined && newPrice !== null)
             ? Number(newPrice)
             : Number(a.price ?? 0),
