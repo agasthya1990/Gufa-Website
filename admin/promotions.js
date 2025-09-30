@@ -2,178 +2,189 @@
 // Promotions Admin: Coupons (Dining|Delivery) + Banners + Link Coupon(s)
 // Requires firebase.js exports { db, storage }
 
-// promotions.js  — no self-imports, safe to include with <script type="module">
-import { db } from "./firebase.js";
+import { db, storage } from "./firebase.js";
 import {
-  collection, addDoc, updateDoc, deleteDoc, doc,
-  onSnapshot, serverTimestamp, getDocs, query, orderBy
+  collection, doc, setDoc, updateDoc, deleteDoc, onSnapshot,
+  serverTimestamp, query, orderBy
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import {
+  ref as storageRef, uploadBytesResumable, getDownloadURL
+} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
 
-// ==== DOM helpers (works even if elements are missing) ====
-const el  = (id) => document.getElementById(id);
-const qs  = (s, c=document) => c.querySelector(s);
-const qsa = (s, c=document) => Array.from(c.querySelectorAll(s));
-const num = (v) => { const n = parseFloat(v); return Number.isFinite(n) ? n : NaN; };
+// ===== Config =====
+const BANNER_W = 200;
+const BANNER_H = 50;
+const BANNER_MIME = "image/jpeg";
+const BANNER_QUALITY = 0.85;
+const MAX_UPLOAD_MB = 10;
+const BANNERS_DIR = "promoBanners";
 
-let PROMOS = []; // [{id, data}]
+// ===== Helpers =====
+function isImageType(file){ return file && /^image\/(png|jpe?g|webp)$/i.test(file.type); }
+function fileTooLarge(file){ return file && file.size > MAX_UPLOAD_MB * 1024 * 1024; }
 
-// ==== Render list ====
-function renderList() {
-  const tbody = el("promotionsBody");
-  if (!tbody) return;
-  tbody.innerHTML = "";
-  PROMOS.forEach(({id, data}) => {
-    const typeTxt = data.type === "percent" ? `${data.value}% off` : `₹${data.value} off`;
-    const chanTxt = data.channel === "dining" ? "Dining" : "Delivery";
-    const tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td>${data.code || "—"}</td>
-      <td>${chanTxt}</td>
-      <td>${typeTxt}</td>
-      <td>${data.kind || "coupon"}</td>
-      <td>
-        <button class="pr-edit" data-id="${id}">Edit</button>
-        <button class="pr-delete" data-id="${id}">Delete</button>
-      </td>`;
-    tbody.appendChild(tr);
-  });
-
-  // Wire edit/delete
-  qsa(".pr-delete", tbody).forEach(b => b.onclick = async () => {
-    const id = b.dataset.id;
-    if (!confirm("Delete this promotion?")) return;
-    try { await deleteDoc(doc(db, "promotions", id)); }
-    catch (e) { console.error(e); alert("Failed to delete"); }
-  });
-
-  qsa(".pr-edit", tbody).forEach(b => b.onclick = () => openEditModal(b.dataset.id));
-}
-
-// ==== Live snapshot ====
-function attachSnapshot() {
-  const col = collection(db, "promotions");
-  // show newest first by createdAt if present
-  const q = query(col, orderBy("createdAt", "desc"));
-  onSnapshot(q, (snap) => {
-    PROMOS = [];
-    snap.forEach(d => PROMOS.push({ id: d.id, data: d.data() || {} }));
-    renderList();
-  }, (err) => {
-    console.error("promotions snapshot", err?.code, err?.message);
-    PROMOS = []; renderList();
-  });
-}
-
-// ==== Add form ====
-function wireCreateForm() {
-  const form = el("promotionForm");
-  if (!form) return;
-
-  const code     = el("promoCode");
-  const channel  = el("promoChannel");  // "dining" | "delivery"
-  const type     = el("promoType");     // "percent" | "flat"
-  const valueEl  = el("promoValue");
-  const kindEl   = el("promoKind");     // keep "coupon" default
-
-  form.onsubmit = async (e) => {
-    e.preventDefault();
-    const v = num(valueEl?.value);
-    const payload = {
-      code: (code?.value || "").trim(),
-      channel: channel?.value || "delivery",
-      type: type?.value || "percent",
-      value: Number.isFinite(v) ? v : 0,
-      kind: (kindEl?.value || "coupon"),
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
+function fileToImage(file){
+  return new Promise((res, rej) => {
+    const fr = new FileReader();
+    fr.onload = (e) => {
+      const img = new Image();
+      img.onload = () => res(img);
+      img.onerror = rej;
+      img.src = e.target.result;
     };
-
-    if (!payload.value || payload.value <= 0) return alert("Enter a valid value");
-    try {
-      await addDoc(collection(db, "promotions"), payload);
-      form.reset();
-    } catch (err) {
-      console.error(err);
-      alert("Failed to create");
-    }
-  };
+    fr.onerror = rej;
+    fr.readAsDataURL(file);
+  });
 }
 
-// ==== Edit modal ====
-function openEditModal(id) {
-  const row = PROMOS.find(p => p.id === id);
-  if (!row) return alert("Not found");
+async function resizeToBannerBlob(file) {
+  const img = await fileToImage(file);
+  const sw = img.naturalWidth || img.width;
+  const sh = img.naturalHeight || img.height;
+  const side = Math.min(sw, sh);
+  const sx = Math.max(0, Math.floor((sw - side) / 2));
+  const sy = Math.max(0, Math.floor((sh - side) / 2));
 
-  // create lightweight inline modal
-  let ov = el("promoEditModal");
-  if (!ov) {
-    ov = document.createElement("div");
-    ov.id = "promoEditModal";
-    ov.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.45);display:flex;align-items:flex-start;justify-content:center;padding-top:8vh;z-index:9999;";
-    ov.innerHTML = `
-      <div style="background:#fff;border:2px solid #111;border-radius:12px;box-shadow:6px 6px 0 #111;max-width:520px;width:min(520px,92vw);padding:16px;">
-        <h3 style="margin:0 0 10px">Edit Promotion</h3>
-        <form id="promoEditForm" style="display:grid;gap:8px">
-          <input id="peCode" placeholder="Code (optional)"/>
-          <select id="peChannel">
-            <option value="dining">Dining</option>
-            <option value="delivery">Delivery</option>
-          </select>
-          <select id="peType">
-            <option value="percent">% off</option>
-            <option value="flat">Flat ₹ off</option>
-          </select>
-          <input id="peValue" type="number" placeholder="Value"/>
-          <select id="peKind">
-            <option value="coupon">coupon</option>
-          </select>
-          <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
-            <button type="submit">Save</button>
-            <button type="button" id="peCancel">Cancel</button>
+  const canvas = document.createElement("canvas");
+  canvas.width = BANNER_W;
+  canvas.height = BANNER_H;
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "#fff";
+  ctx.fillRect(0, 0, BANNER_W, BANNER_H);
+  ctx.drawImage(img, sx, sy, side, side, 0, 0, BANNER_W, BANNER_H);
+
+  return new Promise((res, rej) =>
+    canvas.toBlob(
+      (b) => (b ? res(b) : rej(new Error("Failed generating banner blob"))),
+      BANNER_MIME,
+      BANNER_QUALITY
+    )
+  );
+}
+
+const withTimeout = (p, ms, label="op") =>
+  Promise.race([
+    p,
+    new Promise((_, rej) => setTimeout(() => rej(new Error(`${label} timed out after ${ms}ms`)), ms))
+  ]);
+
+// ===== Public init (safe: if the promo page elements aren’t present, it no-ops) =====
+export function initPromotions() {
+  // BASIC DOM contract (adjust IDs if your HTML differs)
+  const root = document.getElementById("promotionsRoot");
+  if (!root) return; // not on the promotions page; do nothing
+
+  // Sections
+  const couponsList = document.getElementById("couponsList");
+  const newCouponForm = document.getElementById("newCouponForm");
+  const codeInput = document.getElementById("couponCode");
+  const chanInput = document.getElementById("couponChannel"); // "dining" | "delivery"
+  const typeInput = document.getElementById("couponType");    // "percent" | "flat"
+  const valInput  = document.getElementById("couponValue");
+
+  const bannersList = document.getElementById("bannersList");
+  const newBannerForm = document.getElementById("newBannerForm");
+  const bannerFile = document.getElementById("bannerFile");
+  const bannerTitle = document.getElementById("bannerTitle");
+
+  // ---------- Coupons ----------
+  if (couponsList) {
+    onSnapshot(query(collection(db, "promotions"), orderBy("createdAt", "desc")), (snap) => {
+      const rows = [];
+      snap.forEach(d => {
+        const p = d.data();
+        if (p?.kind !== "coupon") return;
+        const label = p.type === "percent" ? `${p.value}% off` : `₹${p.value} off`;
+        rows.push(`
+          <div class="adm-list-row">
+            <span class="adm-pill ${p.channel === "dining" ? "adm-pill--dining":"adm-pill--delivery"}">${p.code || d.id}</span>
+            <span class="adm-muted" style="margin-left:8px">${label}</span>
+            <span style="flex:1"></span>
+            <button data-id="${d.id}" class="adm-btn jsDelCoupon">Delete</button>
           </div>
-        </form>
-      </div>`;
-    document.body.appendChild(ov);
-    qs("#peCancel", ov).onclick = () => ov.remove();
+        `);
+      });
+      couponsList.innerHTML = rows.join("") || `<div class="adm-muted">(No coupons)</div>`;
+      couponsList.querySelectorAll(".jsDelCoupon").forEach(btn => {
+        btn.onclick = async () => {
+          if (!confirm("Delete this coupon?")) return;
+          await deleteDoc(doc(db, "promotions", btn.dataset.id));
+        };
+      });
+    });
   }
 
-  const d = row.data || {};
-  el("peCode").value = d.code || "";
-  el("peChannel").value = d.channel || "delivery";
-  el("peType").value = d.type || "percent";
-  el("peValue").value = d.value ?? "";
-  el("peKind").value = d.kind || "coupon";
+  if (newCouponForm) {
+    newCouponForm.onsubmit = async (e) => {
+      e.preventDefault();
+      const code = (codeInput?.value || "").trim();
+      const channel = chanInput?.value || "delivery";
+      const type = typeInput?.value || "percent";
+      const value = Number(valInput?.value || 0);
+      if (!code || !(value > 0)) return alert("Enter code and positive value");
 
-  qs("#promoEditForm", ov).onsubmit = async (e) => {
-    e.preventDefault();
-    const v = num(el("peValue").value);
-    if (!Number.isFinite(v) || v <= 0) return alert("Enter a valid value");
-    try {
-      await updateDoc(doc(db, "promotions", id), {
-        code: (el("peCode").value || "").trim(),
-        channel: el("peChannel").value || "delivery",
-        type: el("peType").value || "percent",
-        value: v,
-        kind: el("peKind").value || "coupon",
-        updatedAt: serverTimestamp(),
+      const id = crypto.randomUUID();
+      await setDoc(doc(db, "promotions", id), {
+        kind: "coupon",
+        code, channel, type, value,
+        createdAt: serverTimestamp(),
+        active: true
       });
-      ov.remove();
-    } catch (err) {
-      console.error(err);
-      alert("Failed to update");
-    }
-  };
-}
+      newCouponForm.reset();
+    };
+  }
 
-// ==== Public init ====
-export function initPromotions() {
-  // wire create form, attach live list
-  wireCreateForm();
-  attachSnapshot();
-}
+  // ---------- Banners ----------
+  if (bannersList) {
+    onSnapshot(query(collection(db, "promotions"), orderBy("createdAt", "desc")), (snap) => {
+      const rows = [];
+      snap.forEach(d => {
+        const p = d.data();
+        if (p?.kind !== "banner") return;
+        rows.push(`
+          <div class="adm-list-row">
+            <img src="${p.imageUrl}" alt="" width="80" height="20" style="object-fit:cover;border-radius:6px;border:1px solid #eee"/>
+            <span style="margin-left:8px">${p.title || "(untitled)"}</span>
+            <span style="flex:1"></span>
+            <button data-id="${d.id}" class="adm-btn jsDelBanner">Delete</button>
+          </div>
+        `);
+      });
+      bannersList.innerHTML = rows.join("") || `<div class="adm-muted">(No banners)</div>`;
+      bannersList.querySelectorAll(".jsDelBanner").forEach(btn => {
+        btn.onclick = async () => {
+          if (!confirm("Delete this banner?")) return;
+          await deleteDoc(doc(db, "promotions", btn.dataset.id));
+        };
+      });
+    });
+  }
 
-// ==== Auto-init (safe): only if page provides the promotions area ====
-document.addEventListener("DOMContentLoaded", () => {
-  const hasUI = el("promotionForm") || el("promotionsBody");
-  if (hasUI) initPromotions();
-});
+  if (newBannerForm) {
+    newBannerForm.onsubmit = async (e) => {
+      e.preventDefault();
+      const file = bannerFile?.files?.[0];
+      if (!file) return alert("Pick an image");
+      if (!isImageType(file)) return alert("Pick a PNG/JPEG/WEBP image");
+      if (fileTooLarge(file)) return alert(`Max ${MAX_UPLOAD_MB}MB image`);
+
+      const blob = await resizeToBannerBlob(file);
+      const path = `${BANNERS_DIR}/${Date.now()}_${file.name}`;
+      const ref = storageRef(storage, path);
+      await withTimeout(uploadBytesResumable(ref, blob).then(() => getDownloadURL(ref)), 60000, "upload");
+      const imageUrl = await getDownloadURL(ref);
+      const id = crypto.randomUUID();
+      await setDoc(doc(db, "promotions", id), {
+        kind: "banner",
+        title: (bannerTitle?.value || "").trim(),
+        imageUrl,
+        createdAt: serverTimestamp(),
+        active: true
+      });
+      newBannerForm.reset();
+    };
+  }
+}
+// at end of promotions.js
+import { initPromotions } from "./promotions.js"; // if split file, otherwise just call directly
+initPromotions();
