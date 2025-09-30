@@ -172,7 +172,7 @@ function setGenieFrom(triggerEl, overlayEl, modalEl) {
     const r = triggerEl.getBoundingClientRect();
     const cx = r.left + r.width/2;
     const vw = Math.max(1, window.innerWidth);
-    modalEl.style.setProperty("--adm-origin", `${(cx / vw) * 100}% 0%`);
+    modalEl.style.setProperty("--adm-origin", `${(cx/vw)*100}% 0%`);
     modalEl.style.setProperty("--adm-dx", "0px");
     modalEl.style.setProperty("--adm-dy", "6px");
   } catch {}
