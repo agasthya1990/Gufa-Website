@@ -68,120 +68,88 @@ const withTimeout = (p, ms, label="op") =>
     new Promise((_, rej) => setTimeout(() => rej(new Error(`${label} timed out after ${ms}ms`)), ms))
   ]);
 
-// ===== Public init (safe: if the promo page elements aren’t present, it no-ops) =====
+// ===== Public init (safe no-op if elements aren’t present) =====
 export function initPromotions() {
-  // BASIC DOM contract (adjust IDs if your HTML differs)
   const root = document.getElementById("promotionsRoot");
-  if (!root) return; // not on the promotions page; do nothing
+  if (!root) return;
 
   // Sections
   const couponsList = document.getElementById("couponsList");
-  const newCouponForm = document.getElementById("newCouponForm");
-  const codeInput = document.getElementById("couponCode");
-  const chanInput = document.getElementById("couponChannel"); // "dining" | "delivery"
-  const typeInput = document.getElementById("couponType");    // "percent" | "flat"
-  const valInput  = document.getElementById("couponValue");
+  const couponForm  = document.getElementById("couponForm");
+  const bannerForm  = document.getElementById("bannerForm");
 
-  const bannersList = document.getElementById("bannersList");
-  const newBannerForm = document.getElementById("newBannerForm");
-  const bannerFile = document.getElementById("bannerFile");
-  const bannerTitle = document.getElementById("bannerTitle");
-
-  // ---------- Coupons ----------
-  if (couponsList) {
-    onSnapshot(query(collection(db, "promotions"), orderBy("createdAt", "desc")), (snap) => {
+  // ===== COUPONS (Kind = coupon only) =====
+  onSnapshot(
+    query(collection(db, "promotions"), orderBy("createdAt", "desc")),
+    (snap) => {
       const rows = [];
-      snap.forEach(d => {
-        const p = d.data();
-        if (p?.kind !== "coupon") return;
-        const label = p.type === "percent" ? `${p.value}% off` : `₹${p.value} off`;
+      snap.forEach((d) => {
+        const p = d.data() || {};
+        if (p.kind !== "coupon") return; // ← only coupons
+        const typeTxt = p.type === "percent" ? `${p.value}% off` : `₹${p.value} off`;
+        const chanTxt = p.channel === "dining" ? "Dining" : "Delivery";
         rows.push(`
-          <div class="adm-list-row">
-            <span class="adm-pill ${p.channel === "dining" ? "adm-pill--dining":"adm-pill--delivery"}">${p.code || d.id}</span>
-            <span class="adm-muted" style="margin-left:8px">${label}</span>
-            <span style="flex:1"></span>
-            <button data-id="${d.id}" class="adm-btn jsDelCoupon">Delete</button>
+          <div class="coupon-row" data-id="${d.id}">
+            <div><strong>${p.code || "(no code)"}</strong> — ${chanTxt} — ${typeTxt}</div>
+            <div>
+              <button data-role="edit">Edit</button>
+              <button data-role="delete">Delete</button>
+            </div>
           </div>
         `);
       });
-      couponsList.innerHTML = rows.join("") || `<div class="adm-muted">(No coupons)</div>`;
-      couponsList.querySelectorAll(".jsDelCoupon").forEach(btn => {
-        btn.onclick = async () => {
-          if (!confirm("Delete this coupon?")) return;
-          await deleteDoc(doc(db, "promotions", btn.dataset.id));
-        };
-      });
+      couponsList.innerHTML = rows.join("") || `<div class="muted">(No coupons)</div>`;
+    }
+  );
+
+  couponForm?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const fd = new FormData(couponForm);
+    const code    = (fd.get("code") || "").toString().trim();
+    const channel = (fd.get("channel") || "delivery").toString();   // 'dining' | 'delivery'
+    const type    = (fd.get("type") || "percent").toString();       // 'percent' | 'flat'
+    const value   = Number(fd.get("value") || 0);
+
+    if (!code || !Number.isFinite(value) || value <= 0) {
+      alert("Enter a code and a positive value."); return;
+    }
+    const id = crypto.randomUUID();
+    await setDoc(doc(db, "promotions", id), {
+      kind: "coupon", code, channel, type, value,
+      createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
     });
-  }
+    couponForm.reset();
+  });
 
-  if (newCouponForm) {
-    newCouponForm.onsubmit = async (e) => {
-      e.preventDefault();
-      const code = (codeInput?.value || "").trim();
-      const channel = chanInput?.value || "delivery";
-      const type = typeInput?.value || "percent";
-      const value = Number(valInput?.value || 0);
-      if (!code || !(value > 0)) return alert("Enter code and positive value");
+  couponsList?.addEventListener("click", async (e) => {
+    const row = e.target.closest(".coupon-row");
+    if (!row) return;
+    const role = e.target.getAttribute("data-role");
+    const id = row.getAttribute("data-id");
 
-      const id = crypto.randomUUID();
-      await setDoc(doc(db, "promotions", id), {
-        kind: "coupon",
-        code, channel, type, value,
-        createdAt: serverTimestamp(),
-        active: true
-      });
-      newCouponForm.reset();
-    };
-  }
+    if (role === "delete") {
+      if (!confirm("Delete this coupon?")) return;
+      await deleteDoc(doc(db, "promotions", id));
+    }
+    if (role === "edit") {
+      const newValue = Number(prompt("New value:"));
+      if (!Number.isFinite(newValue) || newValue <= 0) return;
+      await updateDoc(doc(db, "promotions", id), { value: newValue, updatedAt: serverTimestamp() });
+    }
+  });
 
-  // ---------- Banners ----------
-  if (bannersList) {
-    onSnapshot(query(collection(db, "promotions"), orderBy("createdAt", "desc")), (snap) => {
-      const rows = [];
-      snap.forEach(d => {
-        const p = d.data();
-        if (p?.kind !== "banner") return;
-        rows.push(`
-          <div class="adm-list-row">
-            <img src="${p.imageUrl}" alt="" width="80" height="20" style="object-fit:cover;border-radius:6px;border:1px solid #eee"/>
-            <span style="margin-left:8px">${p.title || "(untitled)"}</span>
-            <span style="flex:1"></span>
-            <button data-id="${d.id}" class="adm-btn jsDelBanner">Delete</button>
-          </div>
-        `);
-      });
-      bannersList.innerHTML = rows.join("") || `<div class="adm-muted">(No banners)</div>`;
-      bannersList.querySelectorAll(".jsDelBanner").forEach(btn => {
-        btn.onclick = async () => {
-          if (!confirm("Delete this banner?")) return;
-          await deleteDoc(doc(db, "promotions", btn.dataset.id));
-        };
-      });
-    });
-  }
+  // ===== BANNERS (optional tiny banner uploader) =====
+  bannerForm?.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const file = bannerForm.querySelector('input[type="file"]')?.files?.[0];
+    if (!file) return alert("Pick an image");
+    if (!isImageType(file)) return alert("Use png/jpg/webp");
+    if (fileTooLarge(file)) return alert(`File must be <= ${MAX_UPLOAD_MB} MB`);
 
-  if (newBannerForm) {
-    newBannerForm.onsubmit = async (e) => {
-      e.preventDefault();
-      const file = bannerFile?.files?.[0];
-      if (!file) return alert("Pick an image");
-      if (!isImageType(file)) return alert("Pick a PNG/JPEG/WEBP image");
-      if (fileTooLarge(file)) return alert(`Max ${MAX_UPLOAD_MB}MB image`);
-
-      const blob = await resizeToBannerBlob(file);
-      const path = `${BANNERS_DIR}/${Date.now()}_${file.name}`;
-      const ref = storageRef(storage, path);
-      await withTimeout(uploadBytesResumable(ref, blob).then(() => getDownloadURL(ref)), 60000, "upload");
-      const imageUrl = await getDownloadURL(ref);
-      const id = crypto.randomUUID();
-      await setDoc(doc(db, "promotions", id), {
-        kind: "banner",
-        title: (bannerTitle?.value || "").trim(),
-        imageUrl,
-        createdAt: serverTimestamp(),
-        active: true
-      });
-      newBannerForm.reset();
-    };
-  }
+    const blob = await resizeToBannerBlob(file);
+    const ref = storageRef(storage, `${BANNERS_DIR}/${Date.now()}_${file.name}`);
+    await withTimeout(uploadBytesResumable(ref, blob), 30_000, "upload");
+    const url = await withTimeout(getDownloadURL(ref), 10_000, "getDownloadURL");
+    alert("Uploaded banner.\nURL:\n" + url);
+  });
 }
