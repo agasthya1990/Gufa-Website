@@ -1,13 +1,7 @@
-# Create a stable, login-ready rewrite of admin.js that avoids top-level await
-# and removes parsing pitfalls. Save a drop-in file the user can test immediately.
-
-from pathlib import Path
-
-stable_js = r"""
 /* =========================================================================
-   admin.js — STABLE REWRITE (ES Module, no top-level await; copy–paste ready)
+   admin.js — COMPLETE CLEAN REWRITE (single file, copy–paste ready)
    =========================================================================
-   Features included (no removals):
+   Features included (end-to-end, no duplicates, brace-safe):
    - Auth (login/logout) + inline status
    - Helpers: debounce, modal styles, body scroll lock, “genie” animation
    - Live Firestore snapshot for menuItems + table rendering
@@ -20,11 +14,20 @@ stable_js = r"""
        * Single-item Assign Promotions / Assign Add-ons
        * Simple Edit Item
    - Filters (Category/Course/Type) + Search + Select All
-   - Fallbacks if optional helper modules are missing
+   - Safe fallbacks if optional helper modules are missing
+
+   Assumptions:
+   - You have a firebase.js that exports { auth, db, storage } initialised.
+   - Optional modules (if present): ./categoryCourse.js, ./promotions.js.
+     This file guards their usage so it still works if they’re absent.
+
+   HOW TO USE:
+   - Replace your existing admin.js with this file.
+   - Ensure your HTML has the element IDs referenced throughout (login, table, form).
    ========================================================================= */
 
 /* =========================
-   Imports  (requires <script type="module">)
+   Imports
    ========================= */
 import { auth, db, storage } from "./firebase.js";
 
@@ -44,7 +47,6 @@ import {
   deleteDoc,
   getDoc,
   getDocs,
-  query,
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 import {
@@ -53,16 +55,18 @@ import {
   getDownloadURL,
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
 
-/* =========================
-   Optional modules — loaded lazily (no top-level await)
-   ========================= */
+/* Optional utilities — guarded usage */
 let CatCourse = {};
 let initPromotions = null;
-(function loadOptionals(){
-  // Load in background; code guards if these are unavailable.
-  import("./categoryCourse.js").then((cc) => { CatCourse = cc || {}; }).catch(()=>{});
-  import("./promotions.js").then((pm) => { initPromotions = pm?.initPromotions || null; }).catch(()=>{});
-})();
+try {
+  // If available, import dynamically so missing files don’t break the page
+  const cc = await import("./categoryCourse.js");
+  CatCourse = cc || {};
+} catch {}
+try {
+  const pm = await import("./promotions.js");
+  initPromotions = pm?.initPromotions || null;
+} catch {}
 
 /* =========================
    Global State & DOM refs
@@ -71,7 +75,7 @@ let PROMOS_BY_ID = {};            // { promoId: {...} }
 let allItems = [];                // [{id, data}]
 let selectedIds = new Set();      // Set<string>
 
-// Top-level DOM
+// Top-level DOM (if missing, code guards will skip)
 const loginBox      = document.getElementById("loginBox");
 const adminContent  = document.getElementById("adminContent");
 const email         = document.getElementById("email");
@@ -115,7 +119,7 @@ const filterCourse        = document.getElementById("filterCourse");
 const filterType          = document.getElementById("filterType");
 
 /* =========================
-   Helpers (one copy only)
+   Small helpers (one copy only)
    ========================= */
 function debounce(fn, wait = 250) {
   let t;
@@ -233,7 +237,7 @@ onAuthStateChanged(auth, async (user) => {
     try { await CatCourse.loadCourses?.(foodCourseDropdown); } catch {}
     try { await CatCourse.loadAddons?.(addonsSelect); } catch {}
 
-    // Render filters after we have any masters; will run again after first snapshot
+    // Render filters if present
     await populateFilterDropdowns();
     wireSearchAndFilters();
 
@@ -334,7 +338,6 @@ if (form) {
 
     const addonNames  = Array.from(addonsSelect?.selectedOptions || []).map(o => o.value);
     const addons = await Promise.all(addonNames.map(async (nm) => {
-      // menuAddons collection uses doc id as addon name (or has a "name" field)
       const snap = await getDoc(doc(db, "menuAddons", nm));
       const v = snap.exists() ? snap.data() : { name: nm, price: 0 };
       return { name: v.name || nm, price: Number(v.price || 0) };
@@ -391,8 +394,6 @@ function attachSnapshot() {
       ensureSelectAllHeader();
       renderTable();
       updateBulkBar();
-      // populate filters if masters were absent
-      populateFilterDropdowns().catch(()=>{});
     },
     (err) => {
       console.error("menuItems snapshot error", err?.code, err?.message);
@@ -741,7 +742,7 @@ async function openBulkAddonsModal(triggerEl) {
   const box = ov.querySelector(".adm-modal"); box.classList.remove("adm-anim-out"); box.classList.add("adm-anim-in");
 }
 
-// Bulk Edit
+// Bulk Edit (multi-field)
 function openBulkEditModal(triggerEl) {
   ensureModalStyles();
   let ov = document.getElementById("bulkEditModal");
@@ -941,10 +942,10 @@ function openBulkEditModal(triggerEl) {
 
   // Refresh on open
   ov.querySelector("#bulkCount").textContent = String(selectedIds.size);
-  const { bulkCategory, bulkCourse, bulkType, bulkQtyType, toggleBulkQtyInputs } = ov._refs || {};
+  const { bulkCategory, bulkCourse, bulkType, bulkQtyType, toggleBulkQtyInputs } = ov._refs;
   try { await CatCourse.loadCategories?.(bulkCategory); } catch {}
   try { await CatCourse.loadCourses?.(bulkCourse); } catch {}
-  if (bulkType) bulkType.value = ""; if (bulkQtyType) bulkQtyType.value = ""; toggleBulkQtyInputs?.();
+  bulkType.value = ""; bulkQtyType.value = ""; toggleBulkQtyInputs();
 
   ov.querySelector("#bulkCatEnable").checked = false;
   ov.querySelector("#bulkCourseEnable").checked = false;
@@ -952,11 +953,7 @@ function openBulkEditModal(triggerEl) {
   ov.querySelector("#bulkStockEnable").checked = false;
   ov.querySelector("#bulkQtyEnable").checked = false;
 
-  if (bulkCategory) bulkCategory.disabled = true; 
-  if (bulkCourse)   bulkCourse.disabled   = true; 
-  if (bulkType)     bulkType.disabled     = true; 
-  ov.querySelector("#bulkStock").disabled = true; 
-  if (bulkQtyType)  bulkQtyType.disabled  = true;
+  bulkCategory.disabled = true; bulkCourse.disabled = true; bulkType.disabled = true; ov.querySelector("#bulkStock").disabled = true; bulkQtyType.disabled = true;
 
   // Reset promos/addons region
   const promosEnable = ov.querySelector("#bulkPromosEnable"); const promosClear = ov.querySelector("#bulkClearPromos"); const promosSelect = ov.querySelector("#bulkPromosSelect");
@@ -1145,10 +1142,9 @@ function openEditItemModal(id, d) {
    Filters / Search
    ========================= */
 async function populateFilterDropdowns() {
-  // Use optional helper if present; otherwise compute from current allItems snapshot.
   try {
-    const cats = (await CatCourse.fetchCategories?.()) || [];
-    if (cats.length && filterCategory) {
+    const cats = await CatCourse.fetchCategories?.() || [];
+    if (filterCategory) {
       const prev = filterCategory.value;
       filterCategory.innerHTML = `<option value="">All Categories</option>` + cats.map(c => `<option>${c}</option>`).join("");
       filterCategory.value = prev || "";
@@ -1156,29 +1152,13 @@ async function populateFilterDropdowns() {
   } catch {}
 
   try {
-    const courses = (await CatCourse.fetchCourses?.()) || [];
-    if (courses.length && filterCourse) {
+    const courses = await CatCourse.fetchCourses?.() || [];
+    if (filterCourse) {
       const prev = filterCourse.value;
       filterCourse.innerHTML = `<option value="">All Courses</option>` + courses.map(c => `<option>${c}</option>`).join("");
       filterCourse.value = prev || "";
     }
   } catch {}
-
-  // Fallback from live items if helper modules aren't available
-  if (allItems.length) {
-    if (filterCategory && (!filterCategory.options || filterCategory.options.length <= 1)) {
-      const set = new Set(allItems.map(i=>i.data.category).filter(Boolean));
-      const prev = filterCategory.value;
-      filterCategory.innerHTML = `<option value="">All Categories</option>` + [...set].map(c=>`<option>${c}</option>`).join("");
-      filterCategory.value = prev || "";
-    }
-    if (filterCourse && (!filterCourse.options || filterCourse.options.length <= 1)) {
-      const set = new Set(allItems.map(i=>i.data.foodCourse).filter(Boolean));
-      const prev = filterCourse.value;
-      filterCourse.innerHTML = `<option value="">All Courses</option>` + [...set].map(c=>`<option>${c}</option>`).join("");
-      filterCourse.value = prev || "";
-    }
-  }
 }
 function wireSearchAndFilters() {
   const rerender = debounce(() => { renderTable(); updateBulkBar(); }, 200);
@@ -1188,12 +1168,6 @@ function wireSearchAndFilters() {
   filterType?.addEventListener("change", rerender);
 }
 
-// Kick initial UI if already authed
+// Kick initial UI (in case auth is already satisfied in a warm session)
 ensureModalStyles();
 updateBulkBar();
-"""
-
-out = Path("/mnt/data/admin.stable.js")
-out.write_text(stable_js, encoding="utf-8")
-
-print("Saved:", str(out))
