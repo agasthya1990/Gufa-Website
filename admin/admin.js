@@ -220,9 +220,47 @@ if (logoutBtn) logoutBtn.onclick = () => signOut(auth);
 
 onAuthStateChanged(auth, async (user) => {
   if (user) {
-    if (loginBox) loginBox.style.display = "none";
-    if (adminContent) adminContent.style.display = "block";
+if (loginBox) loginBox.style.display = "none";
+if (adminContent) adminContent.style.display = "block";
+
+// inject slim pill/button + icon polish (idempotent)
+(function injectAdminPolish(){
+  if (document.getElementById("adm-polish")) return;
+  const css = `
+    /* --- subtle, slim pill buttons --- */
+    .adm-chip-btn {
+      display:inline-flex; align-items:center; gap:6px;
+      padding:2px 10px; border:1px solid #ddd; border-radius:9999px;
+      background:#fff; font-size:12px; line-height:18px; height:22px;
+      cursor:pointer; box-shadow:none;
+    }
+    .adm-chip-btn:hover { background:#f9f9f9; border-color:#ccc; }
+    .adm-chip-btn:active { background:#f2f2f2; }
+
+    /* --- inline icons (not capsulated) --- */
+    .adm-icon {
+      display:inline-flex; align-items:center; justify-content:center;
+      width:18px; height:18px; margin-left:8px;
+      font-size:14px; opacity:.7; cursor:pointer; user-select:none;
+    }
+    .adm-icon:hover { opacity:1; }
+    .adm-icon[aria-label="Delete"] { color:#b02a37; }
+    .adm-icon[aria-label="Edit"] { color:#444; }
+
+    /* row layout ensures name is never covered */
+    .adm-list-row {
+      display:flex; align-items:center; gap:8px; padding:6px 0;
+      border-bottom:1px solid #f3f3f3;
+    }
+    .adm-list-row ._name { flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  `;
+  const style = document.createElement("style");
+  style.id = "adm-polish"; style.textContent = css;
+  document.head.appendChild(style);
+})();
+     
      // Wire inline “add” controls (IDs from admin.html)
+     
 const addCategoryBtn  = document.getElementById("addCategoryBtn");
 const newCategoryInput= document.getElementById("newCategoryInput");
 addCategoryBtn && (addCategoryBtn.onclick = async () => {
@@ -1048,18 +1086,18 @@ function openEditItemModal(id, d, triggerEl) {
 async function renderCustomCategoryDropdown() {
   if (!catBtn || !catPanel) return;
   const categories = await fetchCategories();
-  catPanel.innerHTML = categories
+catPanel.innerHTML = categories
   .map(
     name => `
     <div class="adm-list-row" data-name="${name}">
-      <span class="cat-label" data-role="label" title="${name}">${name}</span>
-      <span style="flex:1"></span>
-      <button class="adm-btn" data-role="select" title="Use">Use</button>
-      <button class="adm-btn" data-role="edit"   title="Edit">✏️</button>
-      <button class="adm-btn" data-role="delete" title="Delete">🗑️</button>
+      <span class="_name" data-role="label" title="${name}">${name}</span>
+      <button class="adm-chip-btn" data-role="select" title="Use">Use</button>
+      <span class="adm-icon" data-role="edit"   aria-label="Edit"   title="Edit">🖉</span>
+      <span class="adm-icon" data-role="delete" aria-label="Delete" title="Delete">🗑</span>
     </div>`
   )
   .join('');
+
 
   catBtn.onclick = e => {
     e.stopPropagation();
@@ -1162,15 +1200,16 @@ async function renderCustomCourseDropdown() {
   if (!courseBtn || !coursePanel) return;
   const courses = await fetchCourses();
   coursePanel.innerHTML = courses
-    .map(
-      name => `
+  .map(
+    name => `
     <div class="adm-list-row" data-name="${name}">
-      <span class="course-label" data-role="label" title="${name}">${name}</span>
-      <span style="flex:1"></span>
-      <button class="adm-btn" data-role="select">Use</button>
+      <span class="_name" data-role="label" title="${name}">${name}</span>
+      <button class="adm-chip-btn" data-role="select" title="Use">Use</button>
+      <span class="adm-icon" data-role="edit"   aria-label="Edit"   title="Edit">🖉</span>
+      <span class="adm-icon" data-role="delete" aria-label="Delete" title="Delete">🗑</span>
     </div>`
-    )
-    .join('');
+  )
+  .join('');
   courseBtn.onclick = e => {
     e.stopPropagation();
     ensureModalStyles();
@@ -1217,13 +1256,12 @@ async function renderCustomAddonDropdown() {
   .map(
     a => `
     <div class="adm-list-row" data-name="${a.name}" data-price="${a.price}">
-      <label style="display:flex; gap:8px; align-items:center; margin:0;">
+      <label style="display:flex; gap:8px; align-items:center; margin:0; flex:1;">
         <input type="checkbox" value="${a.name}" ${selected.has(a.name) ? 'checked' : ''}/>
-        <span class="addon-label" data-role="label">${a.name} (₹${a.price})</span>
+        <span class="_name" data-role="label">${a.name} (₹${a.price})</span>
       </label>
-      <span style="flex:1"></span>
-      <button class="adm-btn" data-role="edit"   title="Edit">✏️</button>
-      <button class="adm-btn" data-role="delete" title="Delete">🗑️</button>
+      <span class="adm-icon" data-role="edit"   aria-label="Edit"   title="Edit">🖉</span>
+      <span class="adm-icon" data-role="delete" aria-label="Delete" title="Delete">🗑</span>
     </div>`
   )
   .join('');
