@@ -70,8 +70,40 @@ const withTimeout = (p, ms, label="op") =>
 
 // ===== Public init (safe: if the promo page elements aren’t present, it no-ops) =====
 export function initPromotions() {
+  
   // BASIC DOM contract (adjust IDs if your HTML differs)
+  
   const root = document.getElementById("promotionsRoot");
+  // Build UI once if empty
+if (!root.dataset.wired) {
+  root.dataset.wired = "1";
+  root.innerHTML = `
+    <h3>Coupons</h3>
+    <div id="couponsList" style="margin-bottom:8px"></div>
+    <form id="newCouponForm" class="adm-row" style="gap:8px">
+      <input id="couponCode" class="adm-input" placeholder="Code" />
+      <select id="couponChannel" class="adm-select">
+        <option value="delivery">Delivery</option>
+        <option value="dining">Dining</option>
+      </select>
+      <select id="couponType" class="adm-select">
+        <option value="percent">Percent</option>
+        <option value="flat">Flat</option>
+      </select>
+      <input id="couponValue" class="adm-input" type="number" placeholder="Value" style="width:120px" />
+      <button type="submit" class="adm-btn adm-btn--primary">Add</button>
+    </form>
+
+    <h3 style="margin-top:16px">Banners</h3>
+    <div id="bannersList" style="margin-bottom:8px"></div>
+    <form id="newBannerForm" class="adm-row" style="gap:8px">
+      <input id="bannerTitle" class="adm-input" placeholder="Title (optional)" />
+      <input id="bannerFile" class="adm-file" type="file" accept="image/*" />
+      <button type="submit" class="adm-btn adm-btn--primary">Upload</button>
+    </form>
+  `;
+}
+
   if (!root) return; // not on the promotions page; do nothing
 
   // Sections
