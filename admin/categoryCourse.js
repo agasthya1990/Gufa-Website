@@ -17,7 +17,7 @@ export async function fetchCategories() {
 
 export async function fetchCourses() {
   const out = [];
-  const snap = await getDocs(collection(db, "menuCourses")); // <-- final name
+  const snap = await getDocs(collection(db, "foodCourses")); // <-- final name
   snap.forEach(d => { const v = d.data(); if (v?.name) out.push(v.name); });
   return out.sort((a,b)=>a.localeCompare(b));
 }
@@ -48,7 +48,7 @@ export async function addCategoryFromInput(inputEl) {
 export async function addCourseFromInput(inputEl) {
   const name = (inputEl?.value || "").trim();
   if (!name) return alert("Enter course name");
-  await addDoc(collection(db, "menuCourses"), { name }); // <-- final name
+  await addDoc(collection(db, "foodCourses"), { name }); // <-- final name
   inputEl.value = "";
 }
 
@@ -264,10 +264,10 @@ export async function renderCustomCourseDropdown() {
       if (!newName) return alert('Course name cannot be empty');
 
       try {
-        const qref = query(collection(db, 'menuCourses'), where('name','==', oldName)); // final name
+        const qref = query(collection(db, 'foodCourses'), where('name','==', oldName)); // final name
         const snap = await getDocs(qref);
         const ops = [];
-        snap.forEach(d => ops.push(updateDoc(doc(db, 'menuCourses', d.id), { name: newName })));
+        snap.forEach(d => ops.push(updateDoc(doc(db, 'foodCourses', d.id), { name: newName })));
         await Promise.all(ops);
 
         row.setAttribute('data-name', newName);
@@ -287,10 +287,10 @@ export async function renderCustomCourseDropdown() {
     if (role === "delete") {
       if (!confirm(`Delete course "${oldName}"?`)) return;
       try {
-        const qref = query(collection(db, 'menuCourses'), where('name','==', oldName)); // final name
+        const qref = query(collection(db, 'foodCourses'), where('name','==', oldName)); // final name
         const snap = await getDocs(qref);
         const ops = [];
-        snap.forEach(d => ops.push(deleteDoc(doc(db, 'menuCourses', d.id))));
+        snap.forEach(d => ops.push(deleteDoc(doc(db, 'foodCourses', d.id))));
         await Promise.all(ops);
         row.remove();
         await loadCourses(select);
