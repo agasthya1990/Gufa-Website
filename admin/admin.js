@@ -1312,28 +1312,27 @@ async function renderCustomAddonDropdown() {
     .join('');
 
   // Open/close popover
-addonBtn.onclick = e => {
+// Open/close popover (NO body scroll lock here)
+addonBtn.onclick = (e) => {
   e.stopPropagation();
   ensureModalStyles();
-  const open = addonPanel.style.display !== 'block';
-  addonPanel.style.display = open ? 'block' : 'none';
+  const open = addonPanel.style.display !== "block";
+  addonPanel.style.display = open ? "block" : "none";
   setGenieFrom(addonBtn, addonPanel, addonPanel);
   if (open) {
-    lockBodyScroll();
-    addonPanel.classList.remove('adm-anim-out');
-    addonPanel.classList.add('adm-anim-in');
+    addonPanel.classList.remove("adm-anim-out");
+    addonPanel.classList.add("adm-anim-in");
     const close = (ev) => {
       if (!addonPanel.contains(ev.target) && ev.target !== addonBtn) {
-        addonPanel.classList.remove('adm-anim-in');
-        addonPanel.classList.add('adm-anim-out');
+        addonPanel.classList.remove("adm-anim-in");
+        addonPanel.classList.add("adm-anim-out");
         setTimeout(() => {
-          addonPanel.style.display = 'none';
-          unlockBodyScroll();
-          document.removeEventListener('mousedown', close);
+          addonPanel.style.display = "none";
+          document.removeEventListener("mousedown", close);
         }, 160);
       }
     };
-    document.addEventListener('mousedown', close);
+    document.addEventListener("mousedown", close);
   }
 };
 
