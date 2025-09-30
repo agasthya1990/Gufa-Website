@@ -225,6 +225,32 @@ if (loginBtn) {
 }
 if (logoutBtn) logoutBtn.onclick = () => signOut(auth);
 
+// Scroll lock on body while modals/popovers are open
+function lockBodyScroll(){ document.body.classList.add("adm-lock"); }
+function unlockBodyScroll(){ document.body.classList.remove("adm-lock"); }
+
+// Modal & popover base styles + animation (inserted once)
+function ensureModalStyles() {
+  if (document.getElementById("admModalStyles")) return;
+  const css = `
+    .adm-lock { overflow: hidden !important; }
+    .adm-overlay { position: fixed; inset: 0; z-index: 9999; background: rgba(0,0,0,.55); display: none; }
+    .adm-modal { background:#fff; color:#111; border-radius:14px; border:2px solid #111; box-shadow:6px 6px 0 #111;
+                 max-width:760px; width:min(760px,92vw); margin:6vh auto 0; padding:16px; max-height:80vh; overflow:auto;
+                 transform-origin: var(--adm-origin, 50% 0%); }
+    .adm-popover { position: absolute; z-index: 9999; background:#fff; color:#111; border-radius:10px; border:2px solid #111;
+                   box-shadow:4px 4px 0 #111; padding:8px; display:none; transform-origin: var(--adm-origin, 50% 0%); }
+    @keyframes admGenieIn { from{opacity:0; transform:translate(var(--adm-dx,0), var(--adm-dy,0)) scale(.96);} to{opacity:1; transform:translate(0,0) scale(1);} }
+    @keyframes admGenieOut{ from{opacity:1; transform:translate(0,0) scale(1);} to{opacity:0; transform:translate(var(--adm-dx,0), var(--adm-dy,0)) scale(.96);} }
+    .adm-anim-in  { animation: admGenieIn 220ms ease-out both; }
+    .adm-anim-out { animation: admGenieOut 180ms ease-in both; }
+
+    .adm-list-row{display:flex;align-items:center;gap:8px;padding:6px 4px;border-bottom:1px dashed #eee}
+    .adm-list-row:last-child{border-bottom:0}
+  `;
+  const style = document.createElement("style"); style.id = "admModalStyles"; style.textContent = css; document.head.appendChild(style);
+}
+
 onAuthStateChanged(auth, async (user) => {
   if (user) {
 if (loginBox) loginBox.style.display = "none";
@@ -1322,6 +1348,18 @@ async function renderCustomAddonDropdown() {
     setMultiHiddenValue(addonsSelect, values);
     updateAddonBtnLabel();
   };
+const close = ev => {
+  if (!addonPanel.contains(ev.target) && ev.target !== addonBtn) {
+    addonPanel.classList.remove('adm-anim-in');
+    addonPanel.classList.add('adm-anim-out');
+    setTimeout(() => {
+      addonPanel.style.display = 'none';
+      unlockBodyScroll();
+      document.removeEventListener('mousedown', close);
+    }, 160);
+  }
+};
+
 
   // Single delegated click handler (no duplicates)
   addonPanel.onclick = async e => {
