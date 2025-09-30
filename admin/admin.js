@@ -439,9 +439,10 @@ function attachMenuSnapshot() {
 }
 function attachPromotionsSnapshot() {
   onSnapshot(collection(db, "promotions"), (snap) => {
-    const map = {}; snap.forEach(d => { const p=d.data(); if (p?.kind === "coupon") map[d.id] = p; });
-    PROMOS_BY_ID = map; renderTable();
-  }, (err) => { console.error("promotions snapshot", err?.code, err?.message); PROMOS_BY_ID = {}; renderTable(); });
+  const map = {}; snap.forEach(d => { const p = d.data() || {}; map[d.id] = p; });
+  PROMOS_BY_ID = map; renderTable();
+}, (err) => { console.error("promotions snapshot", err?.code, err?.message); PROMOS_BY_ID = {}; renderTable(); });
+
 }
 
 /* =========================
@@ -529,7 +530,15 @@ function ensureBulkBar() {
     <button id="bulkAddonsBulkBtn" type="button" disabled>Bulk Add-ons</button>`;
   const table = el("menuTable"); if (table && table.parentNode) table.parentNode.insertBefore(bar, table);
 
-  el("bulkEditBtn").onclick = (e) => { if (!selectedIds.size) return alert('Select at least one item'); openBulkEditModal(e.currentTarget); };
+  el("bulkEditBtn").onclick = (e) => {
+  if (!selectedIds.size) return alert('Select at least one item');
+  try { openBulkEditModal(e.currentTarget); }
+  catch (err) {
+    console.error("[BulkEdit] open failed:", err?.message || err, err);
+    alert("Could not open Bulk Edit: " + (err?.message || err));
+  }
+};
+
   el("bulkDeleteBtn").onclick = async () => { if (!selectedIds.size) return; if (!confirm(`Delete ${selectedIds.size} item(s)?`)) return; const ops=[]; selectedIds.forEach(id => ops.push(deleteDoc(doc(db, 'menuItems', id)))); await Promise.all(ops); selectedIds.clear(); updateBulkBar(); };
   el("bulkPromosBulkBtn").onclick = (e) => { if (!selectedIds.size) return alert('Select at least one item'); openBulkPromosModal(e.currentTarget); };
   el("bulkAddonsBulkBtn").onclick = (e) => { if (!selectedIds.size) return alert('Select at least one item'); openBulkAddonsModal(e.currentTarget); };
@@ -578,7 +587,17 @@ async function openBulkPromosModal(triggerEl) {
   // load options
   const sel = el('bpSelect'); sel.innerHTML = ''; const rows = [];
   if (Object.keys(PROMOS_BY_ID).length) { for (const [id, p] of Object.entries(PROMOS_BY_ID)) { const typeTxt = p.type==='percent'?`${p.value}% off`:`₹${p.value} off`; const chan = p.channel==='dining'? 'Dining':'Delivery'; rows.push({ id, label: `${p.code || '(no code)'} • ${chan} • ${typeTxt}` }); } }
-  else { const snap = await getDocs(collection(db,'promotions')); snap.forEach(d => { const p=d.data(); if (p?.kind==='coupon'){ const typeTxt=p.type==='percent'?`${p.value}% off`:`₹${p.value} off`; const chan=p.channel==='dining'?'Dining':'Delivery'; rows.push({ id:d.id, label:`${p.code||'(no code)'} • ${chan} • ${typeTxt}` }); }}); }
+else {
+  const snap = await getDocs(collection(db,'promotions'));
+  snap.forEach(d => {
+    const p = d.data() || {};
+    const typeTxt = p.type === 'percent' ? `${p.value}% off` : (p.value !== undefined ? `₹${p.value} off` : 'promo');
+    const chan = p.channel ? (p.channel === 'dining' ? 'Dining' : 'Delivery') : '';
+    const label = [p.code || '(no code)', chan, typeTxt].filter(Boolean).join(' • ');
+    rows.push({ id: d.id, label });
+  });
+}
+
   if (!rows.length) sel.innerHTML = `<option value="">(No promotions found)</option>`; else rows.forEach(r => { const o=document.createElement('option'); o.value=r.id; o.textContent=r.label; sel.appendChild(o); });
   qs('#bpCount', ov).textContent = String(selectedIds.size);
 
@@ -794,17 +813,18 @@ async function openAssignPromotionsModal(itemId, currentIds = [], triggerEl) {
       const chan = p.channel === 'dining' ? 'Dining' : 'Delivery';
       rows.push({ id, label: `${p.code || '(no code)'} • ${chan} • ${typeTxt}` });
     }
-  } else {
-    const snap = await getDocs(collection(db, 'promotions'));
-    snap.forEach(d => {
-      const p = d.data();
-      if (p?.kind === 'coupon') {
-        const typeTxt = p.type === 'percent' ? `${p.value}% off` : `₹${p.value} off`;
-        const chan = p.channel === 'dining' ? 'Dining' : 'Delivery';
-        rows.push({ id: d.id, label: `${p.code || '(no code)'} • ${chan} • ${typeTxt}` });
-      }
-    });
-  }
+     
+ } else {
+  const snap = await getDocs(collection(db, 'promotions'));
+  snap.forEach(d => {
+    const p = d.data() || {};
+    const typeTxt = p.type === 'percent' ? `${p.value}% off` : (p.value !== undefined ? `₹${p.value} off` : 'promo');
+    const chan = p.channel ? (p.channel === 'dining' ? 'Dining' : 'Delivery') : '';
+    const label = [p.code || '(no code)', chan, typeTxt].filter(Boolean).join(' • ');
+    rows.push({ id: d.id, label });
+  });
+}
+
   if (!rows.length) {
     sel.innerHTML = `<option value="">(No promotions found)</option>`;
   } else {
@@ -1029,15 +1049,18 @@ async function renderCustomCategoryDropdown() {
   if (!catBtn || !catPanel) return;
   const categories = await fetchCategories();
   catPanel.innerHTML = categories
-    .map(
-      name => `
+  .map(
+    name => `
     <div class="adm-list-row" data-name="${name}">
       <span class="cat-label" data-role="label" title="${name}">${name}</span>
       <span style="flex:1"></span>
-      <button class="adm-btn" data-role="select">Use</button>
+      <button class="adm-btn" data-role="select" title="Use">Use</button>
+      <button class="adm-btn" data-role="edit"   title="Edit">✏️</button>
+      <button class="adm-btn" data-role="delete" title="Delete">🗑️</button>
     </div>`
-    )
-    .join('');
+  )
+  .join('');
+
   catBtn.onclick = e => {
     e.stopPropagation();
     ensureModalStyles();
@@ -1062,18 +1085,77 @@ async function renderCustomCategoryDropdown() {
       document.addEventListener('mousedown', close);
     }
   };
-  catPanel.onclick = e => {
-    const row = e.target.closest('.adm-list-row');
-    if (!row) return;
-    const role = e.target.getAttribute('data-role');
-    const name = row.getAttribute('data-name');
-    if (role === 'select') {
-      setHiddenValue(categoryDropdown, name);
-      catBtn.textContent = `${name} ▾`;
-      catPanel.style.display = 'none';
-      unlockBodyScroll();
+  catPanel.onclick = async e => {
+  const row = e.target.closest('.adm-list-row');
+  if (!row) return;
+  const role = e.target.getAttribute('data-role');
+  const oldName = row.getAttribute('data-name');
+
+  if (role === 'select') {
+    setHiddenValue(categoryDropdown, oldName);
+    catBtn.textContent = `${oldName} ▾`;
+    catPanel.style.display = 'none';
+    unlockBodyScroll();
+    return;
+  }
+
+  if (role === 'edit') {
+    const labelEl = row.querySelector('[data-role="label"]');
+    if (!labelEl) return;
+    const cur = labelEl.textContent;
+    labelEl.innerHTML = `<input type="text" class="adm-input" value="${cur}" style="min-width:160px" />`;
+    row.querySelector('[data-role="edit"]').style.display = 'none';
+    row.querySelector('[data-role="delete"]').style.display = 'none';
+    const saveBtn = document.createElement('button'); saveBtn.className='adm-btn'; saveBtn.textContent='Save';   saveBtn.setAttribute('data-role','save');
+    const cancelBtn = document.createElement('button'); cancelBtn.className='adm-btn'; cancelBtn.textContent='Cancel'; cancelBtn.setAttribute('data-role','cancel');
+    row.appendChild(saveBtn); row.appendChild(cancelBtn);
+    return;
+  }
+  if (role === 'cancel') {
+    const input = row.querySelector('input.adm-input'); const val = input ? input.value : oldName;
+    const labelEl = row.querySelector('[data-role="label"]'); if (labelEl) labelEl.textContent = val;
+    row.querySelector('[data-role="edit"]').style.display = '';
+    row.querySelector('[data-role="delete"]').style.display = '';
+    row.querySelector('[data-role="save"]')?.remove();
+    row.querySelector('[data-role="cancel"]')?.remove();
+    return;
+  }
+  if (role === 'save') {
+    const input = row.querySelector('input.adm-input'); const newName = (input?.value || '').trim();
+    if (!newName) return alert('Category name cannot be empty');
+    try {
+      const qref = query(collection(db, 'menuCategories'), where('name','==', oldName));
+      const snap = await getDocs(qref);
+      const ops = [];
+      snap.forEach(d => ops.push(updateDoc(doc(db, 'menuCategories', d.id), { name: newName })));
+      await Promise.all(ops);
+      row.setAttribute('data-name', newName);
+      const labelEl = row.querySelector('[data-role="label"]'); if (labelEl) labelEl.textContent = newName;
+      row.querySelector('[data-role="edit"]').style.display = '';
+      row.querySelector('[data-role="delete"]').style.display = '';
+      row.querySelector('[data-role="save"]')?.remove();
+      row.querySelector('[data-role="cancel"]')?.remove();
+      await loadCategories(categoryDropdown);
+    } catch (err) {
+      console.error(err); alert('Rename failed: ' + (err?.message || err));
     }
-  };
+    return;
+  }
+  if (role === 'delete') {
+    if (!confirm(`Delete category "${oldName}"?`)) return;
+    try {
+      const qref = query(collection(db, 'menuCategories'), where('name','==', oldName));
+      const snap = await getDocs(qref);
+      const ops = []; snap.forEach(d => ops.push(deleteDoc(doc(db, 'menuCategories', d.id))));
+      await Promise.all(ops);
+      row.remove();
+      await loadCategories(categoryDropdown);
+    } catch (err) {
+      console.error(err); alert('Delete failed: ' + (err?.message || err));
+    }
+  }
+};
+
 }
 
 async function renderCustomCourseDropdown() {
@@ -1132,13 +1214,20 @@ async function renderCustomAddonDropdown() {
   const addons = await fetchAddons();
   const selected = new Set(Array.from(addonsSelect?.selectedOptions || []).map(o => o.value));
   addonPanel.innerHTML = addons
-    .map(
-      a =>
-        `<label class="adm-list-row"><input type="checkbox" value="${a.name}" ${
-          selected.has(a.name) ? 'checked' : ''
-        }/> <span>${a.name} (₹${a.price})</span></label>`
-    )
-    .join('');
+  .map(
+    a => `
+    <div class="adm-list-row" data-name="${a.name}" data-price="${a.price}">
+      <label style="display:flex; gap:8px; align-items:center; margin:0;">
+        <input type="checkbox" value="${a.name}" ${selected.has(a.name) ? 'checked' : ''}/>
+        <span class="addon-label" data-role="label">${a.name} (₹${a.price})</span>
+      </label>
+      <span style="flex:1"></span>
+      <button class="adm-btn" data-role="edit"   title="Edit">✏️</button>
+      <button class="adm-btn" data-role="delete" title="Delete">🗑️</button>
+    </div>`
+  )
+  .join('');
+
   addonBtn.onclick = e => {
     e.stopPropagation();
     ensureModalStyles();
@@ -1179,6 +1268,80 @@ function updateAddonBtnLabel() {
     ? `${vals.join(', ')} ▾`
     : `${vals[0]}, ${vals[1]} +${vals.length - 2} ▾`;
 }
+
+addonPanel.onclick = async (e) => {
+  const row = e.target.closest('.adm-list-row'); if (!row) return;
+  const role = e.target.getAttribute('data-role'); if (!role) return;
+  const oldName = row.getAttribute('data-name');
+  const oldPrice = Number(row.getAttribute('data-price') || 0);
+
+  if (role === 'edit') {
+    const labelEl = row.querySelector('[data-role="label"]'); if (!labelEl) return;
+    labelEl.innerHTML = `
+      <input type="text" class="adm-input" value="${oldName}" style="min-width:140px"/>
+      <input type="number" class="adm-input" value="${oldPrice}" style="width:120px" />
+    `;
+    const saveBtn = document.createElement('button'); saveBtn.className='adm-btn'; saveBtn.textContent='Save'; saveBtn.setAttribute('data-role','save');
+    const cancelBtn = document.createElement('button'); cancelBtn.className='adm-btn'; cancelBtn.textContent='Cancel'; cancelBtn.setAttribute('data-role','cancel');
+    row.appendChild(saveBtn); row.appendChild(cancelBtn);
+    row.querySelector('[data-role="edit"]').style.display='none';
+    row.querySelector('[data-role="delete"]').style.display='none';
+    return;
+  }
+
+  if (role === 'cancel') {
+    const labelEl = row.querySelector('[data-role="label"]');
+    if (labelEl) labelEl.textContent = `${oldName} (₹${oldPrice})`;
+    row.querySelector('[data-role="save"]')?.remove();
+    row.querySelector('[data-role="cancel"]')?.remove();
+    row.querySelector('[data-role="edit"]').style.display='';
+    row.querySelector('[data-role="delete"]').style.display='';
+    return;
+  }
+
+  if (role === 'save') {
+    const [nameInput, priceInput] = row.querySelectorAll('input.adm-input');
+    const newName = (nameInput?.value || '').trim();
+    const newPrice = Number(priceInput?.value || 0);
+    if (!newName) return alert('Add-on name cannot be empty');
+    if (!Number.isFinite(newPrice) || newPrice < 0) return alert('Invalid price');
+    try {
+      const qref = query(collection(db, 'menuAddons'), where('name','==', oldName));
+      const snap = await getDocs(qref);
+      const ops = [];
+      snap.forEach(d => ops.push(updateDoc(doc(db, 'menuAddons', d.id), { name: newName, price: newPrice })));
+      await Promise.all(ops);
+      row.setAttribute('data-name', newName);
+      row.setAttribute('data-price', String(newPrice));
+      const labelEl = row.querySelector('[data-role="label"]');
+      if (labelEl) labelEl.textContent = `${newName} (₹${newPrice})`;
+      row.querySelector('[data-role="save"]')?.remove();
+      row.querySelector('[data-role="cancel"]')?.remove();
+      row.querySelector('[data-role="edit"]').style.display='';
+      row.querySelector('[data-role="delete"]').style.display='';
+      await loadAddons(addonsSelect);
+      updateAddonBtnLabel();
+    } catch (err) {
+      console.error(err); alert('Update failed: ' + (err?.message || err));
+    }
+    return;
+  }
+
+  if (role === 'delete') {
+    if (!confirm(`Delete add-on "${oldName}"?`)) return;
+    try {
+      const qref = query(collection(db, 'menuAddons'), where('name','==', oldName));
+      const snap = await getDocs(qref);
+      const ops = []; snap.forEach(d => ops.push(deleteDoc(doc(db, 'menuAddons', d.id))));
+      await Promise.all(ops);
+      row.remove();
+      await loadAddons(addonsSelect);
+      updateAddonBtnLabel();
+    } catch (err) {
+      console.error(err); alert('Delete failed: ' + (err?.message || err));
+    }
+  }
+};
 
 /* =========================
    Boot: ensure styles, bulk bar, and render optional popovers
