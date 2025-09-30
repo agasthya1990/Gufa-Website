@@ -226,9 +226,13 @@ export function initPromotions() {
 }
 
 // Boot once (safe)
-if (typeof window !== "undefined") {
-  if (!window.__PROMOTIONS_BOOTED__) {
-    window.__PROMOTIONS_BOOTED__ = true;
-    try { initPromotions?.(); } catch (e) { console.error(e); }
-  }
-}
+import { auth } from "./firebase.js"; 
+import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js"; 
+if (typeof window !== "undefined") { 
+if (!window.__PROMOTIONS_BOOTED__) { 
+window.__PROMOTIONS_BOOTED__ = true; 
+onAuthStateChanged(auth, (user) => { 
+      if (user) { try { initPromotions?.(); } catch (e) { console.error(e); } } 
+    }); 
+   } 
+ }
