@@ -1172,3 +1172,6 @@ function wireSearchAndFilters() {
 // Kick initial UI (in case auth is already satisfied in a warm session)
 ensureModalStyles();
 updateBulkBar();
+"""
+open("/mnt/data/admin.js","w",encoding="utf-8").write(code)
+print("admin.js has been written to /mnt/data/admin.js")
