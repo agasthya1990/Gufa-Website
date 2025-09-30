@@ -70,41 +70,38 @@ const withTimeout = (p, ms, label="op") =>
 
 // ===== Public init (safe: if the promo page elements aren’t present, it no-ops) =====
 export function initPromotions() {
-  
-  // BASIC DOM contract (adjust IDs if your HTML differs)
-  
   const root = document.getElementById("promotionsRoot");
+  if (!root) return; // ✅ guard before using root
+
   // Build UI once if empty
-if (!root.dataset.wired) {
-  root.dataset.wired = "1";
-  root.innerHTML = `
-    <h3>Coupons</h3>
-    <div id="couponsList" style="margin-bottom:8px"></div>
-    <form id="newCouponForm" class="adm-row" style="gap:8px">
-      <input id="couponCode" class="adm-input" placeholder="Code" />
-      <select id="couponChannel" class="adm-select">
-        <option value="delivery">Delivery</option>
-        <option value="dining">Dining</option>
-      </select>
-      <select id="couponType" class="adm-select">
-        <option value="percent">Percent</option>
-        <option value="flat">Flat</option>
-      </select>
-      <input id="couponValue" class="adm-input" type="number" placeholder="Value" style="width:120px" />
-      <button type="submit" class="adm-btn adm-btn--primary">Add</button>
-    </form>
+  if (!root.dataset.wired) {
+    root.dataset.wired = "1";
+    root.innerHTML = `
+      <h3>Coupons</h3>
+      <div id="couponsList" style="margin-bottom:8px"></div>
+      <form id="newCouponForm" class="adm-row" style="gap:8px">
+        <input id="couponCode" class="adm-input" placeholder="Code" />
+        <select id="couponChannel" class="adm-select">
+          <option value="delivery">Delivery</option>
+          <option value="dining">Dining</option>
+        </select>
+        <select id="couponType" class="adm-select">
+          <option value="percent">Percent</option>
+          <option value="flat">Flat</option>
+        </select>
+        <input id="couponValue" class="adm-input" type="number" placeholder="Value" style="width:120px" />
+        <button type="submit" class="adm-btn adm-btn--primary">Add</button>
+      </form>
 
-    <h3 style="margin-top:16px">Banners</h3>
-    <div id="bannersList" style="margin-bottom:8px"></div>
-    <form id="newBannerForm" class="adm-row" style="gap:8px">
-      <input id="bannerTitle" class="adm-input" placeholder="Title (optional)" />
-      <input id="bannerFile" class="adm-file" type="file" accept="image/*" />
-      <button type="submit" class="adm-btn adm-btn--primary">Upload</button>
-    </form>
-  `;
-}
-
-  if (!root) return; // not on the promotions page; do nothing
+      <h3 style="margin-top:16px">Banners</h3>
+      <div id="bannersList" style="margin-bottom:8px"></div>
+      <form id="newBannerForm" class="adm-row" style="gap:8px">
+        <input id="bannerTitle" class="adm-input" placeholder="Title (optional)" />
+        <input id="bannerFile" class="adm-file" type="file" accept="image/*" />
+        <button type="submit" class="adm-btn adm-btn--primary">Upload</button>
+      </form>
+    `;
+  }
 
   // Sections
   const couponsList = document.getElementById("couponsList");
@@ -140,7 +137,9 @@ if (!root.dataset.wired) {
       couponsList.querySelectorAll(".jsDelCoupon").forEach(btn => {
         btn.onclick = async () => {
           if (!confirm("Delete this coupon?")) return;
-          await deleteDoc(doc(db, "promotions", btn.dataset.id));
+          btn.disabled = true; // ✅ prevent double-click
+          try { await deleteDoc(doc(db, "promotions", btn.dataset.id)); }
+          finally { btn.disabled = false; }
         };
       });
     });
@@ -186,7 +185,9 @@ if (!root.dataset.wired) {
       bannersList.querySelectorAll(".jsDelBanner").forEach(btn => {
         btn.onclick = async () => {
           if (!confirm("Delete this banner?")) return;
-          await deleteDoc(doc(db, "promotions", btn.dataset.id));
+          btn.disabled = true; // ✅ prevent double-click
+          try { await deleteDoc(doc(db, "promotions", btn.dataset.id)); }
+          finally { btn.disabled = false; }
         };
       });
     });
@@ -203,8 +204,14 @@ if (!root.dataset.wired) {
       const blob = await resizeToBannerBlob(file);
       const path = `${BANNERS_DIR}/${Date.now()}_${file.name}`;
       const ref = storageRef(storage, path);
-      await withTimeout(uploadBytesResumable(ref, blob).then(() => getDownloadURL(ref)), 60000, "upload");
-      const imageUrl = await getDownloadURL(ref);
+
+      // ✅ one downloadURL call only
+      const imageUrl = await withTimeout(
+        uploadBytesResumable(ref, blob).then(() => getDownloadURL(ref)),
+        60000,
+        "upload"
+      );
+
       const id = crypto.randomUUID();
       await setDoc(doc(db, "promotions", id), {
         kind: "banner",
@@ -217,7 +224,8 @@ if (!root.dataset.wired) {
     };
   }
 }
-// Boot once (no self-import)
+
+// Boot once (safe)
 if (typeof window !== "undefined") {
   if (!window.__PROMOTIONS_BOOTED__) {
     window.__PROMOTIONS_BOOTED__ = true;
