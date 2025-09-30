@@ -1352,11 +1352,13 @@ async function renderCustomCourseDropdown() {
         setHiddenValue(foodCourseDropdown, "");
         courseBtn.textContent = `Select Course ▾`;
       }
-    } catch (e) { console.error(e); alert('Delete failed'); }
+        } catch (e) { 
+      console.error(e); 
+      alert('Delete failed'); 
+    }
     return;
   }
 }; // closes coursePanel.onclick
-}; // closes if (open)
 }   // closes async function renderCustomCourseDropdown
 
 
