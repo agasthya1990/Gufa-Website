@@ -1128,7 +1128,6 @@ catPanel.innerHTML = categories
   )
   .join('');
 
-
   catBtn.onclick = e => {
     e.stopPropagation();
     ensureModalStyles();
@@ -1136,14 +1135,14 @@ catPanel.innerHTML = categories
     catPanel.style.display = open ? 'block' : 'none';
     setGenieFrom(catBtn, catPanel, catPanel);
     if (open) {
-  coursePanel.classList.remove('adm-anim-out');
-  coursePanel.classList.add('adm-anim-in');
+  catPanel.classList.remove('adm-anim-out');
+  catPanel.classList.add('adm-anim-in');
   const close = ev => {
-    if (!coursePanel.contains(ev.target) && ev.target !== courseBtn) {
-      coursePanel.classList.remove('adm-anim-in');
-      coursePanel.classList.add('adm-anim-out');
+    if (!catPanel.contains(ev.target) && ev.target !== catBtn) {
+      catPanel.classList.remove('adm-anim-in');
+      catPanel.classList.add('adm-anim-out');
       setTimeout(() => {
-        coursePanel.style.display = 'none';
+        catPanel.style.display = 'none';
         document.removeEventListener('mousedown', close);
       }, 160);
     }
@@ -1252,6 +1251,7 @@ async function renderCustomCourseDropdown() {
     </div>`
   )
   .join('');
+   
   courseBtn.onclick = e => {
     e.stopPropagation();
     ensureModalStyles();
