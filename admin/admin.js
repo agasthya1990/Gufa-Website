@@ -155,6 +155,13 @@ function ensureModalStyles() {
 
     .adm-list-row{display:flex;align-items:center;gap:8px;padding:6px 4px;border-bottom:1px dashed #eee}
     .adm-list-row:last-child{border-bottom:0}
+    
+/* Hide Edit/Delete icons while a row is in editing mode */
+.adm-list-row.is-editing [data-role="edit"],
+.adm-list-row.is-editing [data-role="delete"] {
+  display: none !important;
+}
+   
   `;
   const style = document.createElement("style"); style.id = "admModalStyles"; style.textContent = css; document.head.appendChild(style);
 }
