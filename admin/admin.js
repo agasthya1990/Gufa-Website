@@ -1,5 +1,4 @@
-# Rewriting and saving a complete, clean admin.js for direct copy-drop replacement.
-code = r"""/* =========================================================================
+/* =========================================================================
    admin.js — COMPLETE CLEAN REWRITE (single file, copy–paste ready)
    =========================================================================
    Features included (end-to-end, no duplicates, brace-safe):
@@ -1172,6 +1171,3 @@ function wireSearchAndFilters() {
 // Kick initial UI (in case auth is already satisfied in a warm session)
 ensureModalStyles();
 updateBulkBar();
-"""
-open("/mnt/data/admin.js","w",encoding="utf-8").write(code)
-print("admin.js has been written to /mnt/data/admin.js")
