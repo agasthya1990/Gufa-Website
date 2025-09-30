@@ -1141,10 +1141,11 @@ catPanel.innerHTML = categories
     if (!catPanel.contains(ev.target) && ev.target !== catBtn) {
       catPanel.classList.remove('adm-anim-in');
       catPanel.classList.add('adm-anim-out');
-      setTimeout(() => {
-        catPanel.style.display = 'none';
-        document.removeEventListener('mousedown', close);
-      }, 160);
+     setTimeout(() => {
+  catPanel.style.display = 'none';
+  document.removeEventListener('mousedown', close);
+  unlockBodyScroll();
+}, 160);
     }
   };
   document.addEventListener('mousedown', close);
@@ -1210,11 +1211,13 @@ row.appendChild(cancelBtn);
       await Promise.all(ops);
       row.setAttribute('data-name', newName);
       const labelEl = row.querySelector('[data-role="label"]'); if (labelEl) labelEl.textContent = newName;
-      row.querySelector('[data-role="edit"]').style.display = '';
-      row.querySelector('[data-role="delete"]').style.display = '';
-      row.querySelector('[data-role="save"]')?.remove();
-      row.querySelector('[data-role="cancel"]')?.remove();
-      await loadCategories(categoryDropdown);
+      row.classList.remove('is-editing');
+row.querySelector('[data-role="edit"]').style.display = '';
+row.querySelector('[data-role="delete"]').style.display = '';
+row.querySelector('[data-role="save"]')?.remove();
+row.querySelector('[data-role="cancel"]')?.remove();
+await loadCategories(categoryDropdown);
+
     } catch (err) {
       console.error(err); alert('Rename failed: ' + (err?.message || err));
     }
@@ -1229,12 +1232,13 @@ row.appendChild(cancelBtn);
       await Promise.all(ops);
       row.remove();
       await loadCategories(categoryDropdown);
-    } catch (err) {
-      console.error(err); alert('Delete failed: ' + (err?.message || err));
-    }
+ } catch (e) {
+  console.error(e);
+  alert('Delete failed: ' + (e?.message || e));
+}
+return;
   }
 };
-
 }
 
 async function renderCustomCourseDropdown() {
@@ -1268,6 +1272,7 @@ async function renderCustomCourseDropdown() {
       setTimeout(() => {
         coursePanel.style.display = 'none';
         document.removeEventListener('mousedown', close);
+      unlockBodyScroll();
       }, 160);
     }
   };
@@ -1335,7 +1340,7 @@ async function renderCustomCourseDropdown() {
     return;
   }
 
-  if (role === 'delete') {
+    if (role === 'delete') {
     if (!confirm(`Delete course "${name}"?`)) return;
     try {
       const q = query(collection(db, "menuCourses"), where("name", "==", name));
@@ -1351,7 +1356,10 @@ async function renderCustomCourseDropdown() {
     } catch (e) { console.error(e); alert('Delete failed'); }
     return;
   }
-};
+}; // closes coursePanel.onclick
+}; // closes if (open)
+}   // closes async function renderCustomCourseDropdown
+
 
 
 /* =========================
@@ -1415,61 +1423,53 @@ addonBtn.onclick = (e) => {
     const role = e.target.getAttribute('data-role');
 
     // Inline edit UI: input + ✓ (Save) + ✕ (Cancel)
+     
     if (role === 'edit') {
-      row.classList.add('is-editing');
-      const oldName = row.getAttribute('data-name');
-      const oldPrice = Number(row.getAttribute('data-price') || 0);
+  row.classList.add('is-editing');
+  const oldName = row.getAttribute('data-name');
+  const oldPrice = Number(row.getAttribute('data-price') || 0);
 
-      row.innerHTML = `
-        <div style="display:flex; align-items:center; gap:8px; width:100%;">
-          <input class="addon-edit-name" type="text" value="${oldName}" style="flex:1; min-width:120px;">
-          <input class="addon-edit-price" type="number" step="1" min="0" value="${oldPrice}" style="width:110px;">
-          <span class="adm-icon" data-role="save"   aria-label="Save"   title="Save">✓</span>
-          <span class="adm-icon" data-role="cancel" aria-label="Cancel" title="Cancel">✕</span>
-        </div>`;
+  row.innerHTML = `
+    <div style="display:flex; align-items:center; gap:8px; width:100%;">
+      <input class="addon-edit-name" type="text" value="${oldName}" style="flex:1; min-width:120px;">
+      <input class="addon-edit-price" type="number" step="1" min="0" value="${oldPrice}" style="width:110px;">
+      <span class="adm-icon" data-role="save"   aria-label="Save"   title="Save">✓</span>
+      <span class="adm-icon" data-role="cancel" aria-label="Cancel" title="Cancel">✕</span>
+    </div>`;
 
-      // Don’t bubble to addonPanel again
-      row.onclick = async (ev) => {
-        ev.stopPropagation();
-        const r = ev.target.getAttribute('data-role');
+  // Save handler
+  row.querySelector('[data-role="save"]').onclick = async () => {
+    const nameEl  = row.querySelector('.addon-edit-name');
+    const priceEl = row.querySelector('.addon-edit-price');
+    const newName  = (nameEl?.value || '').trim();
+    const newPrice = Number(priceEl?.value || 0);
 
-        if (r === 'cancel') {
-          await renderCustomAddonDropdown();
-          return;
-        }
+    if (!newName) return alert('Enter a valid name');
+    if (!Number.isFinite(newPrice) || newPrice < 0) return alert('Enter a valid price');
 
-        if (r === 'save') {
-          const nameEl  = row.querySelector('.addon-edit-name');
-          const priceEl = row.querySelector('.addon-edit-price');
-          const newName  = (nameEl?.value || '').trim();
-          const newPrice = Number(priceEl?.value || 0);
+    try {
+      await renameAddonEverywhere(oldName, newName, newPrice);
+      const selected = new Set(Array.from(addonsSelect?.selectedOptions || []).map(o => o.value));
+      if (selected.has(oldName)) { selected.delete(oldName); selected.add(newName); }
+      await loadAddons(addonsSelect);
+      setMultiHiddenValue(addonsSelect, Array.from(selected));
+      await renderCustomAddonDropdown();
+      updateAddonBtnLabel();
+  } catch (err) {
+  console.error(err);
+  alert('Rename failed: ' + (err?.message || err));
+  await renderCustomAddonDropdown();
+  row.classList.remove('is-editing');
+}
+ };
 
-          if (!newName) { alert('Enter a valid name'); return; }
-          if (!Number.isFinite(newPrice) || newPrice < 0) { alert('Enter a valid price'); return; }
+  // Cancel handler
+  row.querySelector('[data-role="cancel"]').onclick = () => {
+    renderCustomAddonDropdown();
+  };
 
-          try {
-            // Rename across items and update the master record
-            await renameAddonEverywhere(oldName, newName, newPrice);
-
-            // Maintain selection if previously selected
-            const selected = new Set(Array.from(addonsSelect?.selectedOptions || []).map(o => o.value));
-            if (selected.has(oldName)) { selected.delete(oldName); selected.add(newName); }
-
-            row.classList.remove('is-editing');
-             await loadAddons(addonsSelect);
-            setMultiHiddenValue(addonsSelect, Array.from(selected));
-            await renderCustomAddonDropdown();
-            updateAddonBtnLabel();
-          } catch (err) {
-            console.error(err);
-            alert('Rename failed: ' + (err?.message || err));
-            row.classList.remove('is-editing');
-            await renderCustomAddonDropdown();
-          }
-        }
-      };
-      return;
-    }
+  return;
+}
 
     // Delete
     if (role === 'delete') {
@@ -1490,7 +1490,7 @@ addonBtn.onclick = (e) => {
       return;
     }
   };
-
+}
   updateAddonBtnLabel();
 }
 
