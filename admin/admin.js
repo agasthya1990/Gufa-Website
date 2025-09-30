@@ -19,7 +19,7 @@
    EXPECTED ENVIRONMENT
    - firebase.js must export { auth, db, storage } (already initialized)
    - Firestore collections referenced:
-       menuItems, menuCategories, foodCourses, menuAddons, promotions
+       menuItems, menuCategories, menuCourses, menuAddons, promotions
    - Page provides these elements (IDs can be adjusted below if needed):
        loginBox, adminContent, email, password, loginBtn, logoutBtn, loginStatus
        menuForm, statusMsg, itemName, itemDescription, itemImage,
@@ -334,7 +334,7 @@ export async function fetchCategories() {
   snap.forEach(d => { const v=d.data(); if (v?.name) out.push(v.name); }); return out.sort((a,b)=>a.localeCompare(b));
 }
 export async function fetchCourses() {
-  const out = []; const snap = await getDocs(collection(db, "foodCourses"));
+  const out = []; const snap = await getDocs(collection(db, "menuCourses"));
   snap.forEach(d => { const v=d.data(); if (v?.name) out.push(v.name); }); return out.sort((a,b)=>a.localeCompare(b));
 }
 export async function fetchAddons() {
@@ -370,7 +370,7 @@ export async function addCategoryFromInput(inputEl) {
 }
 export async function addCourseFromInput(inputEl) {
   const name = (inputEl?.value || "").trim(); if (!name) { alert("Enter course name"); return; }
-  await addDoc(collection(db, "foodCourses"), { name }); inputEl.value = "";
+  await addDoc(collection(db, "menuCourses"), { name }); inputEl.value = "";
 }
 export async function addAddonFromInputs(nameEl, priceEl) {
   const name = (nameEl?.value || "").trim(); const price = num(priceEl?.value);
