@@ -1150,7 +1150,6 @@ catPanel.innerHTML = categories
   };
   document.addEventListener('mousedown', close);
 }
-// Might be strayed
   catPanel.onclick = async e => {
   const row = e.target.closest('.adm-list-row');
   if (!row) return;
@@ -1272,9 +1271,7 @@ async function renderCustomCourseDropdown() {
     }
   };
   document.addEventListener('mousedown', close);
-}
-// Might be strayed
-     
+}     
   coursePanel.onclick = e => {
     const row = e.target.closest('.adm-list-row');
     if (!row) return;
