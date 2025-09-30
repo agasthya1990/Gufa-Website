@@ -125,8 +125,6 @@ const qsa = (sel, ctx=document) => Array.from(ctx.querySelectorAll(sel));
 
 function debounce(fn, wait = 250) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), wait); }; }
 
-const db = getFirestore(app);
-
 // Scroll lock on body while modals/popovers are open
 function lockBodyScroll(){ document.body.classList.add("adm-lock"); }
 function unlockBodyScroll(){ document.body.classList.remove("adm-lock"); }
@@ -197,6 +195,13 @@ function setMultiHiddenValue(selectEl, values = []) {
   selectEl.dispatchEvent(new Event("change"));
 }
 
+// Button label for the custom Add-ons popover trigger
+function updateAddonBtnLabel() {
+  if (!addonBtn || !addonsSelect) return;
+  const chosen = Array.from(addonsSelect.selectedOptions || []).map(o => o.value);
+  addonBtn.textContent = chosen.length ? `Add-ons (${chosen.length}) ▾` : 'Select Add-ons ▾';
+}
+
 // Image resize (200×200 JPEG @ 0.85)
 function resizeImage(file) {
   return new Promise((resolve, reject) => {
@@ -226,32 +231,6 @@ if (loginBtn) {
   };
 }
 if (logoutBtn) logoutBtn.onclick = () => signOut(auth);
-
-// Scroll lock on body while modals/popovers are open
-function lockBodyScroll(){ document.body.classList.add("adm-lock"); }
-function unlockBodyScroll(){ document.body.classList.remove("adm-lock"); }
-
-// Modal & popover base styles + animation (inserted once)
-function ensureModalStyles() {
-  if (document.getElementById("admModalStyles")) return;
-  const css = `
-    .adm-lock { overflow: hidden !important; }
-    .adm-overlay { position: fixed; inset: 0; z-index: 9999; background: rgba(0,0,0,.55); display: none; }
-    .adm-modal { background:#fff; color:#111; border-radius:14px; border:2px solid #111; box-shadow:6px 6px 0 #111;
-                 max-width:760px; width:min(760px,92vw); margin:6vh auto 0; padding:16px; max-height:80vh; overflow:auto;
-                 transform-origin: var(--adm-origin, 50% 0%); }
-    .adm-popover { position: absolute; z-index: 9999; background:#fff; color:#111; border-radius:10px; border:2px solid #111;
-                   box-shadow:4px 4px 0 #111; padding:8px; display:none; transform-origin: var(--adm-origin, 50% 0%); }
-    @keyframes admGenieIn { from{opacity:0; transform:translate(var(--adm-dx,0), var(--adm-dy,0)) scale(.96);} to{opacity:1; transform:translate(0,0) scale(1);} }
-    @keyframes admGenieOut{ from{opacity:1; transform:translate(0,0) scale(1);} to{opacity:0; transform:translate(var(--adm-dx,0), var(--adm-dy,0)) scale(.96);} }
-    .adm-anim-in  { animation: admGenieIn 220ms ease-out both; }
-    .adm-anim-out { animation: admGenieOut 180ms ease-in both; }
-
-    .adm-list-row{display:flex;align-items:center;gap:8px;padding:6px 4px;border-bottom:1px dashed #eee}
-    .adm-list-row:last-child{border-bottom:0}
-  `;
-  const style = document.createElement("style"); style.id = "admModalStyles"; style.textContent = css; document.head.appendChild(style);
-}
 
 onAuthStateChanged(auth, async (user) => {
   if (user) {
@@ -298,14 +277,16 @@ ensureModalStyles();
   document.head.appendChild(style);
 })();
      
-     // Wire inline “add” controls (IDs from admin.html)
+// Wire inline “add” controls (IDs from admin.html)
      
 const addCategoryBtn  = document.getElementById("addCategoryBtn");
 const newCategoryInput= document.getElementById("newCategoryInput");
 addCategoryBtn && (addCategoryBtn.onclick = async () => {
   await addCategoryFromInput(newCategoryInput);
   await loadCategories(categoryDropdown);
+   
   // re-render custom list
+   
   renderCustomCategoryDropdown();
 });
 
@@ -663,11 +644,18 @@ async function openBulkPromosModal(triggerEl) {
   }
   // load options
   const sel = el('bpSelect'); sel.innerHTML = ''; const rows = [];
-  if (Object.keys(PROMOS_BY_ID).length) { for (const [id, p] of Object.entries(PROMOS_BY_ID)) { const typeTxt = p.type==='percent'?`${p.value}% off`:`₹${p.value} off`; const chan = p.channel==='dining'? 'Dining':'Delivery'; rows.push({ id, label: `${p.code || '(no code)'} • ${chan} • ${typeTxt}` }); } }
-else {
+if (Object.keys(PROMOS_BY_ID).length) {
+  for (const [id, p] of Object.entries(PROMOS_BY_ID)) {
+    if (p?.kind !== 'coupon') continue;
+    const typeTxt = p.type === 'percent' ? `${p.value}% off` : `₹${p.value} off`;
+    const chan = p.channel === 'dining' ? 'Dining' : 'Delivery';
+    rows.push({ id, label: `${p.code || '(no code)'} • ${chan} • ${typeTxt}` });
+  }
+} else {
   const snap = await getDocs(collection(db,'promotions'));
   snap.forEach(d => {
     const p = d.data() || {};
+    if (p?.kind !== 'coupon') return;
     const typeTxt = p.type === 'percent' ? `${p.value}% off` : (p.value !== undefined ? `₹${p.value} off` : 'promo');
     const chan = p.channel ? (p.channel === 'dining' ? 'Dining' : 'Delivery') : '';
     const label = [p.code || '(no code)', chan, typeTxt].filter(Boolean).join(' • ');
@@ -1403,13 +1391,15 @@ addonBtn.onclick = e => {
             const selected = new Set(Array.from(addonsSelect?.selectedOptions || []).map(o => o.value));
             if (selected.has(oldName)) { selected.delete(oldName); selected.add(newName); }
 
-            await loadAddons(addonsSelect);
+            row.classList.remove('is-editing');
+             await loadAddons(addonsSelect);
             setMultiHiddenValue(addonsSelect, Array.from(selected));
             await renderCustomAddonDropdown();
             updateAddonBtnLabel();
           } catch (err) {
             console.error(err);
             alert('Rename failed: ' + (err?.message || err));
+            row.classList.remove('is-editing');
             await renderCustomAddonDropdown();
           }
         }
@@ -1448,18 +1438,46 @@ ensureBulkBar();
 renderCustomCategoryDropdown();
 renderCustomCourseDropdown();
 renderCustomAddonDropdown();
-// --- Helper: rename an add-on everywhere (master list + all menu items) ---
+// --- Helper: delete an add-on everywhere (master list + all menu items) ---
+async function deleteAddonEverywhere(name) {
+  // 1) Remove from master (menuAddons by name)
+  try {
+    const qref = query(collection(db, 'menuAddons'), where('name', '==', name));
+    const snap = await getDocs(qref);
+    const ops = [];
+    snap.forEach(d => ops.push(deleteDoc(doc(db, 'menuAddons', d.id))));
+    await Promise.all(ops);
+  } catch (err) {
+    console.error('[Addons] master delete failed', err);
+    // continue to items cleanup anyway
+  }
 
+  // 2) Remove from all menuItems.addons (string or object form)
+  const itemsSnap = await getDocs(collection(db, 'menuItems'));
+  const itemOps = [];
+  itemsSnap.forEach(d => {
+    const data = d.data() || {};
+    if (!Array.isArray(data.addons)) return;
+    const updated = data.addons.filter(a => {
+      if (a == null) return false;
+      if (typeof a === 'string') return a !== name;
+      return a.name !== name;
+    });
+    if (updated.length !== data.addons.length) {
+      itemOps.push(updateDoc(doc(db, 'menuItems', d.id), { addons: updated, updatedAt: serverTimestamp() }));
+    }
+  });
+  await Promise.all(itemOps);
+}
+
+// --- Helper: rename an add-on everywhere (master list + all menu items) ---
 async function renameAddonEverywhere(oldName, newName, newPrice) {
-   
   // 1) Update master records in menuAddons (match by 'name' field)
-   
   try {
     const q = query(collection(db, 'menuAddons'), where('name', '==', oldName));
     const snap = await getDocs(q);
     const masterOps = [];
     snap.forEach(d => {
-      // Keep any extra fields; only update name/price
       const next = { ...(d.data() || {}), name: newName };
       if (newPrice !== undefined && newPrice !== null) next.price = Number(newPrice);
       masterOps.push(updateDoc(doc(db, 'menuAddons', d.id), next));
@@ -1505,7 +1523,7 @@ async function renameAddonEverywhere(oldName, newName, newPrice) {
     });
 
     if (changed) {
-      itemOps.push(updateDoc(doc(db, 'menuItems', d.id), { addons: updated }));
+      itemOps.push(updateDoc(doc(db, 'menuItems', d.id), { addons: updated, updatedAt: serverTimestamp() }));
     }
   });
 
