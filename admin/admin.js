@@ -1147,9 +1147,23 @@ catPanel.innerHTML = categories
     labelEl.innerHTML = `<input type="text" class="adm-input" value="${cur}" style="min-width:160px" />`;
     row.querySelector('[data-role="edit"]').style.display = 'none';
     row.querySelector('[data-role="delete"]').style.display = 'none';
-    const saveBtn = document.createElement('button'); saveBtn.className='adm-btn'; saveBtn.textContent='Save';   saveBtn.setAttribute('data-role','save');
-    const cancelBtn = document.createElement('button'); cancelBtn.className='adm-btn'; cancelBtn.textContent='Cancel'; cancelBtn.setAttribute('data-role','cancel');
-    row.appendChild(saveBtn); row.appendChild(cancelBtn);
+const saveBtn = document.createElement('span');
+saveBtn.className = 'adm-icon';
+saveBtn.setAttribute('data-role','save');
+saveBtn.setAttribute('aria-label','Save');
+saveBtn.title = 'Save';
+saveBtn.textContent = '✓';
+
+const cancelBtn = document.createElement('span');
+cancelBtn.className = 'adm-icon';
+cancelBtn.setAttribute('data-role','cancel');
+cancelBtn.setAttribute('aria-label','Cancel');
+cancelBtn.title = 'Cancel';
+cancelBtn.textContent = '✕';
+
+row.appendChild(saveBtn);
+row.appendChild(cancelBtn);
+
     return;
   }
   if (role === 'cancel') {
