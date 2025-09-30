@@ -125,6 +125,8 @@ const qsa = (sel, ctx=document) => Array.from(ctx.querySelectorAll(sel));
 
 function debounce(fn, wait = 250) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), wait); }; }
 
+const db = getFirestore(app);
+
 // Scroll lock on body while modals/popovers are open
 function lockBodyScroll(){ document.body.classList.add("adm-lock"); }
 function unlockBodyScroll(){ document.body.classList.remove("adm-lock"); }
@@ -255,6 +257,7 @@ onAuthStateChanged(auth, async (user) => {
   if (user) {
 if (loginBox) loginBox.style.display = "none";
 if (adminContent) adminContent.style.display = "block";
+ensureModalStyles();
 
 // inject slim pill/button + icon polish (idempotent)
 (function injectAdminPolish(){
@@ -278,7 +281,7 @@ if (adminContent) adminContent.style.display = "block";
     }
     .adm-icon:hover { opacity:1; }
     .adm-icon[aria-label="Delete"] { color:#b02a37; }
-    .adm-icon[aria-label="Edit"] { color:#444; }
+    .adm-icon[aria-label="Edit"] { color:#000; }
     .adm-icon[aria-label="Save"] { color: #2e7d32; }   /* green tick */
     .adm-icon[aria-label="Cancel"] { color: #b02a37; } /* red X */
 
@@ -1321,26 +1324,30 @@ async function renderCustomAddonDropdown() {
     .join('');
 
   // Open/close popover
-  addonBtn.onclick = e => {
-    e.stopPropagation();
-    ensureModalStyles();
-    const open = addonPanel.style.display !== 'block';
-    addonPanel.style.display = open ? 'block' : 'none';
-    setGenieFrom(addonBtn, addonPanel, addonPanel);
-
-        if (!addonPanel.contains(ev.target) && ev.target !== addonBtn) {
-          addonPanel.classList.remove('adm-anim-in');
-          addonPanel.classList.add('adm-anim-out');
-          setTimeout(() => {
-            addonPanel.style.display = 'none';
-            unlockBodyScroll();
-            document.removeEventListener('mousedown', close);
-          }, 160);
-        }
-      };
-      document.addEventListener('mousedown', close);
-    }
-  };
+addonBtn.onclick = e => {
+  e.stopPropagation();
+  ensureModalStyles();
+  const open = addonPanel.style.display !== 'block';
+  addonPanel.style.display = open ? 'block' : 'none';
+  setGenieFrom(addonBtn, addonPanel, addonPanel);
+  if (open) {
+    lockBodyScroll();
+    addonPanel.classList.remove('adm-anim-out');
+    addonPanel.classList.add('adm-anim-in');
+    const close = (ev) => {
+      if (!addonPanel.contains(ev.target) && ev.target !== addonBtn) {
+        addonPanel.classList.remove('adm-anim-in');
+        addonPanel.classList.add('adm-anim-out');
+        setTimeout(() => {
+          addonPanel.style.display = 'none';
+          unlockBodyScroll();
+          document.removeEventListener('mousedown', close);
+        }, 160);
+      }
+    };
+    document.addEventListener('mousedown', close);
+  }
+};
 
   // Checkbox → selection sync (fixes earlier `.addonPanel` typo)
   addonPanel.onchange = () => {
@@ -1348,18 +1355,6 @@ async function renderCustomAddonDropdown() {
     setMultiHiddenValue(addonsSelect, values);
     updateAddonBtnLabel();
   };
-const close = ev => {
-  if (!addonPanel.contains(ev.target) && ev.target !== addonBtn) {
-    addonPanel.classList.remove('adm-anim-in');
-    addonPanel.classList.add('adm-anim-out');
-    setTimeout(() => {
-      addonPanel.style.display = 'none';
-      unlockBodyScroll();
-      document.removeEventListener('mousedown', close);
-    }, 160);
-  }
-};
-
 
   // Single delegated click handler (no duplicates)
   addonPanel.onclick = async e => {
@@ -1369,6 +1364,7 @@ const close = ev => {
 
     // Inline edit UI: input + ✓ (Save) + ✕ (Cancel)
     if (role === 'edit') {
+      row.classList.add('is-editing');
       const oldName = row.getAttribute('data-name');
       const oldPrice = Number(row.getAttribute('data-price') || 0);
 
