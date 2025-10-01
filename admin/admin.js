@@ -1210,8 +1210,14 @@ row.appendChild(cancelBtn);
     const input = row.querySelector('input.adm-input'); const newName = (input?.value || '').trim();
     if (!newName) return alert('Category name cannot be empty');
     try {
-      const qref = query(collection(db, 'menuCategories'), where('name','==', oldName));
-      const snap = await getDocs(qref);
+   const qref = query(collection(db, 'menuCategories'), where('name','==', oldName));
+let snap;
+try { snap = await getDocs(qref); }
+catch (e) {
+  console.error('[Categories] query failed', e);
+  alert('Could not load category docs (permissions or network).');
+  return;
+}
       const ops = [];
       snap.forEach(d => ops.push(updateDoc(doc(db, 'menuCategories', d.id), { name: newName })));
       await Promise.all(ops);
@@ -1263,9 +1269,11 @@ async function renderCustomCourseDropdown() {
     )
     .join('');
 
+  // Open/close the popover
   courseBtn.onclick = (e) => {
     e.stopPropagation();
     ensureModalStyles();
+
     const open = coursePanel.style.display !== 'block';
     coursePanel.style.display = open ? 'block' : 'none';
     setGenieFrom(courseBtn, coursePanel, coursePanel);
@@ -1286,107 +1294,115 @@ async function renderCustomCourseDropdown() {
       };
       document.addEventListener('mousedown', close);
     }
+  };
 
-    // NOTE: This handler is inside courseBtn.onclick (no stray braces below)
-    coursePanel.onclick = (ev) => {
-      const row  = ev.target.closest('.adm-list-row');
-      if (!row) return;
-      const role = ev.target.getAttribute('data-role');
-      const name = row.getAttribute('data-name');
+  // Single delegated handler for row actions
+  coursePanel.onclick = async (ev) => {
+    const row  = ev.target.closest('.adm-list-row');
+    if (!row) return;
 
-      if (role === 'select') {
-        setHiddenValue(foodCourseDropdown, name);
-        courseBtn.textContent = `${name} ▾`;
-        coursePanel.style.display = 'none';
-        return;
-      }
+    const role = ev.target.getAttribute('data-role');
+    const oldName = row.getAttribute('data-name');
 
-      if (role === 'edit') {
+    if (role === 'select') {
+      setHiddenValue(foodCourseDropdown, oldName);
+      courseBtn.textContent = `${oldName} ▾`;
+      coursePanel.style.display = 'none';
+      return;
+    }
+
+    if (role === 'edit') {
+      const labelEl = row.querySelector('[data-role="label"]');
+      const cur = labelEl?.textContent || oldName;
+      labelEl.innerHTML = `<input type="text" class="adm-input" value="${cur}" style="min-width:160px" />`;
+      row.classList.add('is-editing');
+
+      // hide edit/delete icons; add ✓/✕ inline
+      row.querySelector('[data-role="edit"]').style.display   = 'none';
+      row.querySelector('[data-role="delete"]').style.display = 'none';
+
+      const saveBtn = document.createElement('span');
+      saveBtn.className = 'adm-icon';
+      saveBtn.setAttribute('data-role', 'save');
+      saveBtn.setAttribute('aria-label', 'Save');
+      saveBtn.title = 'Save';
+      saveBtn.textContent = '✓';
+
+      const cancelBtn = document.createElement('span');
+      cancelBtn.className = 'adm-icon';
+      cancelBtn.setAttribute('data-role', 'cancel');
+      cancelBtn.setAttribute('aria-label', 'Cancel');
+      cancelBtn.title = 'Cancel';
+      cancelBtn.textContent = '✕';
+
+      row.appendChild(saveBtn);
+      row.appendChild(cancelBtn);
+      return;
+    }
+
+    if (role === 'cancel') {
+      const labelEl = row.querySelector('[data-role="label"]');
+      if (labelEl) labelEl.textContent = oldName;
+      row.classList.remove('is-editing');
+      row.querySelector('[data-role="edit"]').style.display   = '';
+      row.querySelector('[data-role="delete"]').style.display = '';
+      row.querySelector('[data-role="save"]')?.remove();
+      row.querySelector('[data-role="cancel"]')?.remove();
+      return;
+    }
+
+    if (role === 'save') {
+      const input = row.querySelector('input.adm-input');
+      const newName = (input?.value || '').trim();
+      if (!newName) return alert('Enter a name');
+
+      try {
+        const q = query(collection(db, "menuCourses"), where("name", "==", oldName));
+        const snap = await getDocs(q);
+        const ops = [];
+        snap.forEach(d => ops.push(updateDoc(doc(db, "menuCourses", d.id), { name: newName })));
+        await Promise.all(ops);
+
+        row.setAttribute('data-name', newName);
         const labelEl = row.querySelector('[data-role="label"]');
-        const cur = labelEl?.textContent || name;
-        labelEl.innerHTML = `<input type="text" class="adm-input" value="${cur}" style="min-width:160px" />`;
-        row.classList.add('is-editing');
+        if (labelEl) labelEl.textContent = newName;
 
-        // swap icons
-        row.querySelector('[data-role="edit"]').style.display   = 'none';
-        row.querySelector('[data-role="delete"]').style.display = 'none';
+        row.classList.remove('is-editing');
+        row.querySelector('[data-role="edit"]').style.display   = '';
+        row.querySelector('[data-role="delete"]').style.display = '';
+        row.querySelector('[data-role="save"]')?.remove();
+        row.querySelector('[data-role="cancel"]')?.remove();
 
-        const saveBtn = document.createElement('span');
-        saveBtn.className = 'adm-icon';
-        saveBtn.setAttribute('data-role','save');
-        saveBtn.textContent = '✓';
-
-        const cancelBtn = document.createElement('span');
-        cancelBtn.className = 'adm-icon';
-        cancelBtn.setAttribute('data-role','cancel');
-        cancelBtn.textContent = '✕';
-
-        row.appendChild(saveBtn);
-        row.appendChild(cancelBtn);
-
-        // save
-        saveBtn.onclick = async () => {
-          const val = labelEl.querySelector('input')?.value.trim();
-          if (!val) return alert('Enter a name');
-
-          try {
-            const qref = query(collection(db, "menuCourses"), where("name", "==", name));
-            const snap = await getDocs(qref);
-            const ops  = [];
-            snap.forEach(d => ops.push(updateDoc(doc(db, "menuCourses", d.id), { name: val })));
-            await Promise.all(ops);
-
-            row.setAttribute('data-name', val);
-            labelEl.textContent = val;
-            row.classList.remove('is-editing');
-            saveBtn.remove(); cancelBtn.remove();
-            row.querySelector('[data-role="edit"]').style.display   = '';
-            row.querySelector('[data-role="delete"]').style.display = '';
-
-            setHiddenValue(foodCourseDropdown, val);
-            courseBtn.textContent = `${val} ▾`;
-          } catch (e) {
-            console.error(e);
-            alert('Rename failed');
-          }
-        };
-
-        // cancel
-        cancelBtn.onclick = () => {
-          labelEl.textContent = name;
-          row.classList.remove('is-editing');
-          saveBtn.remove(); cancelBtn.remove();
-          row.querySelector('[data-role="edit"]').style.display   = '';
-          row.querySelector('[data-role="delete"]').style.display = '';
-        };
-
-        return;
+        setHiddenValue(foodCourseDropdown, newName);
+        courseBtn.textContent = `${newName} ▾`;
+      } catch (e) {
+        console.error(e);
+        alert('Rename failed');
       }
+      return;
+    }
 
-      if (role === 'delete') {
-        if (!confirm(`Delete course "${name}"?`)) return;
-        (async () => {
-          try {
-            const qref = query(collection(db, "menuCourses"), where("name", "==", name));
-            const snap = await getDocs(qref);
-            const ops  = [];
-            snap.forEach(d => ops.push(deleteDoc(doc(db, "menuCourses", d.id))));
-            await Promise.all(ops);
+    if (role === 'delete') {
+      if (!confirm(`Delete course "${oldName}"?`)) return;
+      try {
+        const q = query(collection(db, "menuCourses"), where("name", "==", oldName));
+        const snap = await getDocs(q);
+        const ops = [];
+        snap.forEach(d => ops.push(deleteDoc(doc(db, "menuCourses", d.id))));
+        await Promise.all(ops);
 
-            row.remove();
-            if (foodCourseDropdown?.value === name) {
-              setHiddenValue(foodCourseDropdown, "");
-              courseBtn.textContent = `Select Course ▾`;
-            }
-          } catch (e) {
-            console.error(e);
-            alert('Delete failed');
-          }
-        })();
-        return;
+        if (foodCourseDropdown?.value === oldName) {
+          setHiddenValue(foodCourseDropdown, "");
+          courseBtn.textContent = `Select Course ▾`;
+        }
+        row.remove();
+      } catch (e) {
+        console.error(e);
+        alert('Delete failed');
       }
-    }; // ← end coursePanel.onclick
-  };   // ← end courseBtn.onclick
+      return;
+    }
+  };
 }
 
 
@@ -1528,10 +1544,14 @@ addonBtn.onclick = (e) => {
    ========================= */
 
 ensureModalStyles();
-ensureBulkBar();
-renderCustomCategoryDropdown();
-renderCustomCourseDropdown();  // safe to call again
-renderCustomAddonDropdown();
+// Only create the bulk bar/table controls if the table exists on this page
+if (document.getElementById("menuTable")) {
+  ensureBulkBar();
+}
+// Only render popovers if their triggers are present
+if (document.getElementById("categoryDropdownBtn")) renderCustomCategoryDropdown();
+if (document.getElementById("courseDropdownBtn"))   renderCustomCourseDropdown();
+if (document.getElementById("addonDropdownBtn"))    renderCustomAddonDropdown();
 
 // --- Helper: delete an add-on everywhere (master list + all menu items) ---
 async function deleteAddonEverywhere(name) {
