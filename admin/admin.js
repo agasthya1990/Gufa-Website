@@ -66,6 +66,39 @@ import {
   getDownloadURL,
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
 
+// ===== Debug flags (flip to false for production) =====
+const DEBUG = true;
+
+// If you flip DEBUG to false, these lines will no-op console chatter (safe, reversible)
+if (!DEBUG) {
+  // keep console.error visible, mute the rest
+  console.log = () => {};
+  console.debug = () => {};
+  console.info = () => {};
+  console.warn = () => {};
+}
+
+// ===== Debug flags (flip to false for production) =====
+const DEBUG = true;          // master switch
+const DEBUG_OVERLAYS = true; // fine-grained (optional)
+const DEBUG_BULK = true;     // fine-grained (optional)
+
+// Mute chatter when DEBUG=false (keep errors)
+if (!DEBUG) {
+  console.log = () => {};
+  console.debug = () => {};
+  console.info = () => {};
+  console.warn = () => {};
+}
+
+// Lightweight logger wrappers: call D.log / D.warn / D.err instead of console.*
+const D = {
+  log:  (...a) => { if (DEBUG) console.log(...a); },
+  warn: (...a) => { if (DEBUG) console.warn(...a); },
+  err:  (...a) => console.error(...a) // errors always visible
+};
+
+
 /* =========================
    Global state & DOM refs
    ========================= */
@@ -131,7 +164,6 @@ function debounce(fn, wait = 250) {
   };
 }
 
-
 // Scroll lock on body while modals/popovers are open
 function lockBodyScroll(){ document.body.classList.add("adm-lock"); }
 function unlockBodyScroll(){ document.body.classList.remove("adm-lock"); }
@@ -140,37 +172,140 @@ function unlockBodyScroll(){ document.body.classList.remove("adm-lock"); }
 function ensureModalStyles() {
   if (document.getElementById("admModalStyles")) return;
   const css = `
-    .adm-lock { overflow: hidden !important; }
-    .adm-overlay { position: fixed; inset: 0; z-index: 9999; background: rgba(0,0,0,.55); display: none; }
-    .adm-modal { background:#fff; color:#111; border-radius:14px; border:2px solid #111; box-shadow:6px 6px 0 #111;
-                 max-width:760px; width:min(760px,92vw); margin:6vh auto 0; padding:16px; max-height:80vh; overflow:auto;
-                 transform-origin: var(--adm-origin, 50% 0%); }
-    .adm-popover { position: absolute; z-index: 9999; background:#fff; color:#111; border-radius:10px; border:2px solid #111;
-                   box-shadow:4px 4px 0 #111; padding:8px; display:none; transform-origin: var(--adm-origin, 50% 0%); }
-    @keyframes admGenieIn { from{opacity:0; transform:translate(var(--adm-dx,0), var(--adm-dy,0)) scale(.96);} to{opacity:1; transform:translate(0,0) scale(1);} }
-    @keyframes admGenieOut{ from{opacity:1; transform:translate(0,0) scale(1);} to{opacity:0; transform:translate(var(--adm-dx,0), var(--adm-dy,0)) scale(.96);} }
-    .adm-anim-in  { animation: admGenieIn 220ms ease-out both; }
-    .adm-anim-out { animation: admGenieOut 180ms ease-in both; }
+/* ===== Admin overlay / modal — hardened ===== */
+.adm-lock { overflow: hidden !important; }
 
-    .adm-btn{border:2px solid #111;border-radius:10px;padding:8px 12px;background:#fff;cursor:pointer;box-shadow:3px 3px 0 #111;}
-    .adm-btn--primary{background:#111;color:#fff}
-    .adm-muted{color:#666}
-    .adm-pill{display:inline-block;padding:2px 8px;border-radius:999px;border:1px solid #ddd;font-size:12px}
-    .adm-pill--dining{background:#f3fff3;border-color:#bde0bd}
-    .adm-pill--delivery{background:#f3f7ff;border-color:#bed2ff}
-    .adm-toolbar{display:flex;gap:8px;align-items:center;margin:8px 0}
-
-    .adm-list-row{display:flex;align-items:center;gap:8px;padding:6px 4px;border-bottom:1px dashed #eee}
-    .adm-list-row:last-child{border-bottom:0}
-    
-/* Hide Edit/Delete icons while a row is in editing mode */
-.adm-list-row.is-editing [data-role="edit"],
-.adm-list-row.is-editing [data-role="delete"] {
-  display: none !important;
+/* Overlay: sit above everything, always visible when display:block */
+.adm-overlay {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 2147483647 !important; /* above any app header/portal */
+  background: rgba(0,0,0,0.55) !important;
+  display: none;               /* JS flips to block */
+  pointer-events: auto !important;
+  visibility: visible !important;
+  contain: layout style paint; /* avoid weird stacking contexts */
 }
-   
+
+/* Modal box */
+.adm-modal {
+  position: relative !important;
+  z-index: 1 !important;
+  background:#fff !important;
+  color:#111 !important;
+  border-radius:14px !important;
+  border:2px solid #111 !important;
+  box-shadow:6px 6px 0 #111 !important;
+  max-width:760px !important;
+  width:min(760px,92vw) !important;
+  margin:6vh auto 0 !important;
+  padding:16px !important;
+  max-height:80vh !important;
+  overflow:auto !important;
+  opacity: 1 !important;
+  transform: none !important;
+  --adm-origin: 50% 0%;
+  --adm-dx: 0px;
+  --adm-dy: 6px;
+  transform-origin: var(--adm-origin);
+}
+
+/* Popover base (same hardening) */
+.adm-popover {
+  position: absolute !important;
+  z-index: 2147483646 !important;
+  background:#fff !important;
+  color:#111 !important;
+  border-radius:10px !important;
+  border:2px solid #111 !important;
+  box-shadow:4px 4px 0 #111 !important;
+  padding:8px !important;
+  display:none;
+  pointer-events: auto !important;
+  opacity: 1 !important;
+  transform: none !important;
+  --adm-origin: 50% 0%;
+  --adm-dx: 0px;
+  --adm-dy: 6px;
+  transform-origin: var(--adm-origin);
+}
+
+/* Animations are optional niceties */
+@keyframes admGenieIn {
+  from { opacity:0; transform:translate(var(--adm-dx), var(--adm-dy)) scale(.96); }
+  to   { opacity:1; transform:translate(0,0) scale(1); }
+}
+@keyframes admGenieOut{
+  from { opacity:1; transform:translate(0,0) scale(1); }
+  to   { opacity:0; transform:translate(var(--adm-dx), var(--adm-dy)) scale(.96); }
+}
+.adm-anim-in  { animation: admGenieIn 220ms ease-out both; }
+.adm-anim-out { animation: admGenieOut 180ms ease-in both; }
+
+/* Buttons / pills */
+.adm-btn{border:2px solid #111;border-radius:10px;padding:8px 12px;background:#fff;cursor:pointer;box-shadow:3px 3px 0 #111;}
+.adm-btn--primary{background:#111;color:#fff}
+.adm-muted{color:#666}
+.adm-pill{display:inline-block;padding:2px 8px;border-radius:999px;border:1px solid #ddd;font-size:12px}
+.adm-pill--dining{background:#f3fff3;border-color:#bde0bd}
+.adm-pill--delivery{background:#f3f7ff;border-color:#bed2ff}
+.adm-toolbar{display:flex;gap:8px;align-items:center;margin:8px 0}
+
+/* List rows + inline edit guards */
+.adm-list-row{display:flex;align-items:center;gap:8px;padding:6px 4px;border-bottom:1px dashed #eee}
+.adm-list-row:last-child{border-bottom:0}
+.adm-list-row.is-editing [data-role="edit"],
+.adm-list-row.is-editing [data-role="delete"] { display: none !important; }
   `;
-  const style = document.createElement("style"); style.id = "admModalStyles"; style.textContent = css; document.head.appendChild(style);
+  const style = document.createElement("style");
+  style.id = "admModalStyles";
+  style.textContent = css;
+  document.head.appendChild(style);
+}
+
+/* =========================================================
+   Overlay & popover show helpers (centralized + hardened)
+   ========================================================= */
+
+/**
+ * Show a modal overlay you've already appended to <body>.
+ * - Locks body scroll
+ * - Sets display
+ * - Positions genie origin
+ * - Forces reflow before animating
+ */
+function showOverlay(ov, triggerEl) {
+  if (!ov) return;
+  ensureModalStyles();
+
+  const box = qs('.adm-modal', ov) || ov; // fallback if no .adm-modal
+  lockBodyScroll();
+  ov.style.display = 'block';
+
+  requestAnimationFrame(() => {
+    setGenieFrom(triggerEl, ov, box);
+    box.classList.remove('adm-anim-out');
+    // Force reflow so the animation always re-starts
+    void box.offsetWidth;
+    box.classList.add('adm-anim-in');
+  });
+}
+
+/**
+ * Show a small popover panel (not a full-screen overlay).
+ * Does NOT lock body scroll (by design).
+ */
+function showPopover(panelEl, triggerEl) {
+  if (!panelEl) return;
+  ensureModalStyles();
+
+  panelEl.style.display = 'block';
+  requestAnimationFrame(() => {
+    setGenieFrom(triggerEl, panelEl, panelEl);
+    panelEl.classList.remove('adm-anim-out');
+    void panelEl.offsetWidth; // force reflow
+    panelEl.classList.add('adm-anim-in');
+  });
 }
 
 // Compute the animation origin (genie) from a trigger button
@@ -827,12 +962,9 @@ async function openBulkPromosModal(triggerEl) {
   }
   qs('#bpCount', ov).textContent = String(selectedIds.size);
 
-  lockBodyScroll();
-  ov.style.display = 'block';
-  const box = qs('.adm-modal', ov);
-  setGenieFrom(triggerEl, ov, box);
-  if (box) { box.classList.remove('adm-anim-out'); box.classList.add('adm-anim-in'); }
-  console.log("[DEBUG] bulkPromosModal open done");
+  showOverlay(ov, triggerEl);
+console.log("[DEBUG] bulkPromosModal open done");
+
 }
 
 /* =========================
@@ -841,6 +973,7 @@ async function openBulkPromosModal(triggerEl) {
 async function openBulkAddonsModal(triggerEl) {
   console.log("[DEBUG] openBulkAddonsModal start");
   ensureModalStyles();
+   
   let ov = el('bulkAddonsModal');
   if (!ov) {
     ov = document.createElement('div');
@@ -894,12 +1027,8 @@ async function openBulkAddonsModal(triggerEl) {
   });
   qs('#baCount', ov).textContent = String(selectedIds.size);
 
-  lockBodyScroll();
-  ov.style.display = 'block';
-  const box = qs('.adm-modal', ov);
-  setGenieFrom(triggerEl, ov, box);
-  if (box) { box.classList.remove('adm-anim-out'); box.classList.add('adm-anim-in'); }
-  console.log("[DEBUG] bulkAddonsModal open done");
+showOverlay(ov, triggerEl);
+console.log("[DEBUG] bulkPromosModal open done");
 }
 
 /* =========================
@@ -1079,12 +1208,9 @@ async function openBulkEditModal(triggerEl) {
   const promosSelect = el('bulkPromosSelect'); if (promosSelect) { promosSelect.innerHTML = ''; promosSelect.disabled = true; }
   const addonsSelect2 = el('bulkAddonsSelect'); if (addonsSelect2) { addonsSelect2.innerHTML = ''; addonsSelect2.disabled = true; }
 
-  lockBodyScroll();
-  ov.style.display = 'block';
-  const box = qs('.adm-modal', ov);
-  setGenieFrom(triggerEl, ov, box);
-  if (box) { box.classList.remove('adm-anim-out'); box.classList.add('adm-anim-in'); }
-  console.log("[DEBUG] bulkEditModal open done");
+showOverlay(ov, triggerEl);
+console.log("[DEBUG] bulkPromosModal open done");
+
 }
 
 
@@ -1169,12 +1295,9 @@ async function openAssignPromotionsModal(itemId, currentIds = [], triggerEl) {
     }
   };
 
-  lockBodyScroll();
-  ov.style.display = 'block';
-  const box = qs('.adm-modal', ov);
-  setGenieFrom(triggerEl, ov, box);
-  if (box) { box.classList.remove('adm-anim-out'); box.classList.add('adm-anim-in'); }
-  console.log("[DEBUG] promoAssignModal open done");
+showOverlay(ov, triggerEl);
+console.log("[DEBUG] bulkPromosModal open done");
+
 }
 
 // Assign AddonsModel
@@ -1226,12 +1349,9 @@ async function openAssignAddonsModal(itemId, current = [], triggerEl) {
     }
   };
 
-  lockBodyScroll();
-  ov.style.display = 'block';
-  const box = qs('.adm-modal', ov);
-  setGenieFrom(triggerEl, ov, box);
-  if (box) { box.classList.remove('adm-anim-out'); box.classList.add('adm-anim-in'); }
-  console.log("[DEBUG] addonAssignModal open done");
+  showOverlay(ov, triggerEl);
+console.log("[DEBUG] bulkPromosModal open done");
+
 }
 
 /* =========================
@@ -1351,12 +1471,8 @@ function openEditItemModal(id, d, triggerEl) {
     }
   };
 
-  lockBodyScroll();
-  ov.style.display = 'block';
-  setGenieFrom(triggerEl, ov, qs('.adm-modal', ov));
-  const box = qs('.adm-modal', ov);
-  box.classList.remove('adm-anim-out');
-  box.classList.add('adm-anim-in');
+showOverlay(ov, triggerEl);
+
 }
 
 /* =========================
@@ -1382,23 +1498,20 @@ catPanel.innerHTML = categories
     ensureModalStyles();
     const open = catPanel.style.display !== 'block';
     catPanel.style.display = open ? 'block' : 'none';
-    setGenieFrom(catBtn, catPanel, catPanel);
-    if (open) {
-  catPanel.classList.remove('adm-anim-out');
-  catPanel.classList.add('adm-anim-in');
-  const close = ev => {
+if (open) {
+  showPopover(catPanel, catBtn);
+  const close = (ev) => {
     if (!catPanel.contains(ev.target) && ev.target !== catBtn) {
       catPanel.classList.remove('adm-anim-in');
       catPanel.classList.add('adm-anim-out');
-     setTimeout(() => {
-  catPanel.style.display = 'none';
-  document.removeEventListener('mousedown', close);
-}, 160);
+      setTimeout(() => {
+        catPanel.style.display = 'none';
+        document.removeEventListener('mousedown', close);
+      }, 160);
     }
   };
-   document.addEventListener('mousedown', close);
-  }
-};
+  document.addEventListener('mousedown', close);
+}
 
   catPanel.onclick = async e => {
   const row = e.target.closest('.adm-list-row');
@@ -1515,33 +1628,31 @@ async function renderCustomCourseDropdown() {
     .join('');
 
   // Open/close the popover
+   
   courseBtn.onclick = (e) => {
-    e.stopPropagation();
-    ensureModalStyles();
+  e.stopPropagation();
+  const open = coursePanel.style.display !== 'block';
+  coursePanel.style.display = open ? 'block' : 'none';
 
-    const open = coursePanel.style.display !== 'block';
-    coursePanel.style.display = open ? 'block' : 'none';
-    setGenieFrom(courseBtn, coursePanel, coursePanel);
+  if (open) {
+    showPopover(coursePanel, courseBtn);
+    const close = (ev) => {
+      if (!coursePanel.contains(ev.target) && ev.target !== courseBtn) {
+        coursePanel.classList.remove('adm-anim-in');
+        coursePanel.classList.add('adm-anim-out');
+        setTimeout(() => {
+          coursePanel.style.display = 'none';
+          document.removeEventListener('mousedown', close);
+        }, 160);
+      }
+    };
+    document.addEventListener('mousedown', close);
+  }
+};
 
-    if (open) {
-      coursePanel.classList.remove('adm-anim-out');
-      coursePanel.classList.add('adm-anim-in');
-
-      const close = (ev) => {
-        if (!coursePanel.contains(ev.target) && ev.target !== courseBtn) {
-          coursePanel.classList.remove('adm-anim-in');
-          coursePanel.classList.add('adm-anim-out');
-          setTimeout(() => {
-            coursePanel.style.display = 'none';
-            document.removeEventListener('mousedown', close);
-          }, 160);
-        }
-      };
-      document.addEventListener('mousedown', close);
-    }
-  };
 
   // Single delegated handler for row actions
+   
   coursePanel.onclick = async (ev) => {
     const row  = ev.target.closest('.adm-list-row');
     if (!row) return;
@@ -1672,28 +1783,27 @@ async function renderCustomAddonDropdown() {
     </div>`).join('');
 
   // Open/close popover (NO body scroll lock here)
+   
   addonBtn.onclick = (e) => {
-    e.stopPropagation();
-    ensureModalStyles();
-    const open = addonPanel.style.display !== "block";
-    addonPanel.style.display = open ? "block" : "none";
-    setGenieFrom(addonBtn, addonPanel, addonPanel);
-    if (open) {
-      addonPanel.classList.remove("adm-anim-out");
-      addonPanel.classList.add("adm-anim-in");
-      const close = (ev) => {
-        if (!addonPanel.contains(ev.target) && ev.target !== addonBtn) {
-          addonPanel.classList.remove("adm-anim-in");
-          addonPanel.classList.add("adm-anim-out");
-          setTimeout(() => {
-            addonPanel.style.display = "none";
-            document.removeEventListener("mousedown", close);
-          }, 160);
-        }
-      };
-      document.addEventListener("mousedown", close);
-    }
-  };
+  e.stopPropagation();
+  const open = addonPanel.style.display !== "block";
+  addonPanel.style.display = open ? "block" : "none";
+
+  if (open) {
+    showPopover(addonPanel, addonBtn);
+    const close = (ev) => {
+      if (!addonPanel.contains(ev.target) && ev.target !== addonBtn) {
+        addonPanel.classList.remove("adm-anim-in");
+        addonPanel.classList.add("adm-anim-out");
+        setTimeout(() => {
+          addonPanel.style.display = "none";
+          document.removeEventListener("mousedown", close);
+        }, 160);
+      }
+    };
+    document.addEventListener("mousedown", close);
+  }
+};
 
   // Checkbox → selection sync
   addonPanel.onchange = () => {
