@@ -549,10 +549,11 @@ function renderTable() {
         </select>
       </td>
       <td>
-        <button class="promoBtn" data-id="${id}">Promotions</button>
-        <button class="addonBtn" data-id="${id}">Add-On</button>
-        <button class="editBtn" data-id="${id}">Edit</button>
-        <button class="deleteBtn" data-id="${id}">Delete</button>
+      <button type="button" class="promoBtn" data-id="${id}">Promotions</button>
+      <button type="button" class="addonBtn" data-id="${id}">Add-On</button>
+      <button type="button" class="editBtn" data-id="${id}">Edit</button>
+      <button type="button" class="deleteBtn" data-id="${id}">Delete</button>
+
       </td>`;
     menuBody.appendChild(tr);
   });
@@ -563,20 +564,40 @@ function renderTable() {
   // Stock toggle
   qsa(".stockToggle").forEach(el => el.onchange = async (e) => { const id = e.target.dataset.id; const val = e.target.value === 'true'; try { await updateDoc(doc(db, 'menuItems', id), { inStock: val, updatedAt: serverTimestamp() }); } catch(err) { console.error(err); alert('Failed to update stock'); }});
 
-  // Delete
-  qsa(".deleteBtn").forEach(el => el.onclick = async (e) => { const id = el.dataset.id; if (!confirm('Delete this item?')) return; try { await deleteDoc(doc(db, 'menuItems', id)); selectedIds.delete(id); updateBulkBar(); } catch(err) { console.error(err); alert('Delete failed'); }});
+// Delete, Edit, Add-ons, Promotions - Revised Buttons
+   
+qsa(".deleteBtn").forEach(btn => btn.onclick = async (e) => {
+  e?.preventDefault?.(); e?.stopPropagation?.();
+  const id = btn.dataset.id;
+  if (!confirm('Delete this item?')) return;
+  try { await deleteDoc(doc(db, 'menuItems', id)); selectedIds.delete(id); updateBulkBar(); }
+  catch (err) { console.error(err); alert('Delete failed'); }
+});
 
-  // Edit
-  qsa(".editBtn").forEach(el => el.onclick = async () => { const id = el.dataset.id; const snap = await getDoc(doc(db, 'menuItems', id)); if (!snap.exists()) return alert('Item not found'); openEditItemModal(id, snap.data(), el); });
+qsa(".editBtn").forEach(btn => btn.onclick = async (e) => {
+  e?.preventDefault?.(); e?.stopPropagation?.();
+  const id = btn.dataset.id;
+  const snap = await getDoc(doc(db, 'menuItems', id));
+  if (!snap.exists()) return alert('Item not found');
+  openEditItemModal(id, snap.data(), btn);
+});
 
-  // Assign add-ons
-  qsa(".addonBtn").forEach(el => el.onclick = async () => { const id = el.dataset.id; const snap = await getDoc(doc(db, 'menuItems', id)); if (!snap.exists()) return alert('Item not found'); openAssignAddonsModal(id, Array.isArray(snap.data().addons) ? snap.data().addons : [], el); });
+qsa(".addonBtn").forEach(btn => btn.onclick = async (e) => {
+  e?.preventDefault?.(); e?.stopPropagation?.();
+  const id = btn.dataset.id;
+  const snap = await getDoc(doc(db, 'menuItems', id));
+  if (!snap.exists()) return alert('Item not found');
+  openAssignAddonsModal(id, Array.isArray(snap.data().addons) ? snap.data().addons : [], btn);
+});
 
-  // Assign promotions
-  qsa(".promoBtn").forEach(el => el.onclick = async () => { const id = el.dataset.id; const snap = await getDoc(doc(db, 'menuItems', id)); if (!snap.exists()) return alert('Item not found'); openAssignPromotionsModal(id, Array.isArray(snap.data().promotions) ? snap.data().promotions : [], el); });
+qsa(".promoBtn").forEach(btn => btn.onclick = async (e) => {
+  e?.preventDefault?.(); e?.stopPropagation?.();
+  const id = btn.dataset.id;
+  const snap = await getDoc(doc(db, 'menuItems', id));
+  if (!snap.exists()) return alert('Item not found');
+  openAssignPromotionsModal(id, Array.isArray(snap.data().promotions) ? snap.data().promotions : [], btn);
+});
 
-  syncSelectAllHeader(items);
-}
 
 function syncSelectAllHeader(itemsRendered) {
   const cb = el("selectAll"); if (!cb) return;
@@ -588,6 +609,7 @@ function syncSelectAllHeader(itemsRendered) {
 /* =========================
    Bulk bar (Edit, Delete, Promotions, Add-ons)
    ========================= */
+   
 function ensureBulkBar() {
   if (el("bulkBar")) return; const bar = document.createElement("div"); bar.id = "bulkBar"; bar.className = "adm-toolbar";
   bar.innerHTML = `
@@ -597,7 +619,8 @@ function ensureBulkBar() {
     <button id="bulkAddonsBulkBtn" type="button" disabled>Bulk Add-ons</button>`;
   const table = el("menuTable"); if (table && table.parentNode) table.parentNode.insertBefore(bar, table);
 
-  el("bulkEditBtn").onclick = (e) => {
+ el("bulkEditBtn").onclick = (e) => {
+  e?.preventDefault?.(); e?.stopPropagation?.();
   if (!selectedIds.size) return alert('Select at least one item');
   try { openBulkEditModal(e.currentTarget); }
   catch (err) {
@@ -606,10 +629,28 @@ function ensureBulkBar() {
   }
 };
 
-  el("bulkDeleteBtn").onclick = async () => { if (!selectedIds.size) return; if (!confirm(`Delete ${selectedIds.size} item(s)?`)) return; const ops=[]; selectedIds.forEach(id => ops.push(deleteDoc(doc(db, 'menuItems', id)))); await Promise.all(ops); selectedIds.clear(); updateBulkBar(); };
-  el("bulkPromosBulkBtn").onclick = (e) => { if (!selectedIds.size) return alert('Select at least one item'); openBulkPromosModal(e.currentTarget); };
-  el("bulkAddonsBulkBtn").onclick = (e) => { if (!selectedIds.size) return alert('Select at least one item'); openBulkAddonsModal(e.currentTarget); };
-}
+el("bulkDeleteBtn").onclick = async (e) => {
+  e?.preventDefault?.(); e?.stopPropagation?.();
+  if (!selectedIds.size) return;
+  if (!confirm(`Delete ${selectedIds.size} item(s)?`)) return;
+  const ops = [];
+  selectedIds.forEach(id => ops.push(deleteDoc(doc(db, 'menuItems', id))));
+  await Promise.all(ops);
+  selectedIds.clear(); updateBulkBar();
+};
+
+el("bulkPromosBulkBtn").onclick = (e) => {
+  e?.preventDefault?.(); e?.stopPropagation?.();
+  if (!selectedIds.size) return alert('Select at least one item');
+  openBulkPromosModal(e.currentTarget);
+};
+
+el("bulkAddonsBulkBtn").onclick = (e) => {
+  e?.preventDefault?.(); e?.stopPropagation?.();
+  if (!selectedIds.size) return alert('Select at least one item');
+  openBulkAddonsModal(e.currentTarget);
+};
+
 function updateBulkBar() {
   ensureBulkBar(); const n = selectedIds.size;
   const editBtn = el("bulkEditBtn"), delBtn = el("bulkDeleteBtn"), promosBtn = el("bulkPromosBulkBtn"), addonsBtn = el("bulkAddonsBulkBtn");
