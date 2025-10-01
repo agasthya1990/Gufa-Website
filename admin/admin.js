@@ -1613,47 +1613,6 @@ async function renameAddonEverywhere(oldName, newName, newPrice) {
     const updated = data.addons.map(a => {
       if (a == null) return a;
 
-      if (typeof a === 'string') {           // legacy string form
-        if (a === oldName) { changed = true; return newName; }
-        return a;
-      }
-
-      if (a.name === oldName) {              // object form
-        changed = true;
-        return {
-          ...a,
-          name: newName,
-          price: (newPrice !== undefined && newPrice !== null)
-            ? Number(newPrice)
-            : Number(a.price ?? 0),
-        };
-      }
-      return a;
-    });
-
-    if (changed) {
-      itemOps.push(updateDoc(doc(db, 'menuItems', d.id), {
-        addons: updated,
-        updatedAt: serverTimestamp(),
-      }));
-    }
-  });
-
-  await Promise.all(itemOps);
-}
-
-
-  // 2) Update all menuItems that reference this add-on
-  const itemsSnap = await getDocs(collection(db, 'menuItems'));
-  const itemOps = [];
-  itemsSnap.forEach(d => {
-    const data = d.data() || {};
-    if (!Array.isArray(data.addons)) return;
-
-    let changed = false;
-    const updated = data.addons.map(a => {
-      if (a == null) return a;
-
       // Legacy string form: ["Cheese", "Sauce"]
       if (typeof a === 'string') {
         if (a === oldName) {
