@@ -1384,7 +1384,7 @@ function openEditItemModal(id, d, triggerEl) {
     qs('#eiCancel', ov).onclick = () => closeOverlay(ov);
   }
 
-  // ⬇ Scope all queries to the modal to avoid ID collisions
+  // Scope queries to the modal container
   const eiName     = qs('#eiName', ov);
   const eiDesc     = qs('#eiDesc', ov);
   const eiQtyType  = qs('#eiQtyType', ov);
@@ -1393,7 +1393,7 @@ function openEditItemModal(id, d, triggerEl) {
   const eiFull     = qs('#eiFull', ov);
   const eiHFWrap   = qs('#eiHFWrap', ov);
 
-  // Prefill
+  // Pre-fill
   eiName.value = d.name || '';
   eiDesc.value = d.description || '';
   const qt = d?.qtyType?.type || 'Not Applicable';
@@ -1409,39 +1409,32 @@ function openEditItemModal(id, d, triggerEl) {
     eiHFWrap.style.display = 'grid';
   }
 
-  // Toggle HF vs single
-  const toggle = () => {
+  eiQtyType.onchange = () => {
     const v = eiQtyType.value;
-    const showSingle = v === 'Not Applicable';
-    const showHF = v === 'Half & Full';
-    eiItemPrice.parentElement.style.display = showSingle ? 'block' : 'none';
-    eiHFWrap.style.display = showHF ? 'grid' : 'none';
+    eiItemPrice.parentElement.style.display = v === 'Not Applicable' ? 'block' : 'none';
+    eiHFWrap.style.display = v === 'Half & Full' ? 'grid' : 'none';
   };
-  eiQtyType.onchange = toggle;
-  toggle();
 
-  // Submit
-  qs('#editForm', ov).onsubmit = async (e) => {
+  // Submit handler
+  qs('#editForm', ov).onsubmit = async e => {
     e.preventDefault();
 
-    const name = (eiName.value || '').trim();
-    const description = (eiDesc.value || '').trim();
+    const name = eiName.value.trim();
+    const description = eiDesc.value.trim();
     if (!name || !description) return alert('Name/Description required');
 
     let qtyType = {};
-    const v = eiQtyType.value;
-    if (v === 'Not Applicable') {
+    if (eiQtyType.value === 'Not Applicable') {
       const p = num(eiItemPrice.value);
       if (!Number.isFinite(p) || p <= 0) return alert('Invalid price');
-      qtyType = { type: v, itemPrice: p };
+      qtyType = { type: 'Not Applicable', itemPrice: p };
     } else {
       const h = num(eiHalf.value), f = num(eiFull.value);
       if (!Number.isFinite(h) || !Number.isFinite(f) || h <= 0 || f <= 0)
         return alert('Invalid half/full');
-      qtyType = { type: v, halfPrice: h, fullPrice: f };
+      qtyType = { type: 'Half & Full', halfPrice: h, fullPrice: f };
     }
 
-    // Image (optional)
     let imageUpdate = {};
     const file = qs('#eiImage', ov)?.files?.[0];
     if (file) {
@@ -1458,7 +1451,7 @@ function openEditItemModal(id, d, triggerEl) {
         description,
         qtyType,
         updatedAt: serverTimestamp(),
-        ...imageUpdate, // ✅ FIX: spread correctly
+        ...imageUpdate   // ✅ fixed spread
       });
       closeOverlay(ov);
     } catch (err) {
@@ -1466,6 +1459,10 @@ function openEditItemModal(id, d, triggerEl) {
       alert('Update failed: ' + (err?.message || err));
     }
   };
+
+  showOverlay(ov, triggerEl);
+}
+
 
   // Open the modal with the hardened helper
   showOverlay(ov, triggerEl);
