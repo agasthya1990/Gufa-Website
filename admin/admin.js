@@ -550,7 +550,7 @@ function renderTable() {
       </td>
  <td>
   <button type="button" class="promoBtn" data-id="${id}">Promotions</button>
-  <button type="button" class="addonBtn" data-id="${id}">Add-On</button>
+  <button type="button" class="addonBtn" data-id="${id}">Add-ons</button>
   <button type="button" class="editBtn"  data-id="${id}">Edit</button>
   <button type="button" class="deleteBtn" data-id="${id}">Delete</button>
 </td>
@@ -561,11 +561,32 @@ function renderTable() {
   // Row checkbox
   qsa(".rowSelect").forEach(cb => cb.onchange = (e) => { const id = e.target.dataset.id; if (e.target.checked) selectedIds.add(id); else selectedIds.delete(id); updateBulkBar(); syncSelectAllHeader(items); });
 
-  // Stock toggle
-  qsa(".stockToggle").forEach(el => el.onchange = async (e) => { const id = e.target.dataset.id; const val = e.target.value === 'true'; try { await updateDoc(doc(db, 'menuItems', id), { inStock: val, updatedAt: serverTimestamp() }); } catch(err) { console.error(err); alert('Failed to update stock'); }});
+    // Stock toggle
+  qsa(".stockToggle").forEach(el => el.onchange = async (e) => {
+    const id = e.target.dataset.id; const val = e.target.value === 'true';
+    try { await updateDoc(doc(db, 'menuItems', id), { inStock: val, updatedAt: serverTimestamp() }); }
+    catch(err) { console.error(err); alert('Failed to update stock'); }
+  });
 
-// Delete, Edit, Add-ons, Promotions - Revised Buttons
-   
+} // ← close renderTable() here
+
+function syncSelectAllHeader(itemsRendered) {
+  const cb = el("selectAll"); if (!cb) return;
+  if (!itemsRendered.length) {
+    cb.checked = false;
+    cb.indeterminate = false;
+    return;
+  }
+  const total = itemsRendered.length;
+  let selected = 0;
+  for (const { id } of itemsRendered) {
+    if (selectedIds.has(id)) selected++;
+  }
+  cb.checked = (selected === total);
+  cb.indeterminate = (selected > 0 && selected < total);
+}
+
+
 // Delegated row-actions handler (survives re-renders)
 if (menuBody && !menuBody._delegated) {
   menuBody._delegated = true;
@@ -946,13 +967,14 @@ async function openAssignPromotionsModal(itemId, currentIds = [], triggerEl) {
   const sel = el('ppSelect');
   sel.innerHTML = '';
   const rows = [];
-  if (Object.keys(PROMOS_BY_ID).length) {
-    for (const [id, p] of Object.entries(PROMOS_BY_ID)) {
-      const typeTxt = p.type === 'percent' ? `${p.value}% off` : `₹${p.value} off`;
-      const chan = p.channel === 'dining' ? 'Dining' : 'Delivery';
-      rows.push({ id, label: `${p.code || '(no code)'} • ${chan} • ${typeTxt}` });
-    }
-     
+if (Object.keys(PROMOS_BY_ID).length) {
+  for (const [id, p] of Object.entries(PROMOS_BY_ID)) {
+    if (p?.kind !== 'coupon') continue;
+    const typeTxt = p.type === 'percent' ? `${p.value}% off` : `₹${p.value} off`;
+    const chan = p.channel === 'dining' ? 'Dining' : 'Delivery';
+    rows.push({ id, label: `${p.code || '(no code)'} • ${chan} • ${typeTxt}` });
+  }
+
  } else {
   const snap = await getDocs(collection(db, 'promotions'));
   snap.forEach(d => {
@@ -1215,7 +1237,6 @@ catPanel.innerHTML = categories
      setTimeout(() => {
   catPanel.style.display = 'none';
   document.removeEventListener('mousedown', close);
-  unlockBodyScroll();
 }, 160);
     }
   };
@@ -1233,7 +1254,6 @@ catPanel.innerHTML = categories
     setHiddenValue(categoryDropdown, oldName);
     catBtn.textContent = `${oldName} ▾`;
     catPanel.style.display = 'none';
-    unlockBodyScroll();
     return;
   }
 
@@ -1242,6 +1262,7 @@ catPanel.innerHTML = categories
     if (!labelEl) return;
     const cur = labelEl.textContent;
     labelEl.innerHTML = `<input type="text" class="adm-input" value="${cur}" style="min-width:160px" />`;
+    row.classList.add('is-editing');
     row.querySelector('[data-role="edit"]').style.display = 'none';
     row.querySelector('[data-role="delete"]').style.display = 'none';
 const saveBtn = document.createElement('span');
@@ -1263,15 +1284,17 @@ row.appendChild(cancelBtn);
 
     return;
   }
-  if (role === 'cancel') {
-    const input = row.querySelector('input.adm-input'); const val = input ? input.value : oldName;
-    const labelEl = row.querySelector('[data-role="label"]'); if (labelEl) labelEl.textContent = val;
-    row.querySelector('[data-role="edit"]').style.display = '';
-    row.querySelector('[data-role="delete"]').style.display = '';
-    row.querySelector('[data-role="save"]')?.remove();
-    row.querySelector('[data-role="cancel"]')?.remove();
-    return;
-  }
+if (role === 'cancel') {
+  const labelEl = row.querySelector('[data-role="label"]');
+  if (labelEl) labelEl.textContent = oldName;   // always revert
+  row.classList.remove('is-editing');
+  row.querySelector('[data-role="edit"]').style.display = '';
+  row.querySelector('[data-role="delete"]').style.display = '';
+  row.querySelector('[data-role="save"]')?.remove();
+  row.querySelector('[data-role="cancel"]')?.remove();
+  return;
+}
+
   if (role === 'save') {
     const input = row.querySelector('input.adm-input'); const newName = (input?.value || '').trim();
     if (!newName) return alert('Category name cannot be empty');
