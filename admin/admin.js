@@ -1347,6 +1347,7 @@ console.log("[DEBUG] bulkPromosModal open done");
    ========================= */
 function openEditItemModal(id, d, triggerEl) {
   ensureModalStyles();
+
   let ov = el('editItemModal');
   if (!ov) {
     ov = document.createElement('div');
@@ -1364,7 +1365,7 @@ function openEditItemModal(id, d, triggerEl) {
               <option value="Half & Full">Half & Full</option>
             </select>
             <input id="eiItemPrice" type="number" placeholder="Price (if Not Applicable)"/>
-            <div style="display:grid; gap:8px; grid-template-columns:1fr 1fr">
+            <div id="eiHFWrap" style="display:grid; gap:8px; grid-template-columns:1fr 1fr">
               <input id="eiHalf" type="number" placeholder="Half Price"/>
               <input id="eiFull" type="number" placeholder="Full Price"/>
             </div>
@@ -1383,65 +1384,72 @@ function openEditItemModal(id, d, triggerEl) {
     qs('#eiCancel', ov).onclick = () => closeOverlay(ov);
   }
 
-  const eiName = el('eiName');
-  const eiDesc = el('eiDesc');
-  const eiQtyType = el('eiQtyType');
-  const eiItemPrice = el('eiItemPrice');
-  const eiHalf = el('eiHalf');
-  const eiFull = el('eiFull');
+  // ⬇ Scope all queries to the modal to avoid ID collisions
+  const eiName     = qs('#eiName', ov);
+  const eiDesc     = qs('#eiDesc', ov);
+  const eiQtyType  = qs('#eiQtyType', ov);
+  const eiItemPrice= qs('#eiItemPrice', ov);
+  const eiHalf     = qs('#eiHalf', ov);
+  const eiFull     = qs('#eiFull', ov);
+  const eiHFWrap   = qs('#eiHFWrap', ov);
 
+  // Prefill
   eiName.value = d.name || '';
   eiDesc.value = d.description || '';
-  const qt = d.qtyType?.type || 'Not Applicable';
+  const qt = d?.qtyType?.type || 'Not Applicable';
   eiQtyType.value = qt;
+
   if (qt === 'Not Applicable') {
-    eiItemPrice.value = d.qtyType?.itemPrice || '';
-    eiHalf.value = '';
-    eiFull.value = '';
+    eiItemPrice.value = d?.qtyType?.itemPrice ?? '';
+    eiHFWrap.style.display = 'none';
   } else {
     eiItemPrice.value = '';
-    eiHalf.value = d.qtyType?.halfPrice || '';
-    eiFull.value = d.qtyType?.fullPrice || '';
+    eiHalf.value = d?.qtyType?.halfPrice ?? '';
+    eiFull.value = d?.qtyType?.fullPrice ?? '';
+    eiHFWrap.style.display = 'grid';
   }
 
+  // Toggle HF vs single
   const toggle = () => {
     const v = eiQtyType.value;
     const showSingle = v === 'Not Applicable';
     const showHF = v === 'Half & Full';
     eiItemPrice.parentElement.style.display = showSingle ? 'block' : 'none';
-    eiHalf.parentElement.parentElement.style.display = showHF ? 'grid' : 'none';
+    eiHFWrap.style.display = showHF ? 'grid' : 'none';
   };
   eiQtyType.onchange = toggle;
   toggle();
 
-  qs('#editForm', ov).onsubmit = async e => {
+  // Submit
+  qs('#editForm', ov).onsubmit = async (e) => {
     e.preventDefault();
-    const name = eiName.value.trim();
-    const description = eiDesc.value.trim();
+
+    const name = (eiName.value || '').trim();
+    const description = (eiDesc.value || '').trim();
     if (!name || !description) return alert('Name/Description required');
 
-    const v = eiQtyType.value;
     let qtyType = {};
+    const v = eiQtyType.value;
     if (v === 'Not Applicable') {
       const p = num(eiItemPrice.value);
       if (!Number.isFinite(p) || p <= 0) return alert('Invalid price');
       qtyType = { type: v, itemPrice: p };
     } else {
-      const h = num(eiHalf.value),
-        f = num(eiFull.value);
+      const h = num(eiHalf.value), f = num(eiFull.value);
       if (!Number.isFinite(h) || !Number.isFinite(f) || h <= 0 || f <= 0)
         return alert('Invalid half/full');
       qtyType = { type: v, halfPrice: h, fullPrice: f };
     }
 
+    // Image (optional)
     let imageUpdate = {};
-    const file = el('eiImage')?.files?.[0];
+    const file = qs('#eiImage', ov)?.files?.[0];
     if (file) {
       const resized = await resizeImage(file);
       const imageRef = ref(storage, `menuImages/${Date.now()}_${file.name}`);
       await uploadBytes(imageRef, resized);
       const url = await getDownloadURL(imageRef);
-      imageUpdate.imageUrl = url;
+      imageUpdate = { imageUrl: url };
     }
 
     try {
@@ -1450,7 +1458,7 @@ function openEditItemModal(id, d, triggerEl) {
         description,
         qtyType,
         updatedAt: serverTimestamp(),
-        ...imageUpdate,
+        ...imageUpdate, // ✅ FIX: spread correctly
       });
       closeOverlay(ov);
     } catch (err) {
@@ -1459,8 +1467,8 @@ function openEditItemModal(id, d, triggerEl) {
     }
   };
 
-showOverlay(ov, triggerEl);
-
+  // Open the modal with the hardened helper
+  showOverlay(ov, triggerEl);
 }
 
 /* =========================
