@@ -597,7 +597,7 @@ qsa(".promoBtn").forEach(btn => btn.onclick = async (e) => {
   if (!snap.exists()) return alert('Item not found');
   openAssignPromotionsModal(id, Array.isArray(snap.data().promotions) ? snap.data().promotions : [], btn);
 });
-
+}
 
 function syncSelectAllHeader(itemsRendered) {
   const cb = el("selectAll"); if (!cb) return;
@@ -611,54 +611,66 @@ function syncSelectAllHeader(itemsRendered) {
    ========================= */
    
 function ensureBulkBar() {
-  if (el("bulkBar")) return; const bar = document.createElement("div"); bar.id = "bulkBar"; bar.className = "adm-toolbar";
+  if (el("bulkBar")) return;
+  const bar = document.createElement("div");
+  bar.id = "bulkBar";
+  bar.className = "adm-toolbar";
   bar.innerHTML = `
     <button id="bulkEditBtn" type="button" disabled>Edit Selected (0)</button>
     <button id="bulkDeleteBtn" type="button" disabled>Delete Selected (0)</button>
     <button id="bulkPromosBulkBtn" type="button" disabled>Bulk Promotions</button>
     <button id="bulkAddonsBulkBtn" type="button" disabled>Bulk Add-ons</button>`;
-  const table = el("menuTable"); if (table && table.parentNode) table.parentNode.insertBefore(bar, table);
+  const table = el("menuTable");
+  if (table && table.parentNode) table.parentNode.insertBefore(bar, table);
 
- el("bulkEditBtn").onclick = (e) => {
-  e?.preventDefault?.(); e?.stopPropagation?.();
-  if (!selectedIds.size) return alert('Select at least one item');
-  try { openBulkEditModal(e.currentTarget); }
-  catch (err) {
-    console.error("[BulkEdit] open failed:", err?.message || err, err);
-    alert("Could not open Bulk Edit: " + (err?.message || err));
-  }
-};
+  el("bulkEditBtn").onclick = (e) => {
+    e?.preventDefault?.(); e?.stopPropagation?.();
+    if (!selectedIds.size) return alert('Select at least one item');
+    try { openBulkEditModal(e.currentTarget); }
+    catch (err) {
+      console.error("[BulkEdit] open failed:", err?.message || err, err);
+      alert("Could not open Bulk Edit: " + (err?.message || err));
+    }
+  };
 
-el("bulkDeleteBtn").onclick = async (e) => {
-  e?.preventDefault?.(); e?.stopPropagation?.();
-  if (!selectedIds.size) return;
-  if (!confirm(`Delete ${selectedIds.size} item(s)?`)) return;
-  const ops = [];
-  selectedIds.forEach(id => ops.push(deleteDoc(doc(db, 'menuItems', id))));
-  await Promise.all(ops);
-  selectedIds.clear(); updateBulkBar();
-};
+  el("bulkDeleteBtn").onclick = async (e) => {
+    e?.preventDefault?.(); e?.stopPropagation?.();
+    if (!selectedIds.size) return;
+    if (!confirm(`Delete ${selectedIds.size} item(s)?`)) return;
+    const ops = [];
+    selectedIds.forEach(id => ops.push(deleteDoc(doc(db, 'menuItems', id))));
+    await Promise.all(ops);
+    selectedIds.clear();
+    updateBulkBar();
+  };
 
-el("bulkPromosBulkBtn").onclick = (e) => {
-  e?.preventDefault?.(); e?.stopPropagation?.();
-  if (!selectedIds.size) return alert('Select at least one item');
-  openBulkPromosModal(e.currentTarget);
-};
+  el("bulkPromosBulkBtn").onclick = (e) => {
+    e?.preventDefault?.(); e?.stopPropagation?.();
+    if (!selectedIds.size) return alert('Select at least one item');
+    openBulkPromosModal(e.currentTarget);
+  };
 
-el("bulkAddonsBulkBtn").onclick = (e) => {
-  e?.preventDefault?.(); e?.stopPropagation?.();
-  if (!selectedIds.size) return alert('Select at least one item');
-  openBulkAddonsModal(e.currentTarget);
-};
+  el("bulkAddonsBulkBtn").onclick = (e) => {
+    e?.preventDefault?.(); e?.stopPropagation?.();
+    if (!selectedIds.size) return alert('Select at least one item');
+    openBulkAddonsModal(e.currentTarget);
+  };
+} // ← close ensureBulkBar()
 
+// Top-level so other code can call it safely
 function updateBulkBar() {
-  ensureBulkBar(); const n = selectedIds.size;
-  const editBtn = el("bulkEditBtn"), delBtn = el("bulkDeleteBtn"), promosBtn = el("bulkPromosBulkBtn"), addonsBtn = el("bulkAddonsBulkBtn");
+  ensureBulkBar();
+  const n = selectedIds.size;
+  const editBtn  = el("bulkEditBtn");
+  const delBtn   = el("bulkDeleteBtn");
+  const promosBtn= el("bulkPromosBulkBtn");
+  const addonsBtn= el("bulkAddonsBulkBtn");
   if (editBtn)  { editBtn.textContent = `Edit Selected (${n})`;   editBtn.disabled = n===0; }
   if (delBtn)   { delBtn.textContent  = `Delete Selected (${n})`; delBtn.disabled  = n===0; }
   if (promosBtn){ promosBtn.disabled  = n===0; }
   if (addonsBtn){ addonsBtn.disabled  = n===0; }
 }
+
 
 /* =========================
    Overlays (modals) — open/close helpers
