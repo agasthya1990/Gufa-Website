@@ -1500,7 +1500,8 @@ if (open) {
   };
   document.addEventListener('mousedown', close);
 }
-
+};
+   
   catPanel.onclick = async e => {
   const row = e.target.closest('.adm-list-row');
   if (!row) return;
