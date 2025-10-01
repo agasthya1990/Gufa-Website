@@ -548,13 +548,13 @@ function renderTable() {
           <option value="false" ${!d.inStock ? 'selected' : ''}>Out of Stock</option>
         </select>
       </td>
-      <td>
-      <button type="button" class="promoBtn" data-id="${id}">Promotions</button>
-      <button type="button" class="addonBtn" data-id="${id}">Add-On</button>
-      <button type="button" class="editBtn" data-id="${id}">Edit</button>
-      <button type="button" class="deleteBtn" data-id="${id}">Delete</button>
+ <td>
+  <button type="button" class="promoBtn" data-id="${id}">Promotions</button>
+  <button type="button" class="addonBtn" data-id="${id}">Add-On</button>
+  <button type="button" class="editBtn"  data-id="${id}">Edit</button>
+  <button type="button" class="deleteBtn" data-id="${id}">Delete</button>
+</td>
 
-      </td>`;
     menuBody.appendChild(tr);
   });
 
@@ -566,44 +566,56 @@ function renderTable() {
 
 // Delete, Edit, Add-ons, Promotions - Revised Buttons
    
-qsa(".deleteBtn").forEach(btn => btn.onclick = async (e) => {
-  e?.preventDefault?.(); e?.stopPropagation?.();
-  const id = btn.dataset.id;
-  if (!confirm('Delete this item?')) return;
-  try { await deleteDoc(doc(db, 'menuItems', id)); selectedIds.delete(id); updateBulkBar(); }
-  catch (err) { console.error(err); alert('Delete failed'); }
-});
+// Delegated row-actions handler (survives re-renders)
+if (menuBody && !menuBody._delegated) {
+  menuBody._delegated = true;
+  menuBody.addEventListener('click', async (e) => {
+    const btn = e.target.closest('button');
+    if (!btn) return;
+    const id = btn.dataset.id;
+    if (!id) return;
 
-qsa(".editBtn").forEach(btn => btn.onclick = async (e) => {
-  e?.preventDefault?.(); e?.stopPropagation?.();
-  const id = btn.dataset.id;
-  const snap = await getDoc(doc(db, 'menuItems', id));
-  if (!snap.exists()) return alert('Item not found');
-  openEditItemModal(id, snap.data(), btn);
-});
+    e.preventDefault(); e.stopPropagation();
 
-qsa(".addonBtn").forEach(btn => btn.onclick = async (e) => {
-  e?.preventDefault?.(); e?.stopPropagation?.();
-  const id = btn.dataset.id;
-  const snap = await getDoc(doc(db, 'menuItems', id));
-  if (!snap.exists()) return alert('Item not found');
-  openAssignAddonsModal(id, Array.isArray(snap.data().addons) ? snap.data().addons : [], btn);
-});
+    try {
+      if (btn.classList.contains('deleteBtn')) {
+        if (!confirm('Delete this item?')) return;
+        await deleteDoc(doc(db, 'menuItems', id));
+        selectedIds.delete(id);
+        updateBulkBar();
+        return;
+      }
 
-qsa(".promoBtn").forEach(btn => btn.onclick = async (e) => {
-  e?.preventDefault?.(); e?.stopPropagation?.();
-  const id = btn.dataset.id;
-  const snap = await getDoc(doc(db, 'menuItems', id));
-  if (!snap.exists()) return alert('Item not found');
-  openAssignPromotionsModal(id, Array.isArray(snap.data().promotions) ? snap.data().promotions : [], btn);
-});
-}
+      if (btn.classList.contains('editBtn')) {
+        const snap = await getDoc(doc(db, 'menuItems', id));
+        if (!snap.exists()) return alert('Item not found');
+        return openEditItemModal(id, snap.data(), btn);
+      }
 
-function syncSelectAllHeader(itemsRendered) {
-  const cb = el("selectAll"); if (!cb) return;
-  if (!itemsRendered.length) { cb.checked = false; cb.indeterminate = false; return; }
-  const total = itemsRendered.length; let selected = 0; for (const { id } of itemsRendered) if (selectedIds.has(id)) selected++;
-  cb.checked = selected === total; cb.indeterminate = selected > 0 && selected < total;
+      if (btn.classList.contains('addonBtn')) {
+        const snap = await getDoc(doc(db, 'menuItems', id));
+        if (!snap.exists()) return alert('Item not found');
+        return openAssignAddonsModal(
+          id,
+          Array.isArray(snap.data().addons) ? snap.data().addons : [],
+          btn
+        );
+      }
+
+      if (btn.classList.contains('promoBtn')) {
+        const snap = await getDoc(doc(db, 'menuItems', id));
+        if (!snap.exists()) return alert('Item not found');
+        return openAssignPromotionsModal(
+          id,
+          Array.isArray(snap.data().promotions) ? snap.data().promotions : [],
+          btn
+        );
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Action failed: ' + (err?.message || err));
+    }
+  });
 }
 
 /* =========================
@@ -616,10 +628,10 @@ function ensureBulkBar() {
   bar.id = "bulkBar";
   bar.className = "adm-toolbar";
   bar.innerHTML = `
-    <button id="bulkEditBtn" type="button" disabled>Edit Selected (0)</button>
-    <button id="bulkDeleteBtn" type="button" disabled>Delete Selected (0)</button>
-    <button id="bulkPromosBulkBtn" type="button" disabled>Bulk Promotions</button>
-    <button id="bulkAddonsBulkBtn" type="button" disabled>Bulk Add-ons</button>`;
+  <button id="bulkEditBtn"       type="button" disabled>Edit Selected (0)</button>
+  <button id="bulkDeleteBtn"     type="button" disabled>Delete Selected (0)</button>
+  <button id="bulkPromosBulkBtn" type="button" disabled>Bulk Promotions</button>
+  <button id="bulkAddonsBulkBtn" type="button" disabled>Bulk Add-ons</button>`;
   const table = el("menuTable");
   if (table && table.parentNode) table.parentNode.insertBefore(bar, table);
 
@@ -1591,6 +1603,7 @@ function bootAdminUI(){
 
   if (document.getElementById("menuTable")) {
     ensureBulkBar();
+    updateBulkBar(); // ← add this line
   }
 
   if (document.getElementById("categoryDropdownBtn")) renderCustomCategoryDropdown();
