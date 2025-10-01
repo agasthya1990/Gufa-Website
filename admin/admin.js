@@ -554,7 +554,7 @@ function renderTable() {
   <button type="button" class="editBtn"  data-id="${id}">Edit</button>
   <button type="button" class="deleteBtn" data-id="${id}">Delete</button>
 </td>
-
+ </tr>`;
     menuBody.appendChild(tr);
   });
 
