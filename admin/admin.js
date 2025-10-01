@@ -1446,21 +1446,17 @@ function openEditItemModal(id, d, triggerEl) {
     }
 
     try {
-      await updateDoc(doc(db, 'menuItems', id), {
-        name,
-        description,
-        qtyType,
-        updatedAt: serverTimestamp(),
-        ...imageUpdate   // ✅ fixed spread
-      });
-      closeOverlay(ov);
-    } catch (err) {
-      console.error(err);
-      alert('Update failed: ' + (err?.message || err));
-    }
-  };
-
-  showOverlay(ov, triggerEl);
+  await updateDoc(doc(db, 'menuItems', id), {
+    name,
+    description,
+    qtyType,
+    updatedAt: serverTimestamp(),
+    ...imageUpdate   // ✅ fixed: spread operator, not a dot
+  });
+  closeOverlay(ov);
+} catch (err) {
+  console.error(err);
+  alert('Update failed: ' + (err?.message || err));
 }
 
 
