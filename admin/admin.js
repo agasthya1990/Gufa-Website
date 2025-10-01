@@ -1154,8 +1154,9 @@ catPanel.innerHTML = categories
 }, 160);
     }
   };
-  document.addEventListener('mousedown', close);
-}
+   document.addEventListener('mousedown', close);
+  }
+};
 
   catPanel.onclick = async e => {
   const row = e.target.closest('.adm-list-row');
@@ -1416,107 +1417,95 @@ async function renderCustomAddonDropdown() {
   const addons = await fetchAddons();
   const selected = new Set(Array.from(addonsSelect?.selectedOptions || []).map(o => o.value));
 
-  // Uniform, subtle row: checkbox + label + inline icons
-  addonPanel.innerHTML = addons
-    .map(a => `
-      <div class="adm-list-row" data-name="${a.name}" data-price="${a.price}">
-        <label style="display:flex; gap:8px; align-items:center; margin:0; flex:1;">
-          <input type="checkbox" value="${a.name}" ${selected.has(a.name) ? 'checked' : ''}/>
-          <span class="_name" data-role="label">${a.name} (₹${a.price})</span>
-        </label>
-        <span class="adm-icon" data-role="edit"   aria-label="Edit"   title="Edit">🖉</span>
-        <span class="adm-icon" data-role="delete" aria-label="Delete" title="Delete">🗑</span>
-      </div>`)
-    .join('');
+  addonPanel.innerHTML = addons.map(a => `
+    <div class="adm-list-row" data-name="${a.name}" data-price="${a.price}">
+      <label style="display:flex; gap:8px; align-items:center; margin:0; flex:1;">
+        <input type="checkbox" value="${a.name}" ${selected.has(a.name) ? 'checked' : ''}/>
+        <span class="_name" data-role="label">${a.name} (₹${a.price})</span>
+      </label>
+      <span class="adm-icon" data-role="edit"   aria-label="Edit"   title="Edit">🖉</span>
+      <span class="adm-icon" data-role="delete" aria-label="Delete" title="Delete">🗑</span>
+    </div>`).join('');
 
-  // Open/close popover
-// Open/close popover (NO body scroll lock here)
-addonBtn.onclick = (e) => {
-  e.stopPropagation();
-  ensureModalStyles();
-  const open = addonPanel.style.display !== "block";
-  addonPanel.style.display = open ? "block" : "none";
-  setGenieFrom(addonBtn, addonPanel, addonPanel);
-  if (open) {
-    addonPanel.classList.remove("adm-anim-out");
-    addonPanel.classList.add("adm-anim-in");
-    const close = (ev) => {
-      if (!addonPanel.contains(ev.target) && ev.target !== addonBtn) {
-        addonPanel.classList.remove("adm-anim-in");
-        addonPanel.classList.add("adm-anim-out");
-        setTimeout(() => {
-          addonPanel.style.display = "none";
-          document.removeEventListener("mousedown", close);
-        }, 160);
-      }
-    };
-    document.addEventListener("mousedown", close);
-  }
-};
+  // Open/close popover (NO body scroll lock here)
+  addonBtn.onclick = (e) => {
+    e.stopPropagation();
+    ensureModalStyles();
+    const open = addonPanel.style.display !== "block";
+    addonPanel.style.display = open ? "block" : "none";
+    setGenieFrom(addonBtn, addonPanel, addonPanel);
+    if (open) {
+      addonPanel.classList.remove("adm-anim-out");
+      addonPanel.classList.add("adm-anim-in");
+      const close = (ev) => {
+        if (!addonPanel.contains(ev.target) && ev.target !== addonBtn) {
+          addonPanel.classList.remove("adm-anim-in");
+          addonPanel.classList.add("adm-anim-out");
+          setTimeout(() => {
+            addonPanel.style.display = "none";
+            document.removeEventListener("mousedown", close);
+          }, 160);
+        }
+      };
+      document.addEventListener("mousedown", close);
+    }
+  };
 
-  // Checkbox → selection sync (fixes earlier `.addonPanel` typo)
+  // Checkbox → selection sync
   addonPanel.onchange = () => {
     const values = Array.from(addonPanel.querySelectorAll('input[type="checkbox"]:checked')).map(i => i.value);
     setMultiHiddenValue(addonsSelect, values);
     updateAddonBtnLabel();
   };
 
-  // Single delegated click handler (no duplicates)
+  // Delegated row actions
   addonPanel.onclick = async e => {
     const row = e.target.closest('.adm-list-row');
     if (!row) return;
     const role = e.target.getAttribute('data-role');
 
-    // Inline edit UI: input + ✓ (Save) + ✕ (Cancel)
-     
     if (role === 'edit') {
-  row.classList.add('is-editing');
-  const oldName = row.getAttribute('data-name');
-  const oldPrice = Number(row.getAttribute('data-price') || 0);
+      row.classList.add('is-editing');
+      const oldName = row.getAttribute('data-name');
+      const oldPrice = Number(row.getAttribute('data-price') || 0);
+      row.innerHTML = `
+        <div style="display:flex; align-items:center; gap:8px; width:100%;">
+          <input class="addon-edit-name" type="text" value="${oldName}" style="flex:1; min-width:120px;">
+          <input class="addon-edit-price" type="number" step="1" min="0" value="${oldPrice}" style="width:110px;">
+          <span class="adm-icon" data-role="save"   aria-label="Save"   title="Save">✓</span>
+          <span class="adm-icon" data-role="cancel" aria-label="Cancel" title="Cancel">✕</span>
+        </div>`;
 
-  row.innerHTML = `
-    <div style="display:flex; align-items:center; gap:8px; width:100%;">
-      <input class="addon-edit-name" type="text" value="${oldName}" style="flex:1; min-width:120px;">
-      <input class="addon-edit-price" type="number" step="1" min="0" value="${oldPrice}" style="width:110px;">
-      <span class="adm-icon" data-role="save"   aria-label="Save"   title="Save">✓</span>
-      <span class="adm-icon" data-role="cancel" aria-label="Cancel" title="Cancel">✕</span>
-    </div>`;
+      row.querySelector('[data-role="save"]').onclick = async () => {
+        const nameEl  = row.querySelector('.addon-edit-name');
+        const priceEl = row.querySelector('.addon-edit-price');
+        const newName  = (nameEl?.value || '').trim();
+        const newPrice = Number(priceEl?.value || 0);
+        if (!newName) return alert('Enter a valid name');
+        if (!Number.isFinite(newPrice) || newPrice < 0) return alert('Enter a valid price');
 
-  // Save handler
-  row.querySelector('[data-role="save"]').onclick = async () => {
-    const nameEl  = row.querySelector('.addon-edit-name');
-    const priceEl = row.querySelector('.addon-edit-price');
-    const newName  = (nameEl?.value || '').trim();
-    const newPrice = Number(priceEl?.value || 0);
+        try {
+          await renameAddonEverywhere(oldName, newName, newPrice);
+          const selected = new Set(Array.from(addonsSelect?.selectedOptions || []).map(o => o.value));
+          if (selected.has(oldName)) { selected.delete(oldName); selected.add(newName); }
+          await loadAddons(addonsSelect);
+          setMultiHiddenValue(addonsSelect, Array.from(selected));
+          await renderCustomAddonDropdown();
+          updateAddonBtnLabel();
+        } catch (err) {
+          console.error(err);
+          alert('Rename failed: ' + (err?.message || err));
+          await renderCustomAddonDropdown();
+          row.classList.remove('is-editing');
+        }
+      };
 
-    if (!newName) return alert('Enter a valid name');
-    if (!Number.isFinite(newPrice) || newPrice < 0) return alert('Enter a valid price');
+      row.querySelector('[data-role="cancel"]').onclick = () => {
+        renderCustomAddonDropdown();
+      };
+      return;
+    }
 
-    try {
-      await renameAddonEverywhere(oldName, newName, newPrice);
-      const selected = new Set(Array.from(addonsSelect?.selectedOptions || []).map(o => o.value));
-      if (selected.has(oldName)) { selected.delete(oldName); selected.add(newName); }
-      await loadAddons(addonsSelect);
-      setMultiHiddenValue(addonsSelect, Array.from(selected));
-      await renderCustomAddonDropdown();
-      updateAddonBtnLabel();
-  } catch (err) {
-  console.error(err);
-  alert('Rename failed: ' + (err?.message || err));
-  await renderCustomAddonDropdown();
-  row.classList.remove('is-editing');
-}
- };
-
-  // Cancel handler
-  row.querySelector('[data-role="cancel"]').onclick = () => {
-    renderCustomAddonDropdown();
-  };
-
-  return;
-}
-
-    // Delete
     if (role === 'delete') {
       const name = row.getAttribute('data-name');
       if (!confirm(`Delete add-on "${name}"?\n(Items will NOT be deleted; the add-on will be removed from them.)`)) return;
@@ -1535,26 +1524,33 @@ addonBtn.onclick = (e) => {
       return;
     }
   };
-}
+
+  // ensure trigger label matches selection
   updateAddonBtnLabel();
 }
 
-/* =========================
-   Boot: ensure styles, bulk bar, and render optional popovers
-   ========================= */
 
-// 1) Always inject modal styles (idempotent)
-ensureModalStyles();
+function bootAdminUI(){
+  if (window.__ADMIN_BOOTED__) return;
+  window.__ADMIN_BOOTED__ = true;
 
-// 2) Only create the bulk bar/table controls if the table exists
-if (document.getElementById("menuTable")) {
-  ensureBulkBar();
+  ensureModalStyles();
+
+  if (document.getElementById("menuTable")) {
+    ensureBulkBar();
+  }
+
+  if (document.getElementById("categoryDropdownBtn")) renderCustomCategoryDropdown();
+  if (document.getElementById("courseDropdownBtn"))   renderCustomCourseDropdown();
+  if (document.getElementById("addonDropdownBtn"))    renderCustomAddonDropdown();
 }
 
-// 3) Only render popovers if their triggers are present
-if (document.getElementById("categoryDropdownBtn")) renderCustomCategoryDropdown();
-if (document.getElementById("courseDropdownBtn"))   renderCustomCourseDropdown();
-if (document.getElementById("addonDropdownBtn"))    renderCustomAddonDropdown();
+// Run once, after DOM is ready if needed
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', bootAdminUI, { once: true });
+} else {
+  bootAdminUI();
+}
 
 // --- Helper: delete an add-on everywhere (master list + all menu items) ---
 async function deleteAddonEverywhere(name) {
