@@ -1543,12 +1543,15 @@ addonBtn.onclick = (e) => {
    Boot: ensure styles, bulk bar, and render optional popovers
    ========================= */
 
+// 1) Always inject modal styles (idempotent)
 ensureModalStyles();
-// Only create the bulk bar/table controls if the table exists on this page
+
+// 2) Only create the bulk bar/table controls if the table exists
 if (document.getElementById("menuTable")) {
   ensureBulkBar();
 }
-// Only render popovers if their triggers are present
+
+// 3) Only render popovers if their triggers are present
 if (document.getElementById("categoryDropdownBtn")) renderCustomCategoryDropdown();
 if (document.getElementById("courseDropdownBtn"))   renderCustomCourseDropdown();
 if (document.getElementById("addonDropdownBtn"))    renderCustomAddonDropdown();
