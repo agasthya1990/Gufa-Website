@@ -67,18 +67,6 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
 
 // ===== Debug flags (flip to false for production) =====
-const DEBUG = true;
-
-// If you flip DEBUG to false, these lines will no-op console chatter (safe, reversible)
-if (!DEBUG) {
-  // keep console.error visible, mute the rest
-  console.log = () => {};
-  console.debug = () => {};
-  console.info = () => {};
-  console.warn = () => {};
-}
-
-// ===== Debug flags (flip to false for production) =====
 const DEBUG = true;          // master switch
 const DEBUG_OVERLAYS = true; // fine-grained (optional)
 const DEBUG_BULK = true;     // fine-grained (optional)
