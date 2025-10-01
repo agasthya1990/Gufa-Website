@@ -1731,3 +1731,16 @@ async function renameAddonEverywhere(oldName, newName, newPrice) {
 
   await Promise.all(itemOps);
 }
+// --- Surgical placeholder modals for row actions ---
+
+function openEditItemModal(id, data, triggerEl) {
+  alert(`Edit Item clicked for: ${id}`);
+}
+
+function openAssignAddonsModal(id, currentAddons = [], triggerEl) {
+  alert(`Assign Add-ons clicked for: ${id}`);
+}
+
+function openAssignPromotionsModal(id, currentPromos = [], triggerEl) {
+  alert(`Assign Promotions clicked for: ${id}`);
+}
