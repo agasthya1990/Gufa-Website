@@ -1734,13 +1734,19 @@ async function renameAddonEverywhere(oldName, newName, newPrice) {
 // --- Surgical placeholder modals for row actions ---
 
 function openEditItemModal(id, data, triggerEl) {
-  alert(`Edit Item clicked for: ${id}`);
+console.log("✅ openEditItemModal triggered for:", id);
+ensureModalStyles();
+alert(`Edit Item clicked for: ${id}`);
 }
 
 function openAssignAddonsModal(id, currentAddons = [], triggerEl) {
+  console.log("✅ openAssignAddonsModal triggered for:", id);
+  ensureModalStyles();
   alert(`Assign Add-ons clicked for: ${id}`);
 }
 
 function openAssignPromotionsModal(id, currentPromos = [], triggerEl) {
+  console.log("✅ openAssignPromotionsModal triggered for:", id);
+  ensureModalStyles();
   alert(`Assign Promotions clicked for: ${id}`);
 }
