@@ -176,14 +176,19 @@
 
       <h3>Search & Filters</h3>
       <div class="adm-card adm-row">
-        <input type="text" id="searchInput" class="adm-input adm-grow" autocomplete="off" placeholder="Search by name, description, category..." />
-        <select id="filterCategory" class="adm-select"><option value="">All Categories</option></select>
-        <select id="filterCourse" class="adm-select"><option value="">All Courses</option></select>
-        <select id="filterType" class="adm-select">
-          <option value="">All Types</option>
-          <option value="Veg">Veg</option>
-          <option value="Non-Veg">Non-Veg</option>
-        </select>
+        <input type="text" id="searchInput" name="searchInput" aria-label="Search menu items"
+       class="adm-input" placeholder="Search by name, description, category..." />
+        <select id="filterCategory" name="filterCategory" aria-label="Filter by category"
+        class="adm-select"><option value="">All Categories</option></select>
+        <select id="filterCourse" name="filterCourse" aria-label="Filter by course"
+        class="adm-select"><option value="">All Courses</option></select>
+
+        <select id="filterType" name="filterType" aria-label="Filter by type"
+         class="adm-select">
+         <option value="">All Types</option>
+         <option value="Veg">Veg</option>
+         <option value="Non-Veg">Non-Veg</option>
+         </select>
       </div>
 
       <h3>Menu Items</h3>
