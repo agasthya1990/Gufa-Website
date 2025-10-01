@@ -17,7 +17,7 @@ export async function fetchCategories() {
 
 export async function fetchCourses() {
   const out = [];
-  const snap = await getDocs(collection(db, "foodCourses")); // <-- final name
+  const snap = await getDocs(collection(db, "menuCourses")); // <-- final name
   snap.forEach(d => { const v = d.data(); if (v?.name) out.push(v.name); });
   return out.sort((a,b)=>a.localeCompare(b));
 }
