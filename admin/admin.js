@@ -1446,23 +1446,26 @@ function openEditItemModal(id, d, triggerEl) {
     }
 
     try {
-  await updateDoc(doc(db, 'menuItems', id), {
-    name,
-    description,
-    qtyType,
-    updatedAt: serverTimestamp(),
-    ...imageUpdate   // ✅ fixed: spread operator, not a dot
-  });
-  closeOverlay(ov);
-} catch (err) {
-  console.error(err);
-  alert('Update failed: ' + (err?.message || err));
-}
+      await updateDoc(doc(db, 'menuItems', id), {
+        name,
+        description,
+        qtyType,
+        updatedAt: serverTimestamp(),
+        ...imageUpdate
+      });
+      closeOverlay(ov);
+    } catch (err) {
+      console.error(err);
+      alert('Update failed: ' + (err?.message || err));
+    }
 
+    // Open the modal with the hardened helper
+    showOverlay(ov, triggerEl);
+  }; // ✅ closes the onsubmit handler
 
-  // Open the modal with the hardened helper
+  // Finally close the function
   showOverlay(ov, triggerEl);
-}
+} // ✅ closes openEditItemModal properly
 
 /* =========================
    Optional: Comic popover pickers for Category/Course/Add-ons
