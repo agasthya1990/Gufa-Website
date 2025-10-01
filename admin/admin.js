@@ -588,34 +588,41 @@ function syncSelectAllHeader(itemsRendered) {
 
 
 // Delegated row-actions handler (survives re-renders)
+
 if (menuBody && !menuBody._delegated) {
   menuBody._delegated = true;
   menuBody.addEventListener('click', async (e) => {
     const btn = e.target.closest('button');
     if (!btn) return;
     const id = btn.dataset.id;
-    if (!id) return;
+    if (!id) { console.warn("[DEBUG] Row action click, but no data-id on button", btn); return; }
 
     e.preventDefault(); e.stopPropagation();
 
     try {
       if (btn.classList.contains('deleteBtn')) {
+        console.log("[DEBUG] Delete row clicked", { id });
         if (!confirm('Delete this item?')) return;
         await deleteDoc(doc(db, 'menuItems', id));
+        console.log("[DEBUG] Deleted item", { id });
         selectedIds.delete(id);
         updateBulkBar();
         return;
       }
 
       if (btn.classList.contains('editBtn')) {
+        console.log("[DEBUG] Edit row clicked", { id });
         const snap = await getDoc(doc(db, 'menuItems', id));
-        if (!snap.exists()) return alert('Item not found');
+        if (!snap.exists()) { alert('Item not found'); return; }
+        console.log("[DEBUG] opening EditItemModal", id);
         return openEditItemModal(id, snap.data(), btn);
       }
 
       if (btn.classList.contains('addonBtn')) {
+        console.log("[DEBUG] Assign Add-ons clicked", { id });
         const snap = await getDoc(doc(db, 'menuItems', id));
-        if (!snap.exists()) return alert('Item not found');
+        if (!snap.exists()) { alert('Item not found'); return; }
+        console.log("[DEBUG] opening AssignAddonsModal", id);
         return openAssignAddonsModal(
           id,
           Array.isArray(snap.data().addons) ? snap.data().addons : [],
@@ -624,16 +631,20 @@ if (menuBody && !menuBody._delegated) {
       }
 
       if (btn.classList.contains('promoBtn')) {
+        console.log("[DEBUG] Assign Promotions clicked", { id });
         const snap = await getDoc(doc(db, 'menuItems', id));
-        if (!snap.exists()) return alert('Item not found');
+        if (!snap.exists()) { alert('Item not found'); return; }
+        console.log("[DEBUG] opening AssignPromotionsModal", id);
         return openAssignPromotionsModal(
           id,
           Array.isArray(snap.data().promotions) ? snap.data().promotions : [],
           btn
         );
       }
+
+      console.warn("[DEBUG] Unhandled row button class", btn.className);
     } catch (err) {
-      console.error(err);
+      console.error("[DEBUG] Row action failed:", err);
       alert('Action failed: ' + (err?.message || err));
     }
   });
@@ -656,39 +667,62 @@ function ensureBulkBar() {
   const table = el("menuTable");
   if (table && table.parentNode) table.parentNode.insertBefore(bar, table);
 
-  el("bulkEditBtn").onclick = (e) => {
+  const bulkEditBtn   = el("bulkEditBtn");
+  const bulkDeleteBtn = el("bulkDeleteBtn");
+  const bulkPromosBtn = el("bulkPromosBulkBtn");
+  const bulkAddonsBtn = el("bulkAddonsBulkBtn");
+
+  if (!bulkEditBtn || !bulkDeleteBtn || !bulkPromosBtn || !bulkAddonsBtn) {
+    console.warn("[DEBUG] Bulk bar buttons missing", { bulkEditBtn, bulkDeleteBtn, bulkPromosBtn, bulkAddonsBtn });
+    return;
+  }
+
+  bulkEditBtn.onclick = (e) => {
+    console.log("[DEBUG] Bulk Edit clicked. selectedIds:", Array.from(selectedIds));
     e?.preventDefault?.(); e?.stopPropagation?.();
     if (!selectedIds.size) return alert('Select at least one item');
-    try { openBulkEditModal(e.currentTarget); }
-    catch (err) {
+    try {
+      openBulkEditModal(e.currentTarget);
+      console.log("[DEBUG] openBulkEditModal invoked");
+    } catch (err) {
       console.error("[BulkEdit] open failed:", err?.message || err, err);
       alert("Could not open Bulk Edit: " + (err?.message || err));
     }
   };
 
-  el("bulkDeleteBtn").onclick = async (e) => {
+  bulkDeleteBtn.onclick = async (e) => {
+    console.log("[DEBUG] Bulk Delete clicked. selectedIds:", Array.from(selectedIds));
     e?.preventDefault?.(); e?.stopPropagation?.();
     if (!selectedIds.size) return;
     if (!confirm(`Delete ${selectedIds.size} item(s)?`)) return;
     const ops = [];
     selectedIds.forEach(id => ops.push(deleteDoc(doc(db, 'menuItems', id))));
-    await Promise.all(ops);
+    try {
+      await Promise.all(ops);
+      console.log("[DEBUG] Bulk delete completed.");
+    } catch (err) {
+      console.error("[DEBUG] Bulk delete failed:", err);
+      alert("Bulk delete failed: " + (err?.message || err));
+    }
     selectedIds.clear();
     updateBulkBar();
   };
 
-  el("bulkPromosBulkBtn").onclick = (e) => {
+  bulkPromosBtn.onclick = (e) => {
+    console.log("[DEBUG] Bulk Promotions clicked. selectedIds:", Array.from(selectedIds));
     e?.preventDefault?.(); e?.stopPropagation?.();
     if (!selectedIds.size) return alert('Select at least one item');
     openBulkPromosModal(e.currentTarget);
   };
 
-  el("bulkAddonsBulkBtn").onclick = (e) => {
+  bulkAddonsBtn.onclick = (e) => {
+    console.log("[DEBUG] Bulk Add-ons clicked. selectedIds:", Array.from(selectedIds));
     e?.preventDefault?.(); e?.stopPropagation?.();
     if (!selectedIds.size) return alert('Select at least one item');
     openBulkAddonsModal(e.currentTarget);
   };
 } // ← close ensureBulkBar()
+
 
 // Top-level so other code can call it safely
 function updateBulkBar() {
@@ -715,145 +749,223 @@ function closeOverlay(ov) { const box = qs('.adm-modal', ov); if (box) { box.cla
    Bulk: Promotions
    ========================= */
 async function openBulkPromosModal(triggerEl) {
-  ensureModalStyles(); let ov = el('bulkPromosModal');
-  if (!ov) { ov = document.createElement('div'); ov.id = 'bulkPromosModal'; ov.className = 'adm-overlay'; ov.innerHTML = `
-    <div class="adm-modal">
-      <h3 style="margin:0 0 10px">Bulk Promotions (<span id="bpCount">0</span> items)</h3>
-      <label style="display:flex; align-items:center; gap:6px; margin:8px 0 6px;">
-        <input type="checkbox" id="bpClear"/> <span>Clear promotions</span>
-      </label>
-      <select id="bpSelect" multiple size="8" style="width:100%;"></select>
-      <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:12px;">
-        <button id="bpApply" class="adm-btn adm-btn--primary">Apply</button>
-        <button id="bpCancel" class="adm-btn">Cancel</button>
-      </div>
-    </div>`; document.body.appendChild(ov);
-    qs('#bpCancel', ov).onclick = () => closeOverlay(ov);
+  console.log("[DEBUG] openBulkPromosModal start");
+  ensureModalStyles();
+  let ov = el('bulkPromosModal');
+  if (!ov) {
+    ov = document.createElement('div');
+    ov.id = 'bulkPromosModal';
+    ov.className = 'adm-overlay';
+    ov.innerHTML = `
+      <div class="adm-modal">
+        <h3 style="margin:0 0 10px">Bulk Promotions (<span id="bpCount">0</span> items)</h3>
+        <label style="display:flex; align-items:center; gap:6px; margin:8px 0 6px;">
+          <input type="checkbox" id="bpClear"/> <span>Clear promotions</span>
+        </label>
+        <select id="bpSelect" multiple size="8" style="width:100%;"></select>
+        <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:12px;">
+          <button id="bpApply" class="adm-btn adm-btn--primary">Apply</button>
+          <button id="bpCancel" class="adm-btn">Cancel</button>
+        </div>
+      </div>`;
+    document.body.appendChild(ov);
+    console.log("[DEBUG] bulkPromosModal created & appended");
+    qs('#bpCancel', ov).onclick = () => { console.log("[DEBUG] bulkPromosModal cancel"); closeOverlay(ov); };
     qs('#bpApply', ov).onclick = async () => {
-      if (!selectedIds.size) return alert('No items selected'); const clear = el('bpClear').checked; const sel = el('bpSelect');
+      if (!selectedIds.size) { alert('No items selected'); return; }
+      const clear = el('bpClear').checked;
+      const sel = el('bpSelect');
       const ids = clear ? [] : [...sel.selectedOptions].map(o=>o.value).filter(Boolean);
-      try { qs('#bpApply', ov).disabled = true; const ops = []; selectedIds.forEach(id => ops.push(updateDoc(doc(db,'menuItems',id), { promotions: ids, updatedAt: serverTimestamp() }))); await Promise.all(ops); closeOverlay(ov); }
-      catch(e){ console.error(e); alert('Failed to update promotions'); }
-      finally{ qs('#bpApply', ov).disabled = false; }
+      console.log("[DEBUG] bulkPromos apply ids:", ids, "clear:", clear, "selectedIds:", Array.from(selectedIds));
+      try {
+        qs('#bpApply', ov).disabled = true;
+        const ops = [];
+        selectedIds.forEach(id => ops.push(updateDoc(doc(db,'menuItems',id), { promotions: ids, updatedAt: serverTimestamp() })));
+        await Promise.all(ops);
+        closeOverlay(ov);
+      } catch(e){
+        console.error("[DEBUG] bulkPromos apply failed", e);
+        alert('Failed to update promotions');
+      } finally {
+        qs('#bpApply', ov).disabled = false;
+      }
     };
   }
-  // load options
-  const sel = el('bpSelect'); sel.innerHTML = ''; const rows = [];
-if (Object.keys(PROMOS_BY_ID).length) {
-  for (const [id, p] of Object.entries(PROMOS_BY_ID)) {
-    if (p?.kind !== 'coupon') continue;
-    const typeTxt = p.type === 'percent' ? `${p.value}% off` : `₹${p.value} off`;
-    const chan = p.channel === 'dining' ? 'Dining' : 'Delivery';
-    rows.push({ id, label: `${p.code || '(no code)'} • ${chan} • ${typeTxt}` });
-  }
-} else {
-  const snap = await getDocs(collection(db,'promotions'));
-  snap.forEach(d => {
-    const p = d.data() || {};
-    if (p?.kind !== 'coupon') return;
-    const typeTxt = p.type === 'percent' ? `${p.value}% off` : (p.value !== undefined ? `₹${p.value} off` : 'promo');
-    const chan = p.channel ? (p.channel === 'dining' ? 'Dining' : 'Delivery') : '';
-    const label = [p.code || '(no code)', chan, typeTxt].filter(Boolean).join(' • ');
-    rows.push({ id: d.id, label });
-  });
-}
 
-  if (!rows.length) sel.innerHTML = `<option value="">(No promotions found)</option>`; else rows.forEach(r => { const o=document.createElement('option'); o.value=r.id; o.textContent=r.label; sel.appendChild(o); });
+  // load options
+  const sel = el('bpSelect');
+  sel.innerHTML = '';
+  const rows = [];
+  if (Object.keys(PROMOS_BY_ID).length) {
+    for (const [id, p] of Object.entries(PROMOS_BY_ID)) {
+      if (p?.kind !== 'coupon') continue;
+      const typeTxt = p.type === 'percent' ? `${p.value}% off` : `₹${p.value} off`;
+      const chan = p.channel === 'dining' ? 'Dining' : 'Delivery';
+      rows.push({ id, label: `${p.code || '(no code)'} • ${chan} • ${typeTxt}` });
+    }
+  } else {
+    const snap = await getDocs(collection(db,'promotions'));
+    snap.forEach(d => {
+      const p = d.data() || {};
+      if (p?.kind !== 'coupon') return;
+      const typeTxt = p.type === 'percent' ? `${p.value}% off` : (p.value !== undefined ? `₹${p.value} off` : 'promo');
+      const chan = p.channel ? (p.channel === 'dining' ? 'Dining' : 'Delivery') : '';
+      const label = [p.code || '(no code)', chan, typeTxt].filter(Boolean).join(' • ');
+      rows.push({ id: d.id, label });
+    });
+  }
+  console.log("[DEBUG] bulkPromos options count:", rows.length);
+
+  if (!rows.length) {
+    sel.innerHTML = `<option value="">(No promotions found)</option>`;
+  } else {
+    rows.forEach(r => {
+      const o=document.createElement('option');
+      o.value=r.id; o.textContent=r.label;
+      sel.appendChild(o);
+    });
+  }
   qs('#bpCount', ov).textContent = String(selectedIds.size);
 
-  lockBodyScroll(); ov.style.display = 'block'; setGenieFrom(triggerEl, ov, qs('.adm-modal', ov)); const box = qs('.adm-modal', ov); box.classList.remove('adm-anim-out'); box.classList.add('adm-anim-in');
+  lockBodyScroll();
+  ov.style.display = 'block';
+  const box = qs('.adm-modal', ov);
+  setGenieFrom(triggerEl, ov, box);
+  if (box) { box.classList.remove('adm-anim-out'); box.classList.add('adm-anim-in'); }
+  console.log("[DEBUG] bulkPromosModal open done");
 }
 
 /* =========================
    Bulk: Add-ons
    ========================= */
 async function openBulkAddonsModal(triggerEl) {
-  ensureModalStyles(); let ov = el('bulkAddonsModal');
-  if (!ov) { ov = document.createElement('div'); ov.id = 'bulkAddonsModal'; ov.className = 'adm-overlay'; ov.innerHTML = `
-    <div class="adm-modal">
-      <h3 style="margin:0 0 10px">Bulk Add-ons (<span id="baCount">0</span> items)</h3>
-      <label style="display:flex; align-items:center; gap:6px; margin:8px 0 6px;">
-        <input type="checkbox" id="baClear"/> <span>Clear add-ons</span>
-      </label>
-      <div id="baList" style="max-height:48vh; overflow:auto; border:1px solid #eee; border-radius:8px; padding:8px;"></div>
-      <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:12px;">
-        <button id="baApply" class="adm-btn adm-btn--primary">Apply</button>
-        <button id="baCancel" class="adm-btn">Cancel</button>
-      </div>
-    </div>`; document.body.appendChild(ov);
-    qs('#baCancel', ov).onclick = () => closeOverlay(ov);
+  console.log("[DEBUG] openBulkAddonsModal start");
+  ensureModalStyles();
+  let ov = el('bulkAddonsModal');
+  if (!ov) {
+    ov = document.createElement('div');
+    ov.id = 'bulkAddonsModal';
+    ov.className = 'adm-overlay';
+    ov.innerHTML = `
+      <div class="adm-modal">
+        <h3 style="margin:0 0 10px">Bulk Add-ons (<span id="baCount">0</span> items)</h3>
+        <label style="display:flex; align-items:center; gap:6px; margin:8px 0 6px;">
+          <input type="checkbox" id="baClear"/> <span>Clear add-ons</span>
+        </label>
+        <div id="baList" style="max-height:48vh; overflow:auto; border:1px solid #eee; border-radius:8px; padding:8px;"></div>
+        <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:12px;">
+          <button id="baApply" class="adm-btn adm-btn--primary">Apply</button>
+          <button id="baCancel" class="adm-btn">Cancel</button>
+        </div>
+      </div>`;
+    document.body.appendChild(ov);
+    console.log("[DEBUG] bulkAddonsModal created");
+
+    qs('#baCancel', ov).onclick = () => { console.log("[DEBUG] bulkAddonsModal cancel"); closeOverlay(ov); };
     qs('#baApply', ov).onclick = async () => {
-      if (!selectedIds.size) return alert('No items selected'); const clear = el('baClear').checked;
+      if (!selectedIds.size) { alert('No items selected'); return; }
+      const clear = el('baClear').checked;
       const chosen = clear ? [] : [...qs('#baList', ov).querySelectorAll('input[type="checkbox"]:checked')].map(i => ({ name: i.value, price: Number(i.dataset.price || 0) }));
-      try { qs('#baApply', ov).disabled = true; const ops=[]; selectedIds.forEach(id => ops.push(updateDoc(doc(db,'menuItems',id), { addons: chosen, updatedAt: serverTimestamp() }))); await Promise.all(ops); closeOverlay(ov); }
-      catch(e){ console.error(e); alert('Failed to update add-ons'); }
-      finally{ qs('#baApply', ov).disabled = false; }
+      console.log("[DEBUG] bulkAddons apply chosen:", chosen, "clear:", clear);
+      try {
+        qs('#baApply', ov).disabled = true;
+        const ops=[]; selectedIds.forEach(id => ops.push(updateDoc(doc(db,'menuItems',id), { addons: chosen, updatedAt: serverTimestamp() })));
+        await Promise.all(ops);
+        closeOverlay(ov);
+      } catch(e){
+        console.error("[DEBUG] bulkAddons apply failed", e);
+        alert('Failed to update add-ons');
+      } finally {
+        qs('#baApply', ov).disabled = false;
+      }
     };
   }
+
   // load list
-  const list = el('baList'); list.innerHTML = ''; const rows = await fetchAddons(); if (!rows.length) list.innerHTML = `<div class="adm-muted">(No add-ons found)</div>`;
-  rows.forEach(a => { const row = document.createElement('label'); row.className='adm-list-row'; row.innerHTML = `<input type="checkbox" value="${a.name}" data-price="${a.price}"/> <span>${a.name} (₹${a.price})</span>`; list.appendChild(row); });
+  const list = el('baList'); list.innerHTML = '';
+  const rows = await fetchAddons();
+  console.log("[DEBUG] bulkAddons options count:", rows.length);
+  if (!rows.length) list.innerHTML = `<div class="adm-muted">(No add-ons found)</div>`;
+  rows.forEach(a => {
+    const row = document.createElement('label');
+    row.className='adm-list-row';
+    row.innerHTML = `<input type="checkbox" value="${a.name}" data-price="${a.price}"/> <span>${a.name} (₹${a.price})</span>`;
+    list.appendChild(row);
+  });
   qs('#baCount', ov).textContent = String(selectedIds.size);
 
-  lockBodyScroll(); ov.style.display = 'block'; setGenieFrom(triggerEl, ov, qs('.adm-modal', ov)); const box = qs('.adm-modal', ov); box.classList.remove('adm-anim-out'); box.classList.add('adm-anim-in');
+  lockBodyScroll();
+  ov.style.display = 'block';
+  const box = qs('.adm-modal', ov);
+  setGenieFrom(triggerEl, ov, box);
+  if (box) { box.classList.remove('adm-anim-out'); box.classList.add('adm-anim-in'); }
+  console.log("[DEBUG] bulkAddonsModal open done");
 }
 
 /* =========================
    Bulk: Edit (category/course/type/stock/qty/promos/add-ons)
    ========================= */
 async function openBulkEditModal(triggerEl) {
-  ensureModalStyles(); let ov = el('bulkEditModal');
-  if (!ov) { ov = document.createElement('div'); ov.id = 'bulkEditModal'; ov.className = 'adm-overlay'; ov.innerHTML = `
-    <div class="adm-modal">
-      <h3 style="margin:0 0 10px">Bulk Edit (<span id="bulkCount">0</span> items)</h3>
-      <form id="bulkForm">
-        <div style="display:grid; gap:12px;">
-          <div>
-            <label><input type="checkbox" id="bulkCatEnable"/> Category</label>
-            <select id="bulkCategory" disabled><option value="">-- Select Category --</option></select>
-          </div>
-          <div>
-            <label><input type="checkbox" id="bulkCourseEnable"/> Food Course</label>
-            <select id="bulkCourse" disabled><option value="">-- Select Food Course --</option></select>
-          </div>
-          <div>
-            <label><input type="checkbox" id="bulkTypeEnable"/> Food Type</label>
-            <select id="bulkType" disabled><option value="">-- Select Type --</option><option value="Veg">Veg</option><option value="Non-Veg">Non-Veg</option></select>
-          </div>
-          <div>
-            <label><input type="checkbox" id="bulkStockEnable"/> Stock Status</label>
-            <select id="bulkStock" disabled><option value="">-- Select Stock --</option><option value="true">In Stock</option><option value="false">Out of Stock</option></select>
-          </div>
-          <div>
-            <label><input type="checkbox" id="bulkQtyEnable"/> Quantity & Price</label>
-            <select id="bulkQtyType" disabled><option value="">-- Select Qty Type --</option><option value="Not Applicable">Not Applicable</option><option value="Half & Full">Half & Full</option></select>
-            <input type="number" id="bulkItemPrice" placeholder="Price" style="display:none" disabled />
-            <div id="bulkHFWrap" style="display:none; gap:8px; grid-template-columns:1fr 1fr">
-              <input type="number" id="bulkHalfPrice" placeholder="Half Price" disabled />
-              <input type="number" id="bulkFullPrice" placeholder="Full Price" disabled />
+  console.log("[DEBUG] openBulkEditModal start");
+  ensureModalStyles();
+  let ov = el('bulkEditModal');
+  if (!ov) {
+    ov = document.createElement('div');
+    ov.id = 'bulkEditModal';
+    ov.className = 'adm-overlay';
+    ov.innerHTML = `
+      <div class="adm-modal">
+        <h3 style="margin:0 0 10px">Bulk Edit (<span id="bulkCount">0</span> items)</h3>
+        <form id="bulkForm">
+          <div style="display:grid; gap:12px;">
+            <div>
+              <label><input type="checkbox" id="bulkCatEnable"/> Category</label>
+              <select id="bulkCategory" disabled><option value="">-- Select Category --</option></select>
+            </div>
+            <div>
+              <label><input type="checkbox" id="bulkCourseEnable"/> Food Course</label>
+              <select id="bulkCourse" disabled><option value="">-- Select Food Course --</option></select>
+            </div>
+            <div>
+              <label><input type="checkbox" id="bulkTypeEnable"/> Food Type</label>
+              <select id="bulkType" disabled><option value="">-- Select Type --</option><option value="Veg">Veg</option><option value="Non-Veg">Non-Veg</option></select>
+            </div>
+            <div>
+              <label><input type="checkbox" id="bulkStockEnable"/> Stock Status</label>
+              <select id="bulkStock" disabled><option value="">-- Select Stock --</option><option value="true">In Stock</option><option value="false">Out of Stock</option></select>
+            </div>
+            <div>
+              <label><input type="checkbox" id="bulkQtyEnable"/> Quantity & Price</label>
+              <select id="bulkQtyType" disabled><option value="">-- Select Qty Type --</option><option value="Not Applicable">Not Applicable</option><option value="Half & Full">Half & Full</option></select>
+              <input type="number" id="bulkItemPrice" placeholder="Price" style="display:none" disabled />
+              <div id="bulkHFWrap" style="display:none; gap:8px; grid-template-columns:1fr 1fr">
+                <input type="number" id="bulkHalfPrice" placeholder="Half Price" disabled />
+                <input type="number" id="bulkFullPrice" placeholder="Full Price" disabled />
+              </div>
+            </div>
+            <hr/>
+            <div>
+              <label><input type="checkbox" id="bulkPromosEnable"/> Promotions</label>
+              <label style="display:flex; align-items:center; gap:6px"><input type="checkbox" id="bulkClearPromos" disabled/> <span>Clear promotions</span></label>
+              <select id="bulkPromosSelect" multiple size="6" disabled></select>
+            </div>
+            <div>
+              <label><input type="checkbox" id="bulkAddonsEnable"/> Add-ons</label>
+              <label style="display:flex; align-items:center; gap:6px"><input type="checkbox" id="bulkClearAddons" disabled/> <span>Clear add-ons</span></label>
+              <select id="bulkAddonsSelect" multiple size="6" disabled></select>
             </div>
           </div>
-          <hr/>
-          <div>
-            <label><input type="checkbox" id="bulkPromosEnable"/> Promotions</label>
-            <label style="display:flex; align-items:center; gap:6px"><input type="checkbox" id="bulkClearPromos" disabled/> <span>Clear promotions</span></label>
-            <select id="bulkPromosSelect" multiple size="6" disabled></select>
+          <div style="margin-top:12px; display:flex; gap:8px; justify-content:flex-end;">
+            <button type="submit" id="bulkApplyBtn" class="adm-btn adm-btn--primary">Apply</button>
+            <button type="button" id="bulkCancelBtn" class="adm-btn">Cancel</button>
           </div>
-          <div>
-            <label><input type="checkbox" id="bulkAddonsEnable"/> Add-ons</label>
-            <label style="display:flex; align-items:center; gap:6px"><input type="checkbox" id="bulkClearAddons" disabled/> <span>Clear add-ons</span></label>
-            <select id="bulkAddonsSelect" multiple size="6" disabled></select>
-          </div>
-        </div>
-        <div style="margin-top:12px; display:flex; gap:8px; justify-content:flex-end;">
-          <button type="submit" id="bulkApplyBtn" class="adm-btn adm-btn--primary">Apply</button>
-          <button type="button" id="bulkCancelBtn" class="adm-btn">Cancel</button>
-        </div>
-      </form>
-    </div>`; document.body.appendChild(ov);
+        </form>
+      </div>`;
+    document.body.appendChild(ov);
+    console.log("[DEBUG] bulkEditModal created");
 
     // Cancel
-    qs('#bulkCancelBtn', ov).onclick = () => closeOverlay(ov);
+    qs('#bulkCancelBtn', ov).onclick = () => { console.log("[DEBUG] bulkEditModal cancel"); closeOverlay(ov); };
 
     // Refs
     const bulkCategory  = qs('#bulkCategory', ov);
@@ -878,25 +990,48 @@ async function openBulkEditModal(triggerEl) {
     bulkTypeEnable.onchange   = () => { bulkType.disabled      = !bulkTypeEnable.checked; };
     bulkStockEnable.onchange  = () => { bulkStock.disabled     = !bulkStockEnable.checked; };
     bulkQtyEnable.onchange    = () => { const on = bulkQtyEnable.checked; bulkQtyType.disabled = !on; toggleBulkQty(); };
-    function toggleBulkQty(){ const vt = bulkQtyType.value; const on = bulkQtyEnable.checked; const showSingle = on && vt==='Not Applicable'; const showHF = on && vt==='Half & Full'; bulkItemPrice.style.display = showSingle? 'block':'none'; bulkHFWrap.style.display = showHF? 'grid':'none'; bulkItemPrice.disabled = !showSingle; bulkHalfPrice.disabled = !showHF; bulkFullPrice.disabled = !showHF; }
+
+    function toggleBulkQty(){
+      const vt = bulkQtyType.value; const on = bulkQtyEnable.checked;
+      const showSingle = on && vt==='Not Applicable';
+      const showHF = on && vt==='Half & Full';
+      bulkItemPrice.style.display = showSingle? 'block':'none';
+      bulkHFWrap.style.display = showHF? 'grid':'none';
+      bulkItemPrice.disabled = !showSingle; bulkHalfPrice.disabled = !showHF; bulkFullPrice.disabled = !showHF;
+      console.log("[DEBUG] toggleBulkQty", { vt, on, showSingle, showHF });
+    }
     bulkQtyType.onchange = toggleBulkQty;
 
     // Promotions/Add-ons bits
     const promosEnable = qs('#bulkPromosEnable', ov), promosClear = qs('#bulkClearPromos', ov), promosSelect = qs('#bulkPromosSelect', ov);
     const addonsEnable = qs('#bulkAddonsEnable', ov), addonsClear = qs('#bulkClearAddons', ov), addonsSelect = qs('#bulkAddonsSelect', ov);
 
-    async function loadPromotionsOptions(){ promosSelect.innerHTML = ''; const rows = []; const snap = await getDocs(collection(db,'promotions')); snap.forEach(d=>{ const p=d.data(); if (p?.kind==='coupon'){ const typeTxt=p.type==='percent'?`${p.value}% off`:`₹${p.value} off`; const chan=p.channel==='dining'?'Dining':'Delivery'; rows.push({ id:d.id, label:`${p.code || '(no code)'} • ${chan} • ${typeTxt}`}); }}); if (!rows.length) promosSelect.innerHTML = `<option value="">(No promotions found)</option>`; rows.forEach(r=>{ const o=document.createElement('option'); o.value=r.id; o.textContent=r.label; promosSelect.appendChild(o); }); }
-    async function loadAddonsOptions(){ addonsSelect.innerHTML = ''; const rows = await fetchAddons(); if (!rows.length) addonsSelect.innerHTML = `<option value="">(No add-ons found)</option>`; rows.forEach(a=>{ const o=document.createElement('option'); o.value=a.name; o.dataset.price=String(a.price); o.textContent=`${a.name} (₹${a.price})`; addonsSelect.appendChild(o); }); }
+    async function loadPromotionsOptions(){
+      promosSelect.innerHTML = '';
+      const rows = []; const snap = await getDocs(collection(db,'promotions'));
+      snap.forEach(d=>{ const p=d.data(); if (p?.kind==='coupon'){ const typeTxt=p.type==='percent'?`${p.value}% off`:`₹${p.value} off`; const chan=p.channel==='dining'?'Dining':'Delivery'; rows.push({ id:d.id, label:`${p.code || '(no code)'} • ${chan} • ${typeTxt}`}); }});
+      if (!rows.length) promosSelect.innerHTML = `<option value="">(No promotions found)</option>`;
+      rows.forEach(r=>{ const o=document.createElement('option'); o.value=r.id; o.textContent=r.label; promosSelect.appendChild(o); });
+      console.log("[DEBUG] bulkEdit promos options:", rows.length);
+    }
+    async function loadAddonsOptions(){
+      addonsSelect.innerHTML = '';
+      const rows = await fetchAddons();
+      if (!rows.length) addonsSelect.innerHTML = `<option value="">(No add-ons found)</option>`;
+      rows.forEach(a=>{ const o=document.createElement('option'); o.value=a.name; o.dataset.price=String(a.price); o.textContent=`${a.name} (₹${a.price})`; addonsSelect.appendChild(o); });
+      console.log("[DEBUG] bulkEdit addons options:", rows.length);
+    }
 
-    function togglePromos(){ const on = promosEnable.checked; promosSelect.disabled = !on; promosClear.disabled = !on; if (on) loadPromotionsOptions(); }
-    function toggleAddons(){ const on = addonsEnable.checked; addonsSelect.disabled = !on; addonsClear.disabled = !on; if (on) loadAddonsOptions(); }
+    function togglePromos(){ const on = promosEnable.checked; promosSelect.disabled = !on; promosClear.disabled = !on; if (on) loadPromotionsOptions(); console.log("[DEBUG] togglePromos", on); }
+    function toggleAddons(){ const on = addonsEnable.checked; addonsSelect.disabled = !on; addonsClear.disabled = !on; if (on) loadAddonsOptions(); console.log("[DEBUG] toggleAddons", on); }
 
     promosEnable.onchange = togglePromos; addonsEnable.onchange = toggleAddons; togglePromos(); toggleAddons();
 
     // Submit
     qs('#bulkForm', ov).onsubmit = async (e) => {
-      e.preventDefault(); if (!selectedIds.size) return alert('No items selected');
+      e.preventDefault(); if (!selectedIds.size) { alert('No items selected'); return; }
       const updates = {};
+      const bulkStock = qs('#bulkStock', ov);
       if (bulkCatEnable.checked)    { if (!bulkCategory.value) return alert('Select a category');   updates.category   = bulkCategory.value; }
       if (bulkCourseEnable.checked) { if (!bulkCourse.value)   return alert('Select a course');     updates.foodCourse = bulkCourse.value; }
       if (bulkTypeEnable.checked)   { if (!bulkType.value)     return alert('Select a food type');  updates.foodType   = bulkType.value; }
@@ -909,9 +1044,19 @@ async function openBulkEditModal(triggerEl) {
       if (promosEnable.checked) { if (promosClear.checked) updates.promotions = []; else updates.promotions = [...promosSelect.selectedOptions].map(o=>o.value).filter(Boolean); }
       if (addonsEnable.checked) { if (addonsClear.checked) updates.addons = []; else updates.addons = [...addonsSelect.selectedOptions].map(o=>({ name:o.value, price:Number(o.dataset.price||0) })); }
       if (!Object.keys(updates).length) return alert('Tick at least one field');
-      try { qs('#bulkApplyBtn', ov).disabled = true; const ops=[]; selectedIds.forEach(id => ops.push(updateDoc(doc(db,'menuItems',id), { ...updates, updatedAt: serverTimestamp() }))); await Promise.all(ops); closeOverlay(ov); }
-      catch(err){ console.error(err); alert('Bulk update failed'); }
-      finally{ qs('#bulkApplyBtn', ov).disabled = false; }
+
+      console.log("[DEBUG] bulkEdit apply updates:", updates, "selectedIds:", Array.from(selectedIds));
+      try {
+        qs('#bulkApplyBtn', ov).disabled = true;
+        const ops=[]; selectedIds.forEach(id => ops.push(updateDoc(doc(db,'menuItems',id), { ...updates, updatedAt: serverTimestamp() })));
+        await Promise.all(ops);
+        closeOverlay(ov);
+      } catch(err){
+        console.error("[DEBUG] bulkEdit apply failed", err);
+        alert('Bulk update failed');
+      } finally {
+        qs('#bulkApplyBtn', ov).disabled = false;
+      }
     };
 
     // cache refs on the element for quick re-open
@@ -922,25 +1067,33 @@ async function openBulkEditModal(triggerEl) {
   const { bulkCategory, bulkCourse, bulkType, bulkQtyType, toggleBulkQty } = ov._refs || {};
   try { await loadCategories(bulkCategory); } catch {}
   try { await loadCourses(bulkCourse); } catch {}
-  if (bulkType) bulkType.value = ''; if (bulkQtyType) bulkQtyType.value = ''; toggleBulkQty?.();
+  if (bulkType) bulkType.value = '';
+  if (bulkQtyType) bulkQtyType.value = '';
+  toggleBulkQty?.();
 
   // reset toggles each open
   ['bulkCatEnable','bulkCourseEnable','bulkTypeEnable','bulkStockEnable','bulkQtyEnable','bulkPromosEnable','bulkAddonsEnable','bulkClearPromos','bulkClearAddons']
     .forEach(id => { const x = el(id); if (x) x.checked = false; });
-  el('bulkStock').disabled = true; if (bulkQtyType) bulkQtyType.disabled = true; const promosSelect = el('bulkPromosSelect'); if (promosSelect) { promosSelect.innerHTML = ''; promosSelect.disabled = true; } const addonsSelect2 = el('bulkAddonsSelect'); if (addonsSelect2) { addonsSelect2.innerHTML = ''; addonsSelect2.disabled = true; }
-    lockBodyScroll();
+  el('bulkStock').disabled = true;
+  if (bulkQtyType) bulkQtyType.disabled = true;
+  const promosSelect = el('bulkPromosSelect'); if (promosSelect) { promosSelect.innerHTML = ''; promosSelect.disabled = true; }
+  const addonsSelect2 = el('bulkAddonsSelect'); if (addonsSelect2) { addonsSelect2.innerHTML = ''; addonsSelect2.disabled = true; }
+
+  lockBodyScroll();
   ov.style.display = 'block';
-  setGenieFrom(triggerEl, ov, qs('.adm-modal', ov));
   const box = qs('.adm-modal', ov);
-  box.classList.remove('adm-anim-out');
-  box.classList.add('adm-anim-in');
+  setGenieFrom(triggerEl, ov, box);
+  if (box) { box.classList.remove('adm-anim-out'); box.classList.add('adm-anim-in'); }
+  console.log("[DEBUG] bulkEditModal open done");
 }
 
 
 /* =========================
    Assign (single item): Promotions & Add-ons
    ========================= */
+
 async function openAssignPromotionsModal(itemId, currentIds = [], triggerEl) {
+  console.log("[DEBUG] openAssignPromotionsModal start", { itemId, currentIds });
   ensureModalStyles();
   let ov = el('promoAssignModal');
   if (!ov) {
@@ -960,31 +1113,32 @@ async function openAssignPromotionsModal(itemId, currentIds = [], triggerEl) {
         </div>
       </div>`;
     document.body.appendChild(ov);
-    qs('#ppCancel', ov).onclick = () => closeOverlay(ov);
+    console.log("[DEBUG] promoAssignModal created");
+    qs('#ppCancel', ov).onclick = () => { console.log("[DEBUG] promoAssignModal cancel"); closeOverlay(ov); };
   }
 
   // load options
   const sel = el('ppSelect');
   sel.innerHTML = '';
   const rows = [];
-if (Object.keys(PROMOS_BY_ID).length) {
-  for (const [id, p] of Object.entries(PROMOS_BY_ID)) {
-    if (p?.kind !== 'coupon') continue;
-    const typeTxt = p.type === 'percent' ? `${p.value}% off` : `₹${p.value} off`;
-    const chan = p.channel === 'dining' ? 'Dining' : 'Delivery';
-    rows.push({ id, label: `${p.code || '(no code)'} • ${chan} • ${typeTxt}` });
+  if (Object.keys(PROMOS_BY_ID).length) {
+    for (const [id, p] of Object.entries(PROMOS_BY_ID)) {
+      if (p?.kind !== 'coupon') continue;
+      const typeTxt = p.type === 'percent' ? `${p.value}% off` : `₹${p.value} off`;
+      const chan = p.channel === 'dining' ? 'Dining' : 'Delivery';
+      rows.push({ id, label: `${p.code || '(no code)'} • ${chan} • ${typeTxt}` });
+    }
+  } else {
+    const snap = await getDocs(collection(db, 'promotions'));
+    snap.forEach(d => {
+      const p = d.data() || {};
+      const typeTxt = p.type === 'percent' ? `${p.value}% off` : (p.value !== undefined ? `₹${p.value} off` : 'promo');
+      const chan = p.channel ? (p.channel === 'dining' ? 'Dining' : 'Delivery') : '';
+      const label = [p.code || '(no code)', chan, typeTxt].filter(Boolean).join(' • ');
+      rows.push({ id: d.id, label });
+    });
   }
-
- } else {
-  const snap = await getDocs(collection(db, 'promotions'));
-  snap.forEach(d => {
-    const p = d.data() || {};
-    const typeTxt = p.type === 'percent' ? `${p.value}% off` : (p.value !== undefined ? `₹${p.value} off` : 'promo');
-    const chan = p.channel ? (p.channel === 'dining' ? 'Dining' : 'Delivery') : '';
-    const label = [p.code || '(no code)', chan, typeTxt].filter(Boolean).join(' • ');
-    rows.push({ id: d.id, label });
-  });
-}
+  console.log("[DEBUG] assignPromotions options:", rows.length);
 
   if (!rows.length) {
     sel.innerHTML = `<option value="">(No promotions found)</option>`;
@@ -1002,6 +1156,7 @@ if (Object.keys(PROMOS_BY_ID).length) {
   qs('#ppSave', ov).onclick = async () => {
     const clear = el('ppClear').checked;
     const ids = clear ? [] : [...sel.selectedOptions].map(o => o.value).filter(Boolean);
+    console.log("[DEBUG] assignPromotions save", { itemId, ids, clear });
     try {
       await updateDoc(doc(db, 'menuItems', itemId), {
         promotions: ids,
@@ -1009,20 +1164,23 @@ if (Object.keys(PROMOS_BY_ID).length) {
       });
       closeOverlay(ov);
     } catch (err) {
-      console.error(err);
+      console.error("[DEBUG] assignPromotions save failed", err);
       alert('Failed to assign promotions');
     }
   };
 
   lockBodyScroll();
   ov.style.display = 'block';
-  setGenieFrom(triggerEl, ov, qs('.adm-modal', ov));
   const box = qs('.adm-modal', ov);
-  box.classList.remove('adm-anim-out');
-  box.classList.add('adm-anim-in');
+  setGenieFrom(triggerEl, ov, box);
+  if (box) { box.classList.remove('adm-anim-out'); box.classList.add('adm-anim-in'); }
+  console.log("[DEBUG] promoAssignModal open done");
 }
 
+// Assign AddonsModel
+
 async function openAssignAddonsModal(itemId, current = [], triggerEl) {
+  console.log("[DEBUG] openAssignAddonsModal start", { itemId, current });
   ensureModalStyles();
   let ov = el('addonAssignModal');
   if (!ov) {
@@ -1039,25 +1197,23 @@ async function openAssignAddonsModal(itemId, current = [], triggerEl) {
         </div>
       </div>`;
     document.body.appendChild(ov);
-    qs('#assignAddonCancel', ov).onclick = () => closeOverlay(ov);
+    console.log("[DEBUG] addonAssignModal created");
+    qs('#assignAddonCancel', ov).onclick = () => { console.log("[DEBUG] addonAssignModal cancel"); closeOverlay(ov); };
   }
 
   const list = el('assignAddonList');
   const cur = new Set((current || []).map(a => (typeof a === 'string' ? a : a.name)));
   const addons = await fetchAddons();
+  console.log("[DEBUG] assignAddons options:", addons.length, "preselected:", Array.from(cur));
   list.innerHTML = addons
-    .map(
-      a =>
-        `<label class="adm-list-row"><input type="checkbox" value="${a.name}" ${
-          cur.has(a.name) ? 'checked' : ''
-        }/> <span>${a.name} (₹${a.price})</span></label>`
-    )
+    .map(a => `<label class="adm-list-row"><input type="checkbox" value="${a.name}" ${cur.has(a.name) ? 'checked' : ''}/> <span>${a.name} (₹${a.price})</span></label>`)
     .join('');
 
   qs('#assignAddonSave', ov).onclick = async () => {
     const chosen = addons
       .filter(a => list.querySelector(`input[value="${a.name}"]`)?.checked)
       .map(a => ({ name: a.name, price: a.price }));
+    console.log("[DEBUG] assignAddons save", { itemId, chosen });
     try {
       await updateDoc(doc(db, 'menuItems', itemId), {
         addons: chosen,
@@ -1065,17 +1221,17 @@ async function openAssignAddonsModal(itemId, current = [], triggerEl) {
       });
       closeOverlay(ov);
     } catch (err) {
-      console.error(err);
+      console.error("[DEBUG] assignAddons save failed", err);
       alert('Failed to assign add-ons');
     }
   };
 
   lockBodyScroll();
   ov.style.display = 'block';
-  setGenieFrom(triggerEl, ov, qs('.adm-modal', ov));
   const box = qs('.adm-modal', ov);
-  box.classList.remove('adm-anim-out');
-  box.classList.add('adm-anim-in');
+  setGenieFrom(triggerEl, ov, box);
+  if (box) { box.classList.remove('adm-anim-out'); box.classList.add('adm-anim-in'); }
+  console.log("[DEBUG] addonAssignModal open done");
 }
 
 /* =========================
@@ -1622,17 +1778,24 @@ function bootAdminUI(){
   if (window.__ADMIN_BOOTED__) return;
   window.__ADMIN_BOOTED__ = true;
 
+  console.log("[DEBUG] bootAdminUI start");
   ensureModalStyles();
 
   if (document.getElementById("menuTable")) {
     ensureBulkBar();
-    updateBulkBar(); // ← add this line
+    updateBulkBar();
+    console.log("[DEBUG] bulk bar ensured & updated");
+  } else {
+    console.warn("[DEBUG] #menuTable not found at boot");
   }
 
-  if (document.getElementById("categoryDropdownBtn")) renderCustomCategoryDropdown();
-  if (document.getElementById("courseDropdownBtn"))   renderCustomCourseDropdown();
-  if (document.getElementById("addonDropdownBtn"))    renderCustomAddonDropdown();
+  if (document.getElementById("categoryDropdownBtn")) { renderCustomCategoryDropdown(); console.log("[DEBUG] category custom dropdown wired"); }
+  if (document.getElementById("courseDropdownBtn"))   { renderCustomCourseDropdown();   console.log("[DEBUG] course custom dropdown wired"); }
+  if (document.getElementById("addonDropdownBtn"))    { renderCustomAddonDropdown();    console.log("[DEBUG] addon custom dropdown wired"); }
+
+  console.log("[DEBUG] bootAdminUI done");
 }
+
 
 // Run once, after DOM is ready if needed
 if (document.readyState === 'loading') {
