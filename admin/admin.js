@@ -1402,10 +1402,10 @@ async function openEditItemModal(id, data, triggerEl) {
     document.body.appendChild(ov);
   }
 
-  // 2) Always show the overlay+modal immediately (prevents "dim only" symptom)
+  // Show overlay first (prevents “overlay only” symptom)
   showOverlay(ov, triggerEl);
 
-  // 3) Refs
+  // Refs
   const $ = (sel) => ov.querySelector(sel);
   const eiName      = $("#eiName");
   const eiDesc      = $("#eiDesc");
@@ -1420,42 +1420,35 @@ async function openEditItemModal(id, data, triggerEl) {
   const eiSave      = $("#eiSave");
   const eiCancel    = $("#eiCancel");
 
-  // 4) Helper: ensure option exists before selecting
+  // Helper: ensure option exists then select
   function setIfPresent(selectEl, value) {
     if (!selectEl) return;
     if (value && ![...selectEl.options].some(o => o.value === value)) {
-      const o = document.createElement("option");
-      o.value = value; o.textContent = value;
-      selectEl.appendChild(o);
+      const o = document.createElement("option"); o.value = value; o.textContent = value; selectEl.appendChild(o);
     }
     selectEl.value = value || "";
   }
 
-  // 5) Populate dropdowns (robust: show basic placeholders even on failure)
+  // Populate dropdowns (resilient)
   try {
     eiCat.innerHTML    = `<option value="">-- Select Category --</option>`;
     eiCourse.innerHTML = `<option value="">-- Select Food Course --</option>`;
     const [cats, courses] = await Promise.all([fetchCategories().catch(()=>[]), fetchCourses().catch(()=>[])]);
-    if (Array.isArray(cats) && cats.length) {
-      eiCat.innerHTML += cats.map(c => `<option>${c}</option>`).join("");
-    }
-    if (Array.isArray(courses) && courses.length) {
-      eiCourse.innerHTML += courses.map(c => `<option>${c}</option>`).join("");
-    }
+    if (Array.isArray(cats) && cats.length)    eiCat.innerHTML    += cats.map(c=>`<option>${c}</option>`).join("");
+    if (Array.isArray(courses) && courses.length) eiCourse.innerHTML += courses.map(c=>`<option>${c}</option>`).join("");
   } catch (err) {
     console.error("[EditModal] dropdowns load failed:", err);
   }
 
-  // 6) Hydrate fields from current doc
+  // Hydrate values
   const d  = data || {};
   const qt = (d.qtyType && d.qtyType.type) || "";
 
   eiName.value = d.name || "";
   eiDesc.value = d.description || "";
-
-  setIfPresent(eiCat,    d.category   || "");
+  setIfPresent(eiCat,    d.category || "");
   setIfPresent(eiCourse, d.foodCourse || "");
-  setIfPresent(eiFood,   d.foodType   || "");
+  setIfPresent(eiFood,   d.foodType || "");
   setIfPresent(eiQtyType, qt);
 
   function refreshPriceVis() {
@@ -1479,7 +1472,7 @@ async function openEditItemModal(id, data, triggerEl) {
     eiFullPrice.value = "";
   }
 
-  // 7) Wire buttons (overwrite per open to avoid stacked listeners)
+  // Wire buttons (overwrites each open)
   eiCancel.onclick = () => closeOverlay(ov);
   eiSave.onclick = async () => {
     try {
@@ -1492,10 +1485,7 @@ async function openEditItemModal(id, data, triggerEl) {
       const foodType    = eiFood.value || "";
       const qtyTypeSel  = eiQtyType.value || "";
 
-      if (!name || !description || !category || !foodCourse || !foodType || !qtyTypeSel) {
-        alert("Fill all required fields");
-        return;
-      }
+      if (!name || !description || !category || !foodCourse || !foodType || !qtyTypeSel) { alert("Fill all required fields"); return; }
 
       let qtyType = {};
       if (qtyTypeSel === "Not Applicable") {
@@ -1506,21 +1496,14 @@ async function openEditItemModal(id, data, triggerEl) {
         const h = Number(eiHalfPrice.value), f = Number(eiFullPrice.value);
         if (!Number.isFinite(h) || !Number.isFinite(f) || h <= 0 || f <= 0) { alert("Invalid Half/Full price"); return; }
         qtyType = { type: qtyTypeSel, halfPrice: h, fullPrice: f };
-      } else {
-        alert("Select a valid quantity type");
-        return;
-      }
+      } else { alert("Select a valid quantity type"); return; }
 
-      // Build update object (preserves existing add-ons/promotions)
-      const updates = {
-        name, description, category, foodCourse, foodType, qtyType,
-        updatedAt: serverTimestamp()
-      };
+      const updates = { name, description, category, foodCourse, foodType, qtyType, updatedAt: serverTimestamp() };
 
-      // Optional image replacement
+      // Optional image
       const file = eiImage.files && eiImage.files[0];
       if (file) {
-        const blob = await resizeImage(file);                // existing helper in this file
+        const blob = await resizeImage(file);
         const imageRef = ref(storage, `menuImages/${Date.now()}_${file.name}`);
         await uploadBytes(imageRef, blob);
         const url = await getDownloadURL(imageRef);
