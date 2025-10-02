@@ -1343,129 +1343,207 @@ console.log("[DEBUG] bulkPromosModal open done");
 }
 
 /* =========================
-   Single-item Edit modal (name/desc/qty + optional image replace)
+   [Edit] — Single Item Edit Modal (row action)
    ========================= */
-function openEditItemModal(id, d, triggerEl) {
-  ensureModalStyles();
+async function openEditItemModal(id, data, triggerEl) {
+  try {
+    ensureModalStyles();
 
-  let ov = el('editItemModal');
-  if (!ov) {
-    ov = document.createElement('div');
-    ov.id = 'editItemModal';
-    ov.className = 'adm-overlay';
-    ov.innerHTML = `
-      <div class="adm-modal">
-        <h3 style="margin:0 0 10px">Edit Item</h3>
-        <form id="editForm">
-          <div style="display:grid; gap:8px;">
-            <input id="eiName" placeholder="Name"/>
-            <textarea id="eiDesc" placeholder="Description"></textarea>
-            <select id="eiQtyType">
+    // ---------- create overlay (once) ----------
+    let ov = document.getElementById("editItemModal");
+    const createFresh = !ov;
+    if (!ov) {
+      ov = document.createElement("div");
+      ov.id = "editItemModal";
+      ov.className = "adm-overlay";
+      ov.innerHTML = `
+        <div class="adm-modal" role="dialog" aria-modal="true" aria-labelledby="eiTitle">
+          <h3 id="eiTitle" style="margin:0 0 12px">Edit Menu Item</h3>
+
+          <div class="adm-row" style="gap:8px; flex-wrap:wrap">
+            <input id="eiName"  class="adm-input" placeholder="Name" style="flex:1; min-width:240px" />
+            <input id="eiDesc"  class="adm-input" placeholder="Description" style="flex:1; min-width:240px" />
+          </div>
+
+          <div class="adm-row" style="gap:8px; flex-wrap:wrap; margin-top:8px">
+            <select id="eiCat"    class="adm-select" style="min-width:220px"></select>
+            <select id="eiCourse" class="adm-select" style="min-width:220px"></select>
+            <select id="eiFood"   class="adm-select" style="min-width:160px">
+              <option value="">-- Food Type --</option>
+              <option value="Veg">Veg</option>
+              <option value="Non-Veg">Non-Veg</option>
+            </select>
+          </div>
+
+          <div class="adm-row" style="gap:8px; flex-wrap:wrap; margin-top:8px">
+            <select id="eiQtyType" class="adm-select" style="min-width:220px">
+              <option value="">-- Quantity Type --</option>
               <option value="Not Applicable">Not Applicable</option>
               <option value="Half & Full">Half & Full</option>
             </select>
-            <input id="eiItemPrice" type="number" placeholder="Price (if Not Applicable)"/>
-            <div id="eiHFWrap" style="display:grid; gap:8px; grid-template-columns:1fr 1fr">
-              <input id="eiHalf" type="number" placeholder="Half Price"/>
-              <input id="eiFull" type="number" placeholder="Full Price"/>
-            </div>
-            <div>
-              <label class="adm-muted">Replace image (optional)</label>
-              <input id="eiImage" type="file" accept="image/*"/>
-            </div>
+
+            <input type="number" id="eiItemPrice" class="adm-input" placeholder="Price"
+                   style="width:160px; display:none;" />
+
+            <input type="number" id="eiHalfPrice" class="adm-input" placeholder="Half Price"
+                   style="width:160px; display:none;" />
+            <input type="number" id="eiFullPrice" class="adm-input" placeholder="Full Price"
+                   style="width:160px; display:none;" />
           </div>
-          <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:12px;">
-            <button type="submit" class="adm-btn adm-btn--primary">Save</button>
-            <button type="button" id="eiCancel" class="adm-btn">Cancel</button>
+
+          <div class="adm-row" style="gap:8px; margin-top:8px; align-items:center">
+            <input type="file" id="eiImage" class="adm-file" accept="image/*" />
+            <span class="adm-muted">Optional: choose to replace image (auto 200×200)</span>
           </div>
-        </form>
-      </div>`;
-    document.body.appendChild(ov);
-    qs('#eiCancel', ov).onclick = () => closeOverlay(ov);
-  }
 
-  // Scope queries to the modal container
-  const eiName     = qs('#eiName', ov);
-  const eiDesc     = qs('#eiDesc', ov);
-  const eiQtyType  = qs('#eiQtyType', ov);
-  const eiItemPrice= qs('#eiItemPrice', ov);
-  const eiHalf     = qs('#eiHalf', ov);
-  const eiFull     = qs('#eiFull', ov);
-  const eiHFWrap   = qs('#eiHFWrap', ov);
-
-  // Pre-fill
-  eiName.value = d.name || '';
-  eiDesc.value = d.description || '';
-  const qt = d?.qtyType?.type || 'Not Applicable';
-  eiQtyType.value = qt;
-
-  if (qt === 'Not Applicable') {
-    eiItemPrice.value = d?.qtyType?.itemPrice ?? '';
-    eiHFWrap.style.display = 'none';
-  } else {
-    eiItemPrice.value = '';
-    eiHalf.value = d?.qtyType?.halfPrice ?? '';
-    eiFull.value = d?.qtyType?.fullPrice ?? '';
-    eiHFWrap.style.display = 'grid';
-  }
-
-  eiQtyType.onchange = () => {
-    const v = eiQtyType.value;
-    eiItemPrice.parentElement.style.display = v === 'Not Applicable' ? 'block' : 'none';
-    eiHFWrap.style.display = v === 'Half & Full' ? 'grid' : 'none';
-  };
-
-  // Submit handler
-  qs('#editForm', ov).onsubmit = async e => {
-    e.preventDefault();
-
-    const name = eiName.value.trim();
-    const description = eiDesc.value.trim();
-    if (!name || !description) return alert('Name/Description required');
-
-    let qtyType = {};
-    if (eiQtyType.value === 'Not Applicable') {
-      const p = num(eiItemPrice.value);
-      if (!Number.isFinite(p) || p <= 0) return alert('Invalid price');
-      qtyType = { type: 'Not Applicable', itemPrice: p };
-    } else {
-      const h = num(eiHalf.value), f = num(eiFull.value);
-      if (!Number.isFinite(h) || !Number.isFinite(f) || h <= 0 || f <= 0)
-        return alert('Invalid half/full');
-      qtyType = { type: 'Half & Full', halfPrice: h, fullPrice: f };
+          <div class="adm-row" style="gap:8px; justify-content:flex-end; margin-top:12px">
+            <button id="eiSave"   class="adm-btn adm-btn--primary">Save</button>
+            <button id="eiCancel" class="adm-btn">Cancel</button>
+          </div>
+        </div>`;
+      document.body.appendChild(ov);
     }
 
-    let imageUpdate = {};
-    const file = qs('#eiImage', ov)?.files?.[0];
-    if (file) {
-      const resized = await resizeImage(file);
-      const imageRef = ref(storage, `menuImages/${Date.now()}_${file.name}`);
-      await uploadBytes(imageRef, resized);
-      const url = await getDownloadURL(imageRef);
-      imageUpdate = { imageUrl: url };
+    // ---------- refs ----------
+    const $ = (sel) => ov.querySelector(sel);
+    const eiName      = $("#eiName");
+    const eiDesc      = $("#eiDesc");
+    const eiCat       = $("#eiCat");
+    const eiCourse    = $("#eiCourse");
+    const eiFood      = $("#eiFood");
+    const eiQtyType   = $("#eiQtyType");
+    const eiItemPrice = $("#eiItemPrice");
+    const eiHalfPrice = $("#eiHalfPrice");
+    const eiFullPrice = $("#eiFullPrice");
+    const eiImage     = $("#eiImage");
+    const eiSave      = $("#eiSave");
+    const eiCancel    = $("#eiCancel");
+
+    // ---------- populate dropdowns (categories/courses) ----------
+    async function fillCats() {
+      const cats = await fetchCategories();
+      eiCat.innerHTML = `<option value="">-- Select Category --</option>` + cats.map(c=>`<option>${c}</option>`).join("");
+    }
+    async function fillCourses() {
+      const courses = await fetchCourses();
+      eiCourse.innerHTML = `<option value="">-- Select Food Course --</option>` + courses.map(c=>`<option>${c}</option>`).join("");
+    }
+    await Promise.all([fillCats(), fillCourses()]);
+
+    // ---------- hydrate from existing data ----------
+    const d = data || {};
+    eiName.value = d.name || "";
+    eiDesc.value = d.description || "";
+
+    // Safe set for selects (value may not be in list yet)
+    function setIfPresent(selectEl, value) {
+      if (!selectEl) return;
+      if (value && ![...selectEl.options].some(o => o.value === value)) {
+        const o = document.createElement("option"); o.value = value; o.textContent = value; selectEl.appendChild(o);
+      }
+      selectEl.value = value || "";
+    }
+    setIfPresent(eiCat,    d.category || "");
+    setIfPresent(eiCourse, d.foodCourse || "");
+    setIfPresent(eiFood,   d.foodType || "");
+
+    const q = d.qtyType || {};
+    const qt = q.type || "";
+    setIfPresent(eiQtyType, qt);
+
+    function refreshPriceVis() {
+      const v = eiQtyType.value;
+      const hf = v === "Half & Full";
+      eiItemPrice.style.display = v === "Not Applicable" ? "inline-block" : "none";
+      eiHalfPrice.style.display = hf ? "inline-block" : "none";
+      eiFullPrice.style.display = hf ? "inline-block" : "none";
+    }
+    eiQtyType.onchange = refreshPriceVis;
+    refreshPriceVis();
+
+    if (qt === "Not Applicable") {
+      eiItemPrice.value = Number(q.itemPrice || 0) || "";
+    } else if (qt === "Half & Full") {
+      eiHalfPrice.value = Number(q.halfPrice || 0) || "";
+      eiFullPrice.value = Number(q.fullPrice || 0) || "";
     }
 
-    try {
-      await updateDoc(doc(db, 'menuItems', id), {
-        name,
-        description,
-        qtyType,
-        updatedAt: serverTimestamp(),
-        ...imageUpdate
+    // ---------- Cancel ----------
+    if (!ov._wiredCancel) {
+      ov._wiredCancel = true;
+      eiCancel.addEventListener("click", () => closeOverlay(ov));
+    }
+
+    // ---------- Save ----------
+    if (!ov._wiredSave) {
+      ov._wiredSave = true;
+      eiSave.addEventListener("click", async () => {
+        try {
+          eiSave.disabled = true;
+
+          const name        = (eiName.value || "").trim();
+          const description = (eiDesc.value || "").trim();
+          const category    = eiCat.value || "";
+          const foodCourse  = eiCourse.value || "";
+          const foodType    = eiFood.value || "";
+          const qtyTypeSel  = eiQtyType.value || "";
+
+          if (!name || !description || !category || !foodCourse || !foodType || !qtyTypeSel) {
+            alert("Fill all required fields");
+            return;
+          }
+
+          let qtyType = {};
+          if (qtyTypeSel === "Not Applicable") {
+            const p = Number(eiItemPrice.value);
+            if (!Number.isFinite(p) || p <= 0) { alert("Invalid price"); return; }
+            qtyType = { type: qtyTypeSel, itemPrice: p };
+          } else if (qtyTypeSel === "Half & Full") {
+            const h = Number(eiHalfPrice.value), f = Number(eiFullPrice.value);
+            if (!Number.isFinite(h) || !Number.isFinite(f) || h <= 0 || f <= 0) { alert("Invalid Half/Full price"); return; }
+            qtyType = { type: qtyTypeSel, halfPrice: h, fullPrice: f };
+          } else {
+            alert("Select a valid quantity type");
+            return;
+          }
+
+          // Build update object (keep existing addons/promotions untouched)
+          const updates = {
+            name, description, category, foodCourse, foodType, qtyType,
+            updatedAt: serverTimestamp()
+          };
+
+          // Optional image replacement
+          const file = eiImage.files && eiImage.files[0];
+          if (file) {
+            const blob = await resizeImage(file); // uses your existing helper
+            const imageRef = ref(storage, `menuImages/${Date.now()}_${file.name}`);
+            await uploadBytes(imageRef, blob);
+            const url = await getDownloadURL(imageRef);
+            updates.imageUrl = url;
+          }
+
+          await updateDoc(doc(db, "menuItems", id), updates);
+
+          // Snapshot listener will re-render table; close modal
+          closeOverlay(ov);
+        } catch (err) {
+          console.error(err);
+          alert("Save failed: " + (err?.message || err));
+        } finally {
+          eiSave.disabled = false;
+        }
       });
-      closeOverlay(ov);
-    } catch (err) {
-      console.error(err);
-      alert('Update failed: ' + (err?.message || err));
     }
 
-    // Open the modal with the hardened helper
+    // ---------- show ----------
     showOverlay(ov, triggerEl);
-  }; // ✅ closes the onsubmit handler
+  } catch (err) {
+    console.error("[EditModal] open failed:", err);
+    alert("Could not open Edit dialog: " + (err?.message || err));
+  }
+}
 
-  // Finally close the function
-  showOverlay(ov, triggerEl);
-} // ✅ closes openEditItemModal properly
 
 /* =========================
    Optional: Comic popover pickers for Category/Course/Add-ons
