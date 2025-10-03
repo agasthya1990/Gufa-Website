@@ -1203,91 +1203,10 @@ console.log("[DEBUG] bulkPromosModal open done");
 
 
 /* =========================
-   Assign (single item): Promotions & Add-ons
+   Assign (single item): Promotions
    ========================= */
 
-async function openAssignPromotionsModal(itemId, currentIds = [], triggerEl) {
-  console.log("[DEBUG] openAssignPromotionsModal start", { itemId, currentIds });
-  ensureModalStyles();
-  let ov = el('promoAssignModal');
-  if (!ov) {
-    ov = document.createElement('div');
-    ov.id = 'promoAssignModal';
-    ov.className = 'adm-overlay';
-    ov.innerHTML = `
-      <div class="adm-modal" style="max-width:520px;">
-        <h3 style="margin:0 0 10px">Assign Promotions</h3>
-        <label style="display:flex; align-items:center; gap:6px; margin:8px 0 6px;">
-          <input type="checkbox" id="ppClear"/> <span>Clear promotions</span>
-        </label>
-        <select id="ppSelect" multiple size="8" style="width:100%"></select>
-        <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:12px;">
-          <button id="ppSave" class="adm-btn adm-btn--primary">Save</button>
-          <button id="ppCancel" class="adm-btn">Cancel</button>
-        </div>
-      </div>`;
-    document.body.appendChild(ov);
-    console.log("[DEBUG] promoAssignModal created");
-    qs('#ppCancel', ov).onclick = () => { console.log("[DEBUG] promoAssignModal cancel"); closeOverlay(ov); };
-  }
-
-  // load options
-  const sel = el('ppSelect');
-  sel.innerHTML = '';
-  const rows = [];
-  if (Object.keys(PROMOS_BY_ID).length) {
-    for (const [id, p] of Object.entries(PROMOS_BY_ID)) {
-      if (p?.kind !== 'coupon') continue;
-      const typeTxt = p.type === 'percent' ? `${p.value}% off` : `₹${p.value} off`;
-      const chan = p.channel === 'dining' ? 'Dining' : 'Delivery';
-      rows.push({ id, label: `${p.code || '(no code)'} • ${chan} • ${typeTxt}` });
-    }
-  } else {
-    const snap = await getDocs(collection(db, 'promotions'));
-    snap.forEach(d => {
-      const p = d.data() || {};
-      const typeTxt = p.type === 'percent' ? `${p.value}% off` : (p.value !== undefined ? `₹${p.value} off` : 'promo');
-      const chan = p.channel ? (p.channel === 'dining' ? 'Dining' : 'Delivery') : '';
-      const label = [p.code || '(no code)', chan, typeTxt].filter(Boolean).join(' • ');
-      rows.push({ id: d.id, label });
-    });
-  }
-  console.log("[DEBUG] assignPromotions options:", rows.length);
-
-  if (!rows.length) {
-    sel.innerHTML = `<option value="">(No promotions found)</option>`;
-  } else {
-    rows.forEach(r => {
-      const o = document.createElement('option');
-      o.value = r.id;
-      o.textContent = r.label;
-      sel.appendChild(o);
-    });
-  }
-  const cur = new Set(currentIds || []);
-  Array.from(sel.options).forEach(o => (o.selected = cur.has(o.value)));
-
-  qs('#ppSave', ov).onclick = async () => {
-    const clear = el('ppClear').checked;
-    const ids = clear ? [] : [...sel.selectedOptions].map(o => o.value).filter(Boolean);
-    console.log("[DEBUG] assignPromotions save", { itemId, ids, clear });
-    try {
-      await updateDoc(doc(db, 'menuItems', itemId), {
-        promotions: ids,
-        updatedAt: serverTimestamp(),
-      });
-      closeOverlay(ov);
-    } catch (err) {
-      console.error("[DEBUG] assignPromotions save failed", err);
-      alert('Failed to assign promotions');
-    }
-  };
-
-showOverlay(ov, triggerEl);
-console.log("[DEBUG] bulkPromosModal open done");
-
-}
-
+async function openAssignPromotionsModal
 // Assign AddonsModel
 
 // Assign Add-ons — hardened, visible-first, no UI changes
