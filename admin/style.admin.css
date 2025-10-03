@@ -184,9 +184,9 @@ html, body { font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Hel
 #itemDescription{
   display:block;
   width:200px;
-  height:200px;
+  height:100px;
   min-width:200px;
-  min-height:200px;
+  min-height:100px;
   max-width:240px;     /* small give if user resizes */
   max-height:260px;
   resize:both;
