@@ -215,7 +215,7 @@ html, body { font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Hel
   margin-top: 8px;
 }
 #foodCourse { max-width: 180px; }
-#newCourseInput { max-width: 155px; }
+#newCourseInput { max-width: 160px; }
 #addCourseBtn { min-width: 100px; }
 
 /* 5) ADD-ONS row → one line:
@@ -383,4 +383,11 @@ button {
   #filterType {
     width: min(6cm, 100%);
   }
+}
+
+/* === Search input with icon === */
+#searchInput {
+  background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" fill="gray" viewBox="0 0 24 24"><path d="M10,2A8,8,0,1,0,18,10a8,8,0,0,0-8-8Zm0,14a6,6,0,1,1,6-6A6,6,0,0,1,10,16ZM21.71,20.29l-4.4-4.4a1,1,0,0,0-1.42,1.42l4.4,4.4a1,1,0,0,0,1.42-1.42Z"/></svg>') no-repeat 8px center;
+  background-size: 16px 16px;
+  padding-left: 32px;  /* leaves space for icon */
 }
