@@ -215,7 +215,7 @@ html, body { font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Hel
   margin-top: 8px;
 }
 #foodCourse { max-width: 180px; }
-#newCourseInput { max-width: 153px; }
+#newCourseInput { max-width: 155px; }
 #addCourseBtn { min-width: 100px; }
 
 /* 5) ADD-ONS row → one line:
@@ -363,13 +363,13 @@ button {
 #filterCourse,
 #filterType {
   flex: 0 0 auto;
-  width: 10cm;               /* target width per your spec */
+  width: 6cm;               /* target width per your spec */
   max-width: 100%;
 }
 
 /* Give the search input a touch more room if you want; comment out if not desired */
 #searchInput {
-  width: 10.5cm;
+  width: 6cm;
 }
 
 /* Responsive fallback: allow wrapping on small screens */
@@ -381,6 +381,6 @@ button {
   #filterCategory,
   #filterCourse,
   #filterType {
-    width: min(10cm, 100%);
+    width: min(6cm, 100%);
   }
 }
