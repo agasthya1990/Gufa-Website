@@ -215,7 +215,7 @@ html, body { font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Hel
   margin-top: 8px;
 }
 #foodCourse { max-width: 180px; }
-#newCourseInput { max-width: 150px; }
+#newCourseInput { max-width: 190px; }
 #addCourseBtn { min-width: 100px; }
 
 /* 5) ADD-ONS row → one line:
