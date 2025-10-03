@@ -168,104 +168,98 @@ html, body { font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Hel
 .adm-modal__dialog { max-width: 640px; }
 
 /* ================================
-   Add New Menu Item — alignment only
-   (no JS; keep existing styles/colors)
+   Add New Menu Item — alignment only (CSS-only)
+   Leaves colors, fonts, popovers unchanged
    ================================ */
 
-/* 1) Name: compact, single line */
-#itemName{
-  display:block;
-  max-width:360px;     /* "not more longer than this" */
-  width:100%;
-  margin-bottom:12px;
+/* 1) Name: compact single line */
+#menuForm #itemName {
+  display: block;
+  max-width: 360px;          /* “not more longer than this” */
+  width: 100%;
+  margin-bottom: 12px;
 }
 
-/* 2) Description: stretchable 200×200 box */
-#itemDescription{
-  display:block;
-  width:200px;
-  height:100px;
-  min-width:200px;
-  min-height:100px;
-  max-width:240px;     /* small give if user resizes */
-  max-height:260px;
-  resize:both;
-  margin-bottom:12px;
+/* 2) Description: look like a 200×200 box (stretchable if browser allows) */
+#menuForm #itemDescription {
+  display: block;
+  width: 200px;
+  height: 100px;
+  min-width: 200px;
+  min-height: 200px;
+  /* some browsers let inputs resize; if not, it will still look like a square box */
+  resize: both;
+  overflow: auto;
+  margin-bottom: 12px;
 }
 
-/* 3) Category trio: [Select Category] [Add New Category] [Add Category] */
-#itemCategory,
-#newCategoryInput,
-#addCategoryBtn{
-  display:inline-block;
-  vertical-align:middle;
-  margin-right:8px;
+/* 3) CATEGORY row → put everything on one line:
+      [native select] [Select Category ▾] [Add New Category] [Add Category] */
+.adm-form-grid .full:has(#itemCategory) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
 }
-#itemCategory{ max-width:180px; }
-#newCategoryInput{ max-width:150px; }
-#addCategoryBtn{ min-width:100px; }
+#itemCategory { max-width: 180px; }
+#newCategoryInput { max-width: 150px; }
+#addCategoryBtn { min-width: 100px; }
 
-/* ensure the trio sits on its own row */
-#itemCategory{ clear:both; }
-#addCategoryBtn{ margin-bottom:12px; }
-
-/* 4) Course trio: [Select Course] [Add New Course] [Add Course] */
-#foodCourse,
-#newCourseInput,
-#addCourseBtn{
-  display:inline-block;
-  vertical-align:middle;
-  margin-right:8px;
+/* 4) COURSE row → one line:
+      [native select] [Select Course ▾] [Add New Food Course] [Add Course] */
+.adm-form-grid .full:has(#foodCourse) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
 }
-#foodCourse{ max-width:180px; }
-#newCourseInput{ max-width:150px; }
-#addCourseBtn{ min-width:100px; margin-bottom:12px; }
+#foodCourse { max-width: 180px; }
+#newCourseInput { max-width: 150px; }
+#addCourseBtn { min-width: 100px; }
 
-/* keep this group starting on a fresh line */
-#foodCourse{ clear:both; }
-
-/* 5) Add-ons row: [Select Add-on] [Add New Add-on] [Price] [Add Add-on] */
-#addonsSelect,
-#newAddonInput,
-#newAddonPrice,
-#addAddonBtn{
-  display:inline-block;
-  vertical-align:middle;
-  margin-right:8px;
+/* 5) ADD-ONS row → one line:
+      [multi-select] [Select Add-ons ▾] [Add New Add-on] [Price] [Add Add-on] */
+.adm-form-grid .full:has(#addonsSelect) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
 }
-#addonsSelect{ max-width:180px; clear:both; }
-#newAddonInput,
-#newAddonPrice{ max-width:150px; }
-#addAddonBtn{ min-width:110px; margin-bottom:12px; }
+#addonsSelect { max-width: 180px; }
+#newAddonInput, #newAddonPrice { max-width: 150px; }
+#addAddonBtn { min-width: 110px; }
 
-/* 6) Food Type — its own line (compact) */
-#foodType{
-  display:block;       /* own row */
-  max-width:180px;
-  width:100%;
-  clear:both;
-  margin:8px 0 12px;
+/* 6) Food Type — its own compact line */
+#foodType {
+  display: block;
+  max-width: 180px;
+  width: 100%;
+  margin: 8px 0 12px;
 }
 
-/* 7) Quantity Type — its own line (compact) */
-#qtyType{
-  display:block;       /* own row */
-  max-width:220px;
-  width:100%;
-  clear:both;
-  margin:0 0 12px;
+/* 7) Quantity Type — its own compact line */
+#qtyType {
+  display: block;
+  max-width: 220px;
+  width: 100%;
+  margin: 0 0 12px;
 }
 
-/* 8) Image label on one line, file input on next */
-#itemImage{
-  display:block;       /* “Choose File” on a new line under Image */
-  max-width:260px;
-  width:100%;
-  margin-top:6px;
+/* 8) Image label on one line, “Choose File” on the next */
+.adm-form-grid .full:has(#itemImage) {
+  display: block;
+}
+#itemImage {
+  display: block;      /* places file input under the "Image" label */
+  max-width: 260px;
+  width: 100%;
+  margin-top: 6px;
 }
 
-/* Small screens: allow natural wrapping without breaking intent */
-@media (max-width: 520px){
-  #itemCategory, #foodCourse, #addonsSelect{ max-width:100%; }
-  #newCategoryInput, #newCourseInput, #newAddonInput, #newAddonPrice{ max-width:100%; }
+/* 9) Small screens: let controls wrap naturally */
+@media (max-width: 520px) {
+  #itemCategory, #foodCourse, #addonsSelect { max-width: 100%; }
+  #newCategoryInput, #newCourseInput, #newAddonInput, #newAddonPrice { max-width: 100%; }
 }
