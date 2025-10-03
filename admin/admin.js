@@ -1202,13 +1202,13 @@ console.log("[DEBUG] bulkPromosModal open done");
 }
 
 
-// Assign Promotions — hardened, visible-first, no UI changes
+// Assign Promotions — multi-select like Add-ons, with channel badges (Delivery=purple, Dining=green)
 
 async function openAssignPromotionsModal(itemId, currentIds = [], triggerEl) {
   try {
     ensureModalStyles();
 
-    // 1) Create/get overlay + force to top of stacking context
+    // 1) Create/get overlay + force visibility/top-of-stack
     let ov = document.getElementById('promoAssignModal');
     if (!ov) {
       ov = document.createElement('div');
@@ -1222,7 +1222,7 @@ async function openAssignPromotionsModal(itemId, currentIds = [], triggerEl) {
             <label><input type="checkbox" id="ppClear"/> Clear all promotions</label>
           </div>
 
-          <select id="ppSelect" multiple size="8" style="width:100%; max-height:300px; overflow:auto;"></select>
+          <div id="promoList" style="max-height:300px; overflow:auto; border:1px solid #eee; padding:8px; border-radius:6px;"></div>
 
           <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:12px;">
             <button id="ppSave" class="adm-btn adm-btn--primary">Save</button>
@@ -1238,7 +1238,7 @@ async function openAssignPromotionsModal(itemId, currentIds = [], triggerEl) {
         box.style.visibility = 'visible';
         box.style.opacity = '1';
       }
-      document.body.appendChild(ov); // ensure last child → top of z-index stacks
+      document.body.appendChild(ov);
     }
 
     // 2) Show overlay immediately (prevents “dim only”)
@@ -1249,10 +1249,10 @@ async function openAssignPromotionsModal(itemId, currentIds = [], triggerEl) {
     }
 
     // 3) Refs + diagnostics
-    const sel     = ov.querySelector('#ppSelect');
-    const ppClear = ov.querySelector('#ppClear');
+    const list = ov.querySelector('#promoList');
     const btnSave = ov.querySelector('#ppSave');
     const btnCancel = ov.querySelector('#ppCancel');
+    const ppClear = ov.querySelector('#ppClear');
     const box = ov.querySelector('.adm-modal');
     try {
       const r = box?.getBoundingClientRect?.();
@@ -1263,47 +1263,61 @@ async function openAssignPromotionsModal(itemId, currentIds = [], triggerEl) {
       console.warn('[PromoModal] Could not inspect box rect:', e);
     }
 
-    // 4) Build options list (resilient); preserves your label style
-    //    It reads from the 'promotions' collection and builds human labels
+    // 4) Fetch promotions (resilient)
     let rows = [];
     try {
       const snap = await getDocs(collection(db, 'promotions'));
       snap.forEach(d => {
         const p = d.data() || {};
-        // label format similar to your existing code: code • channel • type/value
+        // Build human label like before (code • channel • type/value)
         const typeTxt =
           p.type === 'percent' ? `${p.value}% off`
           : (p.value !== undefined ? `₹${p.value} off` : 'promo');
-        const chan = p.channel ? (p.channel === 'dining' ? 'Dining' : 'Delivery') : '';
-        const label = [p.code || '(no code)', chan, typeTxt].filter(Boolean).join(' • ');
-        rows.push({ id: d.id, label });
+        const channel = p.channel || ''; // 'delivery' | 'dining' | ''
+        rows.push({
+          id: d.id,
+          code: p.code || '(no code)',
+          channel,
+          label: [p.code || '(no code)', channel ? (channel === 'dining' ? 'Dining' : 'Delivery') : '', typeTxt]
+                   .filter(Boolean).join(' • ')
+        });
       });
     } catch (e) {
       console.error('[PromoModal] fetch promotions failed:', e);
       rows = [];
     }
 
-    // 5) Hydrate select with current IDs preselected
-    sel.innerHTML = '';
+    // 5) Normalize current selection
+    const cur = new Set(Array.isArray(currentIds) ? currentIds : []);
+
+    // 6) Colored channel badge helper
+    const channelBadge = (ch) => {
+      // Delivery = purple, Dining = green, else neutral
+      if (ch === 'delivery') {
+        return `<span style="display:inline-block; min-width:10px; padding:2px 8px; border-radius:999px; font-size:12px; line-height:1; background:#7c3aed; color:#fff; margin-left:8px;">Delivery</span>`;
+      }
+      if (ch === 'dining') {
+        return `<span style="display:inline-block; min-width:10px; padding:2px 8px; border-radius:999px; font-size:12px; line-height:1; background:#16a34a; color:#fff; margin-left:8px;">Dining</span>`;
+      }
+      return `<span style="display:inline-block; min-width:10px; padding:2px 8px; border-radius:999px; font-size:12px; line-height:1; background:#9ca3af; color:#fff; margin-left:8px;">General</span>`;
+    };
+
+    // 7) Hydrate checkbox list (multi-select like Add-ons)
     if (!rows.length) {
-      const o = document.createElement('option');
-      o.value = '';
-      o.textContent = '(No promotions found)';
-      sel.appendChild(o);
-      sel.disabled = true;
+      list.innerHTML = `<div class="adm-muted">(No promotions found)</div>`;
     } else {
-      const cur = new Set(Array.isArray(currentIds) ? currentIds : []);
-      rows.forEach(r => {
-        const o = document.createElement('option');
-        o.value = r.id;
-        o.textContent = r.label;
-        o.selected = cur.has(r.id);
-        sel.appendChild(o);
-      });
-      sel.disabled = false;
+      list.innerHTML = rows.map(r => {
+        const checked = cur.has(r.id) ? 'checked' : '';
+        // Label shows code + type text; badge shows channel color
+        return `<label class="adm-list-row">
+                  <input type="checkbox" value="${r.id}" ${checked}/>
+                  <span>${r.label}</span>
+                  ${channelBadge(r.channel)}
+                </label>`;
+      }).join('');
     }
 
-    // 6) Wire buttons (overwrite each open)
+    // 8) Wire buttons (overwrite each open)
     btnCancel.onclick = () => closeOverlay(ov);
     btnSave.onclick = async () => {
       try {
@@ -1312,7 +1326,8 @@ async function openAssignPromotionsModal(itemId, currentIds = [], triggerEl) {
         const clear = !!ppClear.checked;
         const ids = clear
           ? []
-          : Array.from(sel.selectedOptions || []).map(o => o.value).filter(Boolean);
+          : Array.from(list.querySelectorAll('input[type="checkbox"]:checked'))
+              .map(el => el.value);
 
         console.log('[PromoModal] save', { itemId, ids, clear });
 
@@ -1334,7 +1349,6 @@ async function openAssignPromotionsModal(itemId, currentIds = [], triggerEl) {
     alert('Could not open Assign Promotions: ' + (err?.message || err));
   }
 }
-
 
 // Assign Add-ons — hardened, visible-first, no UI changes
 
