@@ -1202,14 +1202,142 @@ console.log("[DEBUG] bulkPromosModal open done");
 }
 
 
-/* =========================
-   Assign (single item): Promotions
-   ========================= */
+// Assign Promotions — hardened, visible-first, no UI changes
 
-async function openAssignPromotionsModal
-// Assign AddonsModel
+async function openAssignPromotionsModal(itemId, currentIds = [], triggerEl) {
+  try {
+    ensureModalStyles();
+
+    // 1) Create/get overlay + force to top of stacking context
+    let ov = document.getElementById('promoAssignModal');
+    if (!ov) {
+      ov = document.createElement('div');
+      ov.id = 'promoAssignModal';
+      ov.className = 'adm-overlay';
+      ov.innerHTML = `
+        <div class="adm-modal" style="max-width:560px;display:block;visibility:visible;opacity:1">
+          <h3 style="margin:0 0 10px">Assign Promotions</h3>
+
+          <div class="adm-row" style="gap:8px; align-items:center; margin-bottom:8px">
+            <label><input type="checkbox" id="ppClear"/> Clear all promotions</label>
+          </div>
+
+          <select id="ppSelect" multiple size="8" style="width:100%; max-height:300px; overflow:auto;"></select>
+
+          <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:12px;">
+            <button id="ppSave" class="adm-btn adm-btn--primary">Save</button>
+            <button id="ppCancel" class="adm-btn">Cancel</button>
+          </div>
+        </div>`;
+      document.body.appendChild(ov);
+      ov.querySelector('#ppCancel').onclick = () => closeOverlay(ov);
+    } else {
+      const box = ov.querySelector('.adm-modal');
+      if (box) {
+        box.style.display = 'block';
+        box.style.visibility = 'visible';
+        box.style.opacity = '1';
+      }
+      document.body.appendChild(ov); // ensure last child → top of z-index stacks
+    }
+
+    // 2) Show overlay immediately (prevents “dim only”)
+    ov.style.display = 'block';
+    try { showOverlay(ov, triggerEl); } catch (e) {
+      console.error('[PromoModal] showOverlay threw:', e);
+      ov.style.display = 'block';
+    }
+
+    // 3) Refs + diagnostics
+    const sel     = ov.querySelector('#ppSelect');
+    const ppClear = ov.querySelector('#ppClear');
+    const btnSave = ov.querySelector('#ppSave');
+    const btnCancel = ov.querySelector('#ppCancel');
+    const box = ov.querySelector('.adm-modal');
+    try {
+      const r = box?.getBoundingClientRect?.();
+      if (!box || !r || r.width < 10 || r.height < 10) {
+        console.warn('[PromoModal] Box not visible; rect:', r, 'styles:', box && getComputedStyle(box));
+      }
+    } catch (e) {
+      console.warn('[PromoModal] Could not inspect box rect:', e);
+    }
+
+    // 4) Build options list (resilient); preserves your label style
+    //    It reads from the 'promotions' collection and builds human labels
+    let rows = [];
+    try {
+      const snap = await getDocs(collection(db, 'promotions'));
+      snap.forEach(d => {
+        const p = d.data() || {};
+        // label format similar to your existing code: code • channel • type/value
+        const typeTxt =
+          p.type === 'percent' ? `${p.value}% off`
+          : (p.value !== undefined ? `₹${p.value} off` : 'promo');
+        const chan = p.channel ? (p.channel === 'dining' ? 'Dining' : 'Delivery') : '';
+        const label = [p.code || '(no code)', chan, typeTxt].filter(Boolean).join(' • ');
+        rows.push({ id: d.id, label });
+      });
+    } catch (e) {
+      console.error('[PromoModal] fetch promotions failed:', e);
+      rows = [];
+    }
+
+    // 5) Hydrate select with current IDs preselected
+    sel.innerHTML = '';
+    if (!rows.length) {
+      const o = document.createElement('option');
+      o.value = '';
+      o.textContent = '(No promotions found)';
+      sel.appendChild(o);
+      sel.disabled = true;
+    } else {
+      const cur = new Set(Array.isArray(currentIds) ? currentIds : []);
+      rows.forEach(r => {
+        const o = document.createElement('option');
+        o.value = r.id;
+        o.textContent = r.label;
+        o.selected = cur.has(r.id);
+        sel.appendChild(o);
+      });
+      sel.disabled = false;
+    }
+
+    // 6) Wire buttons (overwrite each open)
+    btnCancel.onclick = () => closeOverlay(ov);
+    btnSave.onclick = async () => {
+      try {
+        btnSave.disabled = true;
+
+        const clear = !!ppClear.checked;
+        const ids = clear
+          ? []
+          : Array.from(sel.selectedOptions || []).map(o => o.value).filter(Boolean);
+
+        console.log('[PromoModal] save', { itemId, ids, clear });
+
+        await updateDoc(doc(db, 'menuItems', itemId), {
+          promotions: ids,
+          updatedAt: serverTimestamp(),
+        });
+
+        closeOverlay(ov);
+      } catch (err) {
+        console.error('[PromoModal] save failed:', err);
+        alert('Failed to assign promotions: ' + (err?.message || err));
+      } finally {
+        btnSave.disabled = false;
+      }
+    };
+  } catch (err) {
+    console.error('[PromoModal] open failed (outer):', err);
+    alert('Could not open Assign Promotions: ' + (err?.message || err));
+  }
+}
+
 
 // Assign Add-ons — hardened, visible-first, no UI changes
+
 async function openAssignAddonsModal(itemId, current = [], triggerEl) {
   try {
     ensureModalStyles();
