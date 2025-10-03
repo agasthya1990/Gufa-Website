@@ -305,3 +305,34 @@ html, body { font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Hel
   float: none;                      /* ignore any float rules */
   clear: both;                      /* always start on a clean line */
 }
+
+/* Ensure all native controls inherit the page font (Inter/system UI) */
+.adm-input,
+.adm-select,
+.adm-file,
+textarea,
+input,
+select,
+button {
+  font: inherit;
+  line-height: 1.4;
+}
+
+/* Explicitly normalize the Description control */
+#menuForm #itemDescription {
+  font: inherit;
+}
+
+/* Price controls should be compact, left-aligned, and stack vertically */
+#menuForm #itemPrice,
+#menuForm #halfPrice,
+#menuForm #fullPrice {
+  grid-column: 1 / -1;   /* occupy a full grid row so they don't auto-flow side-by-side */
+  max-width: 220px;       /* avoid long bars */
+  width: 100%;
+  display: none;          /* JS will flip to 'block' when relevant */
+  margin: 6px 0 8px;
+  box-sizing: border-box;
+}
+
+
