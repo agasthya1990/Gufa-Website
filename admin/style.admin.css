@@ -180,13 +180,13 @@ html, body { font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Hel
   margin-bottom: 12px;
 }
 
-/* 2) Description: look like a 200×200 box (stretchable if browser allows) */
+/* 2) Description: look like a 200×100 box (stretchable if browser allows) */
 #menuForm #itemDescription {
   display: block;
   width: 200px;
   height: 100px;
   min-width: 200px;
-  min-height: 200px;
+  min-height: 100px;
   /* some browsers let inputs resize; if not, it will still look like a square box */
   resize: both;
   overflow: auto;
@@ -262,4 +262,28 @@ html, body { font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Hel
 @media (max-width: 520px) {
   #itemCategory, #foodCourse, #addonsSelect { max-width: 100%; }
   #newCategoryInput, #newCourseInput, #newAddonInput, #newAddonPrice { max-width: 100%; }
+}
+
+/* === Fix: place Quantity Type directly under Food Type === */
+/* Make each control live on its own full-width row inside the form grid */
+.adm-form-grid .full:has(#foodType),
+.adm-form-grid .full:has(#qtyType) {
+  display: block;         /* break any flex/inline row behavior */
+  width: 100%;
+  /* if the grid uses columns, span the whole row */
+  grid-column: 1 / -1;
+}
+
+/* Compact, block layout for the two selects */
+#foodType,
+#qtyType {
+  display: block;
+  max-width: 220px;
+  width: 100%;
+}
+
+/* Ensure Quantity Type starts on a new line with comfortable spacing */
+#qtyType {
+  clear: both;
+  margin: 0 0 12px;
 }
