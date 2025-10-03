@@ -94,7 +94,7 @@
       <h3>Add New Menu Item</h3>
       <form id="menuForm" class="adm-card adm-form-grid">
         <input type="text" id="itemName" class="adm-input full" autocomplete="off" placeholder="Item Name" required />
-        <input type="text" id="itemDescription" class="adm-input full" autocomplete="off" placeholder="Description" required />
+        <textarea id="itemDescription" class="adm-input full" placeholder="Description" required></textarea>
 
         <!-- Category (hidden select + custom dropdown) -->
         <div class="full">
@@ -148,16 +148,16 @@
             <option value="Non-Veg">Non-Veg</option>
           </select>
         </div>
-
-        <!-- Quantity Type -->
-        <div>
-          <label>Quantity Type</label>
-          <select id="qtyType" class="adm-select" required>
-            <option value="">-- Select Qty Type --</option>
-            <option value="Not Applicable">Not Applicable</option>
-            <option value="Half & Full">Half & Full</option>
-          </select>
-        </div>
+        
+       <!-- Quantity Type -->
+  <div class="full">
+  <label>Quantity Type</label>
+  <select id="qtyType" class="adm-select" required>
+    <option value="">-- Select Qty Type --</option>
+    <option value="Not Applicable">Not Applicable</option>
+    <option value="Half & Full">Half & Full</option>
+  </select>
+</div>
 
         <input type="number" id="itemPrice" class="adm-input" autocomplete="off" placeholder="Price" style="display:none;" />
         <input type="number" id="halfPrice" class="adm-input" autocomplete="off" placeholder="Half Price" style="display:none;" />
