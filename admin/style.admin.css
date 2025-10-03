@@ -167,75 +167,105 @@ html, body { font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Hel
 /* Make default modal dialog a bit narrower for friendlier feel */
 .adm-modal__dialog { max-width: 640px; }
 
-/* === Login Box Centering === */
-#loginBox {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
+/* ================================
+   Add New Menu Item — alignment only
+   (no JS; keep existing styles/colors)
+   ================================ */
 
-  /* Center full viewport */
-  position: fixed;
-  top: 0; left: 0; right: 0; bottom: 0;
-
-  width: 100%;
-  height: 100%;
-  margin: 0;
-  padding: 20px;
-  box-sizing: border-box;
+/* 1) Name: compact, single line */
+#itemName{
+  display:block;
+  max-width:360px;     /* "not more longer than this" */
+  width:100%;
+  margin-bottom:12px;
 }
 
-#loginBox .adm-card {
-  max-width: 380px;  /* neat compact width */
-  width: 100%;
+/* 2) Description: stretchable 200×200 box */
+#itemDescription{
+  display:block;
+  width:200px;
+  height:200px;
+  min-width:200px;
+  min-height:200px;
+  max-width:240px;     /* small give if user resizes */
+  max-height:260px;
+  resize:both;
+  margin-bottom:12px;
 }
 
-/* === Add New Menu Item Form Alignment === */
-
-/* Compact inputs */
-#itemName,
-#foodType,
-#qtyType,
-#itemImage {
-  max-width: 360px;
-}
-
-/* Description box: 200x200 and resizable */
-#itemDescription {
-  min-width: 200px;
-  max-width: 200px;
-  min-height: 200px;
-  max-height: 240px;
-  resize: both;
-}
-
-/* Inline flex rows for form trios */
+/* 3) Category trio: [Select Category] [Add New Category] [Add Category] */
 #itemCategory,
 #newCategoryInput,
-#addCategoryBtn,
+#addCategoryBtn{
+  display:inline-block;
+  vertical-align:middle;
+  margin-right:8px;
+}
+#itemCategory{ max-width:180px; }
+#newCategoryInput{ max-width:150px; }
+#addCategoryBtn{ min-width:100px; }
+
+/* ensure the trio sits on its own row */
+#itemCategory{ clear:both; }
+#addCategoryBtn{ margin-bottom:12px; }
+
+/* 4) Course trio: [Select Course] [Add New Course] [Add Course] */
 #foodCourse,
 #newCourseInput,
-#addCourseBtn,
+#addCourseBtn{
+  display:inline-block;
+  vertical-align:middle;
+  margin-right:8px;
+}
+#foodCourse{ max-width:180px; }
+#newCourseInput{ max-width:150px; }
+#addCourseBtn{ min-width:100px; margin-bottom:12px; }
+
+/* keep this group starting on a fresh line */
+#foodCourse{ clear:both; }
+
+/* 5) Add-ons row: [Select Add-on] [Add New Add-on] [Price] [Add Add-on] */
 #addonsSelect,
 #newAddonInput,
 #newAddonPrice,
-#addAddonBtn {
-  display: inline-block;
-  vertical-align: middle;
-  margin-right: 6px;
+#addAddonBtn{
+  display:inline-block;
+  vertical-align:middle;
+  margin-right:8px;
+}
+#addonsSelect{ max-width:180px; clear:both; }
+#newAddonInput,
+#newAddonPrice{ max-width:150px; }
+#addAddonBtn{ min-width:110px; margin-bottom:12px; }
+
+/* 6) Food Type — its own line (compact) */
+#foodType{
+  display:block;       /* own row */
+  max-width:180px;
+  width:100%;
+  clear:both;
+  margin:8px 0 12px;
 }
 
-#itemCategory, #foodCourse, #addonsSelect {
-  max-width: 180px;
+/* 7) Quantity Type — its own line (compact) */
+#qtyType{
+  display:block;       /* own row */
+  max-width:220px;
+  width:100%;
+  clear:both;
+  margin:0 0 12px;
 }
 
-#newCategoryInput, #newCourseInput, #newAddonInput, #newAddonPrice {
-  max-width: 150px;
+/* 8) Image label on one line, file input on next */
+#itemImage{
+  display:block;       /* “Choose File” on a new line under Image */
+  max-width:260px;
+  width:100%;
+  margin-top:6px;
 }
 
-/* Small buttons look aligned */
-#addCategoryBtn,
-#addCourseBtn,
-#addAddonBtn {
-  min-width: 90px;
+/* Small screens: allow natural wrapping without breaking intent */
+@media (max-width: 520px){
+  #itemCategory, #foodCourse, #addonsSelect{ max-width:100%; }
+  #newCategoryInput, #newCourseInput, #newAddonInput, #newAddonPrice{ max-width:100%; }
 }
