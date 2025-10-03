@@ -868,13 +868,12 @@ function updateBulkBar() {
 function closeOverlay(ov) { const box = qs('.adm-modal', ov); if (box) { box.classList.remove('adm-anim-in'); box.classList.add('adm-anim-out'); }
   setTimeout(() => { ov.style.display = 'none'; unlockBodyScroll(); }, 180); }
 
-/* =========================
-   Bulk: Promotions
-   ========================= */
+// Bulk Promotions — coupons only, checkbox UI like single-row Promotions, with channel badges
+
 async function openBulkPromosModal(triggerEl) {
   ensureModalStyles();
 
-  // Create/get overlay + force visible & top-of-stack
+  // 1) Create/get overlay and force it visible + on top of stacking context
   let ov = document.getElementById('bulkPromosModal');
   if (!ov) {
     ov = document.createElement('div');
@@ -883,10 +882,13 @@ async function openBulkPromosModal(triggerEl) {
     ov.innerHTML = `
       <div class="adm-modal" style="display:block;visibility:visible;opacity:1;max-width:560px">
         <h3 style="margin:0 0 10px">Bulk Promotions (<span id="bpCount">0</span> items)</h3>
-        <label style="display:flex; align-items:center; gap:6px; margin:8px 0 6px;">
-          <input type="checkbox" id="bpClear"/> <span>Clear promotions</span>
-        </label>
-        <select id="bpSelect" multiple size="8" style="width:100%;"></select>
+
+        <div class="adm-row" style="gap:8px; align-items:center; margin-bottom:8px">
+          <label><input type="checkbox" id="bpClear"/> Clear all promotions</label>
+        </div>
+
+        <div id="bpList" style="max-height:48vh; overflow:auto; border:1px solid #eee; padding:8px; border-radius:8px;"></div>
+
         <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:12px;">
           <button id="bpApply" class="adm-btn adm-btn--primary">Apply</button>
           <button id="bpCancel" class="adm-btn">Cancel</button>
@@ -895,72 +897,113 @@ async function openBulkPromosModal(triggerEl) {
     document.body.appendChild(ov);
   } else {
     const box = ov.querySelector('.adm-modal');
-    if (box) { box.style.display='block'; box.style.visibility='visible'; box.style.opacity='1'; }
-    document.body.appendChild(ov);
+    if (box) { box.style.display = 'block'; box.style.visibility = 'visible'; box.style.opacity = '1'; }
+    document.body.appendChild(ov); // ensure last child → sits on top
   }
 
-  // Show overlay immediately
+  // 2) Show overlay immediately (prevents “dim only”)
   ov.style.display = 'block';
   try { showOverlay(ov, triggerEl); } catch { ov.style.display = 'block'; }
 
-  // Refs
-  const sel = ov.querySelector('#bpSelect');
-  const btnApply = ov.querySelector('#bpApply');
-  const btnCancel = ov.querySelector('#bpCancel');
-  const bpCount = ov.querySelector('#bpCount');
+  // 3) Refs
+  const bpCount  = ov.querySelector('#bpCount');
+  const bpList   = ov.querySelector('#bpList');
+  const bpApply  = ov.querySelector('#bpApply');
+  const bpCancel = ov.querySelector('#bpCancel');
+  const bpClear  = ov.querySelector('#bpClear');
 
-  // Wire cancel (idempotent)
-  btnCancel.onclick = () => closeOverlay(ov);
+  // Count selected rows
+  bpCount.textContent = String(selectedIds?.size || 0);
 
-  // Populate options — coupons only
-  sel.innerHTML = '';
-  const rows = [];
-  if (Object.keys(PROMOS_BY_ID).length) {
-    for (const [id, p] of Object.entries(PROMOS_BY_ID)) {
-      if (p?.kind !== 'coupon') continue;           // coupons only
-      const typeTxt = p.type === 'percent' ? `${p.value}% off` : `₹${p.value} off`;
-      const chan = p.channel === 'dining' ? 'Dining' : 'Delivery';
-      rows.push({ id, label: `${p.code || '(no code)'} • ${chan} • ${typeTxt}` });
+  // Cancel (idempotent)
+  bpCancel.onclick = () => closeOverlay(ov);
+
+  // 4) Helper for colored channel badges (Delivery=purple, Dining=green)
+  const channelBadge = (ch) => {
+    if (ch === 'delivery') {
+      return `<span style="display:inline-block; min-width:10px; padding:2px 8px; border-radius:999px; font-size:12px; line-height:1; background:#7c3aed; color:#fff; margin-left:8px;">Delivery</span>`;
     }
-  } else {
-    const snap = await getDocs(collection(db, 'promotions'));
-    snap.forEach(d => {
-      const p = d.data() || {};
-      if (p?.kind !== 'coupon') return;             // coupons only
-      const typeTxt = p.type === 'percent' ? `${p.value}% off`
-                    : (p.value !== undefined ? `₹${p.value} off` : 'promo');
-      const chan = p.channel ? (p.channel === 'dining' ? 'Dining' : 'Delivery') : '';
-      rows.push({ id: d.id, label: [p.code || '(no code)', chan, typeTxt].filter(Boolean).join(' • ') });
-    });
+    if (ch === 'dining') {
+      return `<span style="display:inline-block; min-width:10px; padding:2px 8px; border-radius:999px; font-size:12px; line-height:1; background:#16a34a; color:#fff; margin-left:8px;">Dining</span>`;
+    }
+    return `<span style="display:inline-block; min-width:10px; padding:2px 8px; border-radius:999px; font-size:12px; line-height:1; background:#9ca3af; color:#fff; margin-left:8px;">General</span>`;
+  };
+
+  // 5) Fetch promotions — **COUPONS ONLY** — build same checkbox UI as row Promotions
+  let rows = [];
+  try {
+    if (typeof PROMOS_BY_ID === 'object' && PROMOS_BY_ID && Object.keys(PROMOS_BY_ID).length) {
+      for (const [id, p] of Object.entries(PROMOS_BY_ID)) {
+        if (p?.kind !== 'coupon') continue; // filter banners out
+        const typeTxt =
+          p.type === 'percent' ? `${p.value}% off`
+          : (p.value !== undefined ? `₹${p.value} off` : 'promo');
+        const chan = p.channel || ''; // 'delivery' | 'dining' | ''
+        const label = [p.code || '(no code)', chan === 'dining' ? 'Dining' : 'Delivery', typeTxt]
+                       .filter(Boolean).join(' • ');
+        rows.push({ id, label, channel: chan });
+      }
+    } else {
+      const snap = await getDocs(collection(db, 'promotions'));
+      snap.forEach(d => {
+        const p = d.data() || {};
+        if (p?.kind !== 'coupon') return; // coupons only
+        const typeTxt =
+          p.type === 'percent' ? `${p.value}% off`
+          : (p.value !== undefined ? `₹${p.value} off` : 'promo');
+        const chan = p.channel || '';
+        const label = [p.code || '(no code)', chan === 'dining' ? 'Dining' : 'Delivery', typeTxt]
+                       .filter(Boolean).join(' • ');
+        rows.push({ id: d.id, label, channel: chan });
+      });
+    }
+  } catch (e) {
+    console.error('[BulkPromos] fetch failed:', e);
+    rows = [];
   }
+
+  // 6) Hydrate list (checkboxes + badges)
   if (!rows.length) {
-    sel.innerHTML = `<option value="">(No promotions found)</option>`;
+    bpList.innerHTML = `<div class="adm-muted">(No promotions found)</div>`;
   } else {
-    rows.forEach(r => {
-      const o = document.createElement('option');
-      o.value = r.id; o.textContent = r.label;
-      sel.appendChild(o);
-    });
+    bpList.innerHTML = rows.map(r => `
+      <label class="adm-list-row">
+        <input type="checkbox" value="${r.id}"/>
+        <span>${r.label}</span>
+        ${channelBadge(r.channel)}
+      </label>
+    `).join('');
   }
-  bpCount.textContent = String(selectedIds.size);
 
-  // Apply
-  btnApply.onclick = async () => {
-    if (!selectedIds.size) return alert('No items selected');
-    const clear = ov.querySelector('#bpClear').checked;
-    const ids = clear ? [] : Array.from(sel.selectedOptions).map(o => o.value).filter(Boolean);
-
+  // 7) Apply to all selected rows
+  bpApply.onclick = async () => {
     try {
-      btnApply.disabled = true;
+      if (!selectedIds?.size) return alert('No items selected');
+      bpApply.disabled = true;
+
+      const clear = !!bpClear.checked;
+      const ids = clear
+        ? []
+        : Array.from(bpList.querySelectorAll('input[type="checkbox"]:checked'))
+            .map(i => i.value);
+
+      console.log('[BulkPromos] apply', { count: selectedIds.size, ids, clear });
+
       const ops = [];
-      selectedIds.forEach(id => ops.push(updateDoc(doc(db,'menuItems',id), { promotions: ids, updatedAt: serverTimestamp() })));
+      selectedIds.forEach(itemId => {
+        ops.push(updateDoc(doc(db, 'menuItems', itemId), {
+          promotions: ids,
+          updatedAt: serverTimestamp(),
+        }));
+      });
       await Promise.all(ops);
+
       closeOverlay(ov);
-    } catch (e) {
-      console.error('[BulkPromos] apply failed', e);
-      alert('Failed to update promotions');
+    } catch (err) {
+      console.error('[BulkPromos] apply failed:', err);
+      alert('Failed to update promotions: ' + (err?.message || err));
     } finally {
-      btnApply.disabled = false;
+      bpApply.disabled = false;
     }
   };
 }
