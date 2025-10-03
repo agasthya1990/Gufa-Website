@@ -1290,57 +1290,122 @@ console.log("[DEBUG] bulkPromosModal open done");
 
 // Assign AddonsModel
 
+// Assign Add-ons — hardened, visible-first, no UI changes
 async function openAssignAddonsModal(itemId, current = [], triggerEl) {
-  console.log("[DEBUG] openAssignAddonsModal start", { itemId, current });
-  ensureModalStyles();
-  let ov = el('addonAssignModal');
-  if (!ov) {
-    ov = document.createElement('div');
-    ov.id = 'addonAssignModal';
-    ov.className = 'adm-overlay';
-    ov.innerHTML = `
-      <div class="adm-modal" style="max-width:520px;">
-        <h3 style="margin:0 0 10px">Assign Add-ons</h3>
-        <div id="assignAddonList" style="max-height:300px; overflow:auto; border:1px solid #eee; padding:8px; border-radius:6px;"></div>
-        <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:12px;">
-          <button id="assignAddonSave" class="adm-btn adm-btn--primary">Save</button>
-          <button id="assignAddonCancel" class="adm-btn">Cancel</button>
-        </div>
-      </div>`;
-    document.body.appendChild(ov);
-    console.log("[DEBUG] addonAssignModal created");
-    qs('#assignAddonCancel', ov).onclick = () => { console.log("[DEBUG] addonAssignModal cancel"); closeOverlay(ov); };
-  }
+  try {
+    ensureModalStyles();
 
-  const list = el('assignAddonList');
-  const cur = new Set((current || []).map(a => (typeof a === 'string' ? a : a.name)));
-  const addons = await fetchAddons();
-  console.log("[DEBUG] assignAddons options:", addons.length, "preselected:", Array.from(cur));
-  list.innerHTML = addons
-    .map(a => `<label class="adm-list-row"><input type="checkbox" value="${a.name}" ${cur.has(a.name) ? 'checked' : ''}/> <span>${a.name} (₹${a.price})</span></label>`)
-    .join('');
-
-  qs('#assignAddonSave', ov).onclick = async () => {
-    const chosen = addons
-      .filter(a => list.querySelector(`input[value="${a.name}"]`)?.checked)
-      .map(a => ({ name: a.name, price: a.price }));
-    console.log("[DEBUG] assignAddons save", { itemId, chosen });
-    try {
-      await updateDoc(doc(db, 'menuItems', itemId), {
-        addons: chosen,
-        updatedAt: serverTimestamp(),
-      });
-      closeOverlay(ov);
-    } catch (err) {
-      console.error("[DEBUG] assignAddons save failed", err);
-      alert('Failed to assign add-ons');
+    // 1) Create/get overlay + force to top of stacking context
+    let ov = document.getElementById('addonAssignModal');
+    if (!ov) {
+      ov = document.createElement('div');
+      ov.id = 'addonAssignModal';
+      ov.className = 'adm-overlay';
+      ov.innerHTML = `
+        <div class="adm-modal" style="max-width:520px;display:block;visibility:visible;opacity:1">
+          <h3 style="margin:0 0 10px">Assign Add-ons</h3>
+          <div id="assignAddonList" style="max-height:300px; overflow:auto; border:1px solid #eee; padding:8px; border-radius:6px;"></div>
+          <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:12px;">
+            <button id="assignAddonSave" class="adm-btn adm-btn--primary">Save</button>
+            <button id="assignAddonCancel" class="adm-btn">Cancel</button>
+          </div>
+        </div>`;
+      document.body.appendChild(ov);
+      // Cancel wiring (fresh each create)
+      ov.querySelector('#assignAddonCancel').onclick = () => closeOverlay(ov);
+    } else {
+      // ensure modal box is visible even if CSS tried to hide it
+      const box = ov.querySelector('.adm-modal');
+      if (box) {
+        box.style.display = 'block';
+        box.style.visibility = 'visible';
+        box.style.opacity = '1';
+      }
+      // re-append as last child so it’s above any z-index stacks
+      document.body.appendChild(ov);
     }
-  };
 
-  showOverlay(ov, triggerEl);
-console.log("[DEBUG] bulkPromosModal open done");
+    // 2) Show overlay immediately (prevent “dim only” symptom)
+    ov.style.display = 'block';
+    try { showOverlay(ov, triggerEl); } catch (e) {
+      console.error('[AddonModal] showOverlay threw:', e);
+      ov.style.display = 'block'; // fallback keep-visible
+    }
 
+    // 3) Refs + self-diagnostics
+    const list = ov.querySelector('#assignAddonList');
+    const saveBtn = ov.querySelector('#assignAddonSave');
+    const cancelBtn = ov.querySelector('#assignAddonCancel');
+    const box = ov.querySelector('.adm-modal');
+    try {
+      const r = box?.getBoundingClientRect?.();
+      if (!box || !r || r.width < 10 || r.height < 10) {
+        console.warn('[AddonModal] Box not visible; rect:', r, 'styles:', box && getComputedStyle(box));
+      }
+    } catch (e) {
+      console.warn('[AddonModal] Could not inspect box rect:', e);
+    }
+
+    // 4) Normalize current selection (supports legacy strings or {name, price})
+    const currentSet = new Set(
+      (Array.isArray(current) ? current : [])
+        .map(a => (typeof a === 'string' ? a : a?.name))
+        .filter(Boolean)
+    );
+
+    // 5) Load available add-ons and hydrate UI (resilient)
+    let addons = [];
+    try {
+      addons = await fetchAddons(); // [{name, price}, ...]
+    } catch (e) {
+      console.error('[AddonModal] fetchAddons failed:', e);
+      addons = [];
+    }
+
+    if (!addons.length) {
+      list.innerHTML = `<div class="adm-muted">(No add-ons found)</div>`;
+    } else {
+      list.innerHTML = addons.map(a => {
+        const checked = currentSet.has(a.name) ? 'checked' : '';
+        return `<label class="adm-list-row">
+                  <input type="checkbox" value="${a.name}" data-price="${a.price}" ${checked}/>
+                  <span>${a.name} (₹${a.price})</span>
+                </label>`;
+      }).join('');
+    }
+
+    // 6) Wire buttons (overwrite each open)
+    cancelBtn.onclick = () => closeOverlay(ov);
+    saveBtn.onclick = async () => {
+      try {
+        saveBtn.disabled = true;
+
+        // Build chosen array as objects, preserving {name, price}
+        const chosen = addons
+          .filter(a => list.querySelector(`input[value="${a.name}"]`)?.checked)
+          .map(a => ({ name: a.name, price: Number(a.price || 0) }));
+
+        console.log('[AddonModal] save', { itemId, chosen });
+
+        await updateDoc(doc(db, 'menuItems', itemId), {
+          addons: chosen,
+          updatedAt: serverTimestamp(),
+        });
+
+        closeOverlay(ov);
+      } catch (err) {
+        console.error('[AddonModal] save failed:', err);
+        alert('Failed to assign add-ons: ' + (err?.message || err));
+      } finally {
+        saveBtn.disabled = false;
+      }
+    };
+  } catch (err) {
+    console.error('[AddonModal] open failed (outer):', err);
+    alert('Could not open Assign Add-ons: ' + (err?.message || err));
+  }
 }
+
 
 /* =========================
    [Edit] — Single Item Edit Modal (row action) — hardened visible-first
