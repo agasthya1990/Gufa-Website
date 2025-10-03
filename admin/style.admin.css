@@ -391,3 +391,26 @@ button {
   background-size: 16px 16px;
   padding-left: 32px;  /* leaves space for icon */
 }
+
+/* ================================
+   Search & Filter dropdowns only
+   ================================ */
+#searchInput,
+#filterCategory,
+#filterCourse,
+#filterType {
+  font: inherit;        /* match site font */
+  font-size: 14px;      /* consistent with site text */
+  line-height: 1.4;
+  color: inherit;       /* match body text color */
+}
+
+/* Options inside the dropdowns */
+#filterCategory option,
+#filterCourse option,
+#filterType option {
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.4;
+  color: inherit;
+}
