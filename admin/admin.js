@@ -1202,7 +1202,7 @@ console.log("[DEBUG] bulkPromosModal open done");
 }
 
 
-// Assign Promotions — multi-select like Add-ons, with channel badges (Delivery=purple, Dining=green)
+// Assign Promotions — coupons only, multi-select like Add-ons, with channel badges (Delivery=purple, Dining=green)
 
 async function openAssignPromotionsModal(itemId, currentIds = [], triggerEl) {
   try {
@@ -1217,13 +1217,10 @@ async function openAssignPromotionsModal(itemId, currentIds = [], triggerEl) {
       ov.innerHTML = `
         <div class="adm-modal" style="max-width:560px;display:block;visibility:visible;opacity:1">
           <h3 style="margin:0 0 10px">Assign Promotions</h3>
-
           <div class="adm-row" style="gap:8px; align-items:center; margin-bottom:8px">
             <label><input type="checkbox" id="ppClear"/> Clear all promotions</label>
           </div>
-
           <div id="promoList" style="max-height:300px; overflow:auto; border:1px solid #eee; padding:8px; border-radius:6px;"></div>
-
           <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:12px;">
             <button id="ppSave" class="adm-btn adm-btn--primary">Save</button>
             <button id="ppCancel" class="adm-btn">Cancel</button>
@@ -1233,66 +1230,53 @@ async function openAssignPromotionsModal(itemId, currentIds = [], triggerEl) {
       ov.querySelector('#ppCancel').onclick = () => closeOverlay(ov);
     } else {
       const box = ov.querySelector('.adm-modal');
-      if (box) {
-        box.style.display = 'block';
-        box.style.visibility = 'visible';
-        box.style.opacity = '1';
-      }
+      if (box) { box.style.display = 'block'; box.style.visibility = 'visible'; box.style.opacity = '1'; }
       document.body.appendChild(ov);
     }
 
     // 2) Show overlay immediately (prevents “dim only”)
     ov.style.display = 'block';
-    try { showOverlay(ov, triggerEl); } catch (e) {
-      console.error('[PromoModal] showOverlay threw:', e);
-      ov.style.display = 'block';
-    }
+    try { showOverlay(ov, triggerEl); } catch { ov.style.display = 'block'; }
 
-    // 3) Refs + diagnostics
+    // 3) Refs
     const list = ov.querySelector('#promoList');
     const btnSave = ov.querySelector('#ppSave');
     const btnCancel = ov.querySelector('#ppCancel');
     const ppClear = ov.querySelector('#ppClear');
-    const box = ov.querySelector('.adm-modal');
-    try {
-      const r = box?.getBoundingClientRect?.();
-      if (!box || !r || r.width < 10 || r.height < 10) {
-        console.warn('[PromoModal] Box not visible; rect:', r, 'styles:', box && getComputedStyle(box));
-      }
-    } catch (e) {
-      console.warn('[PromoModal] Could not inspect box rect:', e);
-    }
 
-    // 4) Fetch promotions (resilient)
+    // 4) Fetch promotions — **COUPONS ONLY**
     let rows = [];
-    try {
+    if (Object.keys(PROMOS_BY_ID).length) {
+      for (const [id, p] of Object.entries(PROMOS_BY_ID)) {
+        if (p?.kind !== 'coupon') continue; // ✅ enforce coupon-only
+        const typeTxt = p.type === 'percent' ? `${p.value}% off` : `₹${p.value} off`;
+        rows.push({
+          id,
+          code: p.code || '(no code)',
+          channel: p.channel || '', // 'delivery' | 'dining' | ''
+          label: [p.code || '(no code)', p.channel === 'dining' ? 'Dining' : 'Delivery', typeTxt]
+                  .filter(Boolean).join(' • ')
+        });
+      }
+    } else {
+      // Fallback to Firestore — again **COUPONS ONLY**
       const snap = await getDocs(collection(db, 'promotions'));
       snap.forEach(d => {
         const p = d.data() || {};
-        // Build human label like before (code • channel • type/value)
-        const typeTxt =
-          p.type === 'percent' ? `${p.value}% off`
-          : (p.value !== undefined ? `₹${p.value} off` : 'promo');
-        const channel = p.channel || ''; // 'delivery' | 'dining' | ''
+        if (p?.kind !== 'coupon') return; // ✅ filter banners out
+        const typeTxt = p.type === 'percent' ? `${p.value}% off` : (p.value !== undefined ? `₹${p.value} off` : 'promo');
         rows.push({
           id: d.id,
           code: p.code || '(no code)',
-          channel,
-          label: [p.code || '(no code)', channel ? (channel === 'dining' ? 'Dining' : 'Delivery') : '', typeTxt]
-                   .filter(Boolean).join(' • ')
+          channel: p.channel || '',
+          label: [p.code || '(no code)', p.channel === 'dining' ? 'Dining' : 'Delivery', typeTxt]
+                  .filter(Boolean).join(' • ')
         });
       });
-    } catch (e) {
-      console.error('[PromoModal] fetch promotions failed:', e);
-      rows = [];
     }
 
-    // 5) Normalize current selection
-    const cur = new Set(Array.isArray(currentIds) ? currentIds : []);
-
-    // 6) Colored channel badge helper
+    // 5) Colored channel badge helper
     const channelBadge = (ch) => {
-      // Delivery = purple, Dining = green, else neutral
       if (ch === 'delivery') {
         return `<span style="display:inline-block; min-width:10px; padding:2px 8px; border-radius:999px; font-size:12px; line-height:1; background:#7c3aed; color:#fff; margin-left:8px;">Delivery</span>`;
       }
@@ -1302,13 +1286,13 @@ async function openAssignPromotionsModal(itemId, currentIds = [], triggerEl) {
       return `<span style="display:inline-block; min-width:10px; padding:2px 8px; border-radius:999px; font-size:12px; line-height:1; background:#9ca3af; color:#fff; margin-left:8px;">General</span>`;
     };
 
-    // 7) Hydrate checkbox list (multi-select like Add-ons)
+    // 6) Hydrate checkbox list (multi-select like Add-ons)
+    const cur = new Set(Array.isArray(currentIds) ? currentIds : []);
     if (!rows.length) {
       list.innerHTML = `<div class="adm-muted">(No promotions found)</div>`;
     } else {
       list.innerHTML = rows.map(r => {
         const checked = cur.has(r.id) ? 'checked' : '';
-        // Label shows code + type text; badge shows channel color
         return `<label class="adm-list-row">
                   <input type="checkbox" value="${r.id}" ${checked}/>
                   <span>${r.label}</span>
@@ -1317,25 +1301,16 @@ async function openAssignPromotionsModal(itemId, currentIds = [], triggerEl) {
       }).join('');
     }
 
-    // 8) Wire buttons (overwrite each open)
+    // 7) Wire buttons
     btnCancel.onclick = () => closeOverlay(ov);
     btnSave.onclick = async () => {
       try {
         btnSave.disabled = true;
-
         const clear = !!ppClear.checked;
         const ids = clear
           ? []
-          : Array.from(list.querySelectorAll('input[type="checkbox"]:checked'))
-              .map(el => el.value);
-
-        console.log('[PromoModal] save', { itemId, ids, clear });
-
-        await updateDoc(doc(db, 'menuItems', itemId), {
-          promotions: ids,
-          updatedAt: serverTimestamp(),
-        });
-
+          : Array.from(list.querySelectorAll('input[type="checkbox"]:checked')).map(el => el.value);
+        await updateDoc(doc(db, 'menuItems', itemId), { promotions: ids, updatedAt: serverTimestamp() });
         closeOverlay(ov);
       } catch (err) {
         console.error('[PromoModal] save failed:', err);
