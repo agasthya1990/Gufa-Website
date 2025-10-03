@@ -287,3 +287,21 @@ html, body { font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Hel
   clear: both;
   margin: 0 0 12px;
 }
+
+/* === Force Food Type and Quantity Type to stack (full-width rows) === */
+#foodType,
+#qtyType {
+  grid-column: 1 / -1 !important;  /* take the whole grid row */
+  display: block;                   /* render as blocks for good measure */
+  max-width: 220px;                 /* compact width as before */
+  width: 100%;
+}
+
+/* Add comfy spacing below Quantity Type */
+#qtyType { margin: 0 0 12px; }
+
+/* Safety: if a wrapper tries to line them up, neutralize it */
+#foodType, #qtyType {
+  float: none;                      /* ignore any float rules */
+  clear: both;                      /* always start on a clean line */
+}
