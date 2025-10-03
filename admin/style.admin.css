@@ -167,3 +167,75 @@ html, body { font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Hel
 /* Make default modal dialog a bit narrower for friendlier feel */
 .adm-modal__dialog { max-width: 640px; }
 
+/* === Login Box Centering === */
+#loginBox {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+
+  /* Center full viewport */
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 20px;
+  box-sizing: border-box;
+}
+
+#loginBox .adm-card {
+  max-width: 380px;  /* neat compact width */
+  width: 100%;
+}
+
+/* === Add New Menu Item Form Alignment === */
+
+/* Compact inputs */
+#itemName,
+#foodType,
+#qtyType,
+#itemImage {
+  max-width: 360px;
+}
+
+/* Description box: 200x200 and resizable */
+#itemDescription {
+  min-width: 200px;
+  max-width: 200px;
+  min-height: 200px;
+  max-height: 240px;
+  resize: both;
+}
+
+/* Inline flex rows for form trios */
+#itemCategory,
+#newCategoryInput,
+#addCategoryBtn,
+#foodCourse,
+#newCourseInput,
+#addCourseBtn,
+#addonsSelect,
+#newAddonInput,
+#newAddonPrice,
+#addAddonBtn {
+  display: inline-block;
+  vertical-align: middle;
+  margin-right: 6px;
+}
+
+#itemCategory, #foodCourse, #addonsSelect {
+  max-width: 180px;
+}
+
+#newCategoryInput, #newCourseInput, #newAddonInput, #newAddonPrice {
+  max-width: 150px;
+}
+
+/* Small buttons look aligned */
+#addCategoryBtn,
+#addCourseBtn,
+#addAddonBtn {
+  min-width: 90px;
+}
