@@ -337,11 +337,9 @@ button {
 /* Make Add Menu Item button sit closer to the file input */
 #menuForm .full:last-of-type {
   margin-top: 8px;    /* reduce space above */
-  text-align: right;  /* keep alignment */
+  text-align: left;  /* keep alignment */
 }
 
 #menuForm .full:last-of-type .adm-btn {
   margin-top: 4px;    /* small gap from Choose File */
 }
-
-
