@@ -87,6 +87,7 @@ function ensurePopoverStyles(){
 }
 function toggleAttachedPopover(pop, trigger){
   ensurePopoverStyles();
+  ensureColumnStyles();
   const open = pop.classList.contains("show");
   document.querySelectorAll(".adm-pop.show").forEach(el => el.classList.remove("show"));
   if (open) return;
@@ -98,11 +99,27 @@ function toggleAttachedPopover(pop, trigger){
 }
 const statusPill = (active) =>
   active ? `<strong style="color:#16a34a">Active</strong>` : `<strong style="color:#dc2626">Inactive</strong>`;
+// Column grid styles (lightweight; mirrors catalogue feel)
+function ensureColumnStyles(){
+  if (document.getElementById("promo-columns-css")) return;
+  const css = `
+    .adm-grid{display:grid;gap:8px;align-items:center;padding:6px 8px;border-bottom:1px dashed #eee}
+    .adm-grid-head{font-weight:600;background:#fafafa;border-bottom:2px solid #111}
+    .adm-grid-coupons{grid-template-columns: 1fr .9fr 1fr 1fr .8fr auto}
+    .adm-grid-banners{grid-template-columns: 100px 1fr 1fr .8fr auto}
+    .adm-actions{display:flex;gap:8px;justify-content:flex-end}
+  `;
+  const s = document.createElement("style");
+  s.id = "promo-columns-css";
+  s.textContent = css;
+  document.head.appendChild(s);
+}
 
 // ===== Public init (same entry point, same shell) =====
 export function initPromotions() {
   const root = document.getElementById("promotionsRoot");
   if (!root) return; // guard
+  ensureColumnStyles();
 
   // Build UI once if empty (kept identical)
   if (!root.dataset.wired) {
@@ -164,27 +181,40 @@ export function initPromotions() {
   // ---------- Coupons (add columns + toggle; keep delete) ----------
   if (couponsList) {
     onSnapshot(query(collection(db, "promotions"), orderBy("createdAt", "desc")), (snap) => {
+            const header = `
+        <div class="adm-grid adm-grid-coupons adm-grid-head">
+          <div>Code</div>
+          <div>Channel</div>
+          <div>Value</div>
+          <div>Usage Limit</div>
+          <div>Status</div>
+          <div>Actions</div>
+        </div>
+      `;
       const rows = [];
       snap.forEach(d => {
         const p = d.data();
         if (p?.kind !== "coupon") return;
-        const label = p.type === "percent" ? `${p.value}% off` : `₹${p.value} off`;
+        const valueTxt = p.type === "percent" ? `${p.value}% off` : `₹${p.value} off`;
         const lim = (p.usageLimit ?? "∞");
+        const chan = (p.channel === "dining") ? "Dining" : "Delivery";
         rows.push(`
-          <div class="adm-list-row" style="display:flex;align-items:center;gap:8px;padding:6px 4px;border-bottom:1px dashed #eee">
-            <span class="adm-pill ${p.channel === "dining" ? "adm-pill--dining":"adm-pill--delivery"}">${p.code || d.id}</span>
-            <span class="adm-muted" style="margin-left:8px">${label}</span>
-            <span class="adm-muted" style="margin-left:12px">Usage Limit: <strong>${lim}</strong></span>
-            <span style="margin-left:12px">${statusPill(p.active !== false)}</span>
-            <span style="flex:1"></span>
-            <button data-id="${d.id}" data-active="${p.active !== false}" class="adm-btn jsToggleCoupon">
-              ${(p.active !== false) ? "Disable" : "Enable"}
-            </button>
-            <button data-id="${d.id}" class="adm-btn jsDelCoupon">Delete</button>
+          <div class="adm-grid adm-grid-coupons">
+            <div><span class="adm-pill ${p.channel === "dining" ? "adm-pill--dining":"adm-pill--delivery"}">${p.code || d.id}</span></div>
+            <div>${chan}</div>
+            <div class="adm-muted">${valueTxt}</div>
+            <div class="adm-muted"><strong>${lim}</strong></div>
+            <div>${statusPill(p.active !== false)}</div>
+            <div class="adm-actions">
+              <button data-id="${d.id}" data-active="${p.active !== false}" class="adm-btn jsToggleCoupon">
+                ${(p.active !== false) ? "Disable" : "Enable"}
+              </button>
+              <button data-id="${d.id}" class="adm-btn jsDelCoupon">Delete</button>
+            </div>
           </div>
         `);
       });
-      couponsList.innerHTML = rows.join("") || `<div class="adm-muted">(No coupons)</div>`;
+      couponsList.innerHTML = rows.length ? (header + rows.join("")) : (header + `<div class="adm-muted" style="padding:8px">No coupons</div>`);
 
       // Toggle status (additive)
       couponsList.querySelectorAll(".jsToggleCoupon").forEach(btn => {
@@ -270,28 +300,38 @@ export function initPromotions() {
   // ---------- Banners (add link/publish/status; keep delete) ----------
   if (bannersList) {
     onSnapshot(query(collection(db, "promotions"), orderBy("createdAt", "desc")), (snap) => {
+            const headerB = `
+        <div class="adm-grid adm-grid-banners adm-grid-head">
+          <div>Preview</div>
+          <div>Title</div>
+          <div>Published To</div>
+          <div>Status</div>
+          <div>Actions</div>
+        </div>
+      `;
       const rows = [];
       snap.forEach(d => {
         const p = d.data();
         if (p?.kind !== "banner") return;
         const publishedTo = (p.targets && (p.targets.delivery || p.targets.dining))
           ? ["delivery","dining"].filter(k => p.targets?.[k]).map(k => k[0].toUpperCase()+k.slice(1)).join(", ")
-          : "<span class='adm-muted'>—</span>";
+          : "—";
         rows.push(`
-          <div class="adm-list-row" data-id="${d.id}" style="display:flex;align-items:center;gap:8px;padding:6px 4px;border-bottom:1px dashed #eee">
-            <img src="${p.imageUrl}" alt="" width="80" height="20" style="object-fit:cover;border-radius:6px;border:1px solid #eee"/>
-            <span style="margin-left:8px">${p.title || "(untitled)"}</span>
-            <span class="adm-muted" style="margin-left:12px">Published To: ${publishedTo}</span>
-            <span style="margin-left:12px">${statusPill(p.active !== false)}</span>
-            <span style="flex:1"></span>
-            <button class="adm-btn jsLinkCoupons" data-id="${d.id}">Link Coupons</button>
-            <button class="adm-btn jsPublish" data-id="${d.id}">Publish</button>
-            <button class="adm-btn jsToggleBanner" data-id="${d.id}" data-active="${p.active !== false}">${(p.active !== false) ? "Disable" : "Enable"}</button>
-            <button class="adm-btn jsDelBanner" data-id="${d.id}">Delete</button>
+          <div class="adm-grid adm-grid-banners" data-id="${d.id}">
+            <div><img src="${p.imageUrl}" alt="" width="80" height="20" style="object-fit:cover;border-radius:6px;border:1px solid #eee"/></div>
+            <div>${p.title || "(untitled)"}</div>
+            <div class="adm-muted">${publishedTo}</div>
+            <div>${statusPill(p.active !== false)}</div>
+            <div class="adm-actions">
+              <button class="adm-btn jsLinkCoupons" data-id="${d.id}">Link Coupons</button>
+              <button class="adm-btn jsPublish" data-id="${d.id}">Publish</button>
+              <button class="adm-btn jsToggleBanner" data-id="${d.id}" data-active="${p.active !== false}">${(p.active !== false) ? "Disable" : "Enable"}</button>
+              <button class="adm-btn jsDelBanner" data-id="${d.id}">Delete</button>
+            </div>
           </div>
         `);
       });
-      bannersList.innerHTML = rows.join("") || `<div class="adm-muted">(No banners)</div>`;
+      bannersList.innerHTML = rows.length ? (headerB + rows.join("")) : (headerB + `<div class="adm-muted" style="padding:8px">No banners</div>`);
 
       // Delete (kept)
       bannersList.querySelectorAll(".jsDelBanner").forEach(btn => {
