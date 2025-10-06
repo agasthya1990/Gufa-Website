@@ -484,3 +484,52 @@ button {
 #panel-promotions .adm-grid:not(.adm-grid-head):hover > div {
   background: #fcfcfd;
 }
+/* ================================
+   Promotions — Column & Colors
+   ================================ */
+#panel-promotions .adm-grid {
+  display: grid;
+  grid-auto-rows: minmax(44px, auto);
+  align-items: center;
+  border-bottom: 1px solid var(--adm-border, #e5e7eb);
+}
+#panel-promotions .adm-grid > div { padding: 10px 12px; }
+
+#panel-promotions .adm-grid-head {
+  background: #f9fafb;
+  font-weight: 700;
+  border-top: 1px solid var(--adm-border, #e5e7eb);
+  border-bottom: 2px solid var(--adm-border, #e5e7eb);
+}
+
+/* Exact column tracks to remove wobble */
+#panel-promotions .adm-grid-coupons {
+  /* Code | Channel | Value | Usage | Status | Actions */
+  grid-template-columns: 180px 120px 220px 140px 120px 1fr;
+}
+#panel-promotions .adm-grid-banners {
+  /* Preview | Title | Published To | Status | Actions */
+  grid-template-columns: 140px 1fr 220px 120px 1fr;
+}
+
+/* Actions aligned */
+#panel-promotions .adm-actions { display:flex; gap:8px; justify-content:flex-end; }
+
+/* Signature colors for pills (list rows) */
+.adm-pill--delivery { background:#eef2ff; color:#1e40af; border-color:#1e40af; }
+.adm-pill--dining   { background:#ecfdf5; color:#065f46; border-color:#065f46; }
+
+/* Signature accents for the Channel select in the form */
+#panel-promotions #couponChannel.chan-delivery { border-color:#1e40af; box-shadow: 0 0 0 1px rgba(30,64,175,.08) inset; }
+#panel-promotions #couponChannel.chan-dining   { border-color:#065f46; box-shadow: 0 0 0 1px rgba(6,95,70,.08) inset; }
+
+/* Tidy up inputs so the add row aligns visually */
+#panel-promotions #newCouponForm .adm-input,
+#panel-promotions #newCouponForm .adm-select,
+#panel-promotions #newBannerForm .adm-input,
+#panel-promotions #newBannerForm .adm-file {
+  width: 100%;
+  box-sizing: border-box;
+}
+#panel-promotions #newCouponForm .adm-select { min-width: 110px; }
+#panel-promotions #newCouponForm #couponValue { max-width: 120px; }
