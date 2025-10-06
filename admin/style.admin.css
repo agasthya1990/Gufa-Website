@@ -414,3 +414,73 @@ button {
   line-height: 1.4;
   color: inherit;
 }
+
+/* ================================
+   Promotions (Coupons & Banners) – alignment
+   ================================ */
+
+#panel-promotions h3 {
+  margin: 14px 0 8px;
+}
+
+/* Column grids with consistent paddings and widths */
+#panel-promotions .adm-grid {
+  display: grid;
+  grid-auto-rows: minmax(44px, auto);
+  align-items: center;
+  border-bottom: 1px solid var(--adm-border);
+}
+
+#panel-promotions .adm-grid > div {
+  padding: 10px 12px;
+}
+
+/* Header row styling */
+#panel-promotions .adm-grid-head {
+  background: #f9fafb;
+  font-weight: 700;
+  border-top: 1px solid var(--adm-border);
+  border-bottom: 2px solid var(--adm-border);
+}
+
+/* Exact column tracks to remove “wobble” across rows */
+#panel-promotions .adm-grid-coupons {
+  /* Code | Channel | Value | Usage | Status | Actions */
+  grid-template-columns: 180px 120px 140px 140px 120px 1fr;
+}
+#panel-promotions .adm-grid-banners {
+  /* Preview | Title | Published To | Status | Actions */
+  grid-template-columns: 120px 1fr 220px 120px 1fr;
+}
+
+/* Keep action buttons aligned to the right and evenly spaced */
+#panel-promotions .adm-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+/* Make pills and thumbnails sit on the baseline nicely */
+#panel-promotions .adm-pill { display: inline-block; }
+#panel-promotions img { display: block; }
+
+/* Form: compact widths so the row stays neat */
+#panel-promotions #newCouponForm .adm-input,
+#panel-promotions #newCouponForm .adm-select {
+  width: auto;
+}
+#panel-promotions #couponCode         { min-width: 180px; }
+#panel-promotions #couponChannel,
+#panel-promotions #couponType         { width: 140px; }
+#panel-promotions #couponValue,
+#panel-promotions #couponUsageLimit   { width: 140px; }
+
+#panel-promotions #newBannerForm #bannerTitle { min-width: 220px; }
+
+/* Action buttons: consistent touch target & visual rhythm */
+#panel-promotions .adm-actions .adm-btn { min-width: 92px; }
+
+/* Extra: unify subtle background on hover for whole row (friendly feedback) */
+#panel-promotions .adm-grid:not(.adm-grid-head):hover > div {
+  background: #fcfcfd;
+}
