@@ -126,29 +126,62 @@ export function initPromotions() {
     root.dataset.wired = "1";
     root.innerHTML = `
       <h3>Coupons</h3>
-      <div id="couponsList" style="margin-bottom:8px"></div>
-      <form id="newCouponForm" class="adm-row" style="gap:8px">
-        <input id="couponCode" class="adm-input" placeholder="Coupon Code (eg. WELCOME20)" />
-        <select id="couponChannel" class="adm-select">
-          <option value="delivery">Delivery</option>
-          <option value="dining">Dining</option>
-        </select>
-        <select id="couponType" class="adm-select">
-          <option value="percent">% off</option>
-          <option value="flat">₹ off</option>
-        </select>
-        <input id="couponValue" class="adm-input" type="number" placeholder="Value" style="width:120px" />
-        <!-- usage limit is injected just before submit -->
-        <button type="submit" class="adm-btn adm-btn--primary">Add</button>
-      </form>
 
-      <h3 style="margin-top:16px">Banners</h3>
-      <div id="bannersList" style="margin-bottom:8px"></div>
-      <form id="newBannerForm" class="adm-row" style="gap:8px">
-        <input id="bannerTitle" class="adm-input" placeholder="Title" />
-        <input id="bannerFile" class="adm-file" type="file" accept="image/*" />
-        <button type="submit" class="adm-btn adm-btn--primary">Upload</button>
-      </form>
+<!-- Add row FIRST, aligned to catalogue columns -->
+<form id="newCouponForm" class="adm-grid adm-grid-coupons" style="margin-bottom:8px">
+  <!-- Code -->
+  <div><input id="couponCode" class="adm-input" placeholder="Code (e.g. WELCOME20)" /></div>
+  <!-- Channel (colored on change) -->
+  <div>
+    <select id="couponChannel" class="adm-select">
+      <option value="delivery">Delivery</option>
+      <option value="dining">Dining</option>
+    </select>
+  </div>
+  <!-- Value (type + number together in one cell to match “Value” column) -->
+  <div>
+    <div style="display:flex; gap:8px; align-items:center;">
+      <select id="couponType" class="adm-select">
+        <option value="percent">% off</option>
+        <option value="flat">₹ off</option>
+      </select>
+      <input id="couponValue" class="adm-input" type="number" placeholder="Value" />
+    </div>
+  </div>
+  <!-- Usage Limit (injected before submit by existing logic) -->
+  <div><!-- will be filled by couponUsageLimit injection --></div>
+  <!-- Status (default Active visual) -->
+  <div><strong style="color:#16a34a">Active</strong></div>
+  <!-- Actions -->
+  <div class="adm-actions">
+    <button type="submit" class="adm-btn adm-btn--primary">Add</button>
+  </div>
+</form>
+
+<!-- List after add row -->
+<div id="couponsList" style="margin-bottom:12px"></div>
+
+<h3>Banners</h3>
+
+<!-- Add row FIRST, aligned to catalogue columns -->
+<form id="newBannerForm" class="adm-grid adm-grid-banners" style="margin-bottom:8px">
+  <!-- Preview (file picker sits in the Preview column) -->
+  <div><input id="bannerFile" class="adm-file" type="file" accept="image/*" /></div>
+  <!-- Title -->
+  <div><input id="bannerTitle" class="adm-input" placeholder="Title (optional)" /></div>
+  <!-- Published To (blank at creation) -->
+  <div class="adm-muted">—</div>
+  <!-- Status (default Active visual) -->
+  <div><strong style="color:#16a34a">Active</strong></div>
+  <!-- Actions -->
+  <div class="adm-actions">
+    <button type="submit" class="adm-btn adm-btn--primary">Upload</button>
+  </div>
+</form>
+
+<!-- List after add row -->
+<div id="bannersList" style="margin-bottom:12px"></div>
+
     `;
   }
 
@@ -157,6 +190,16 @@ export function initPromotions() {
   const newCouponForm = document.getElementById("newCouponForm");
   const codeInput = document.getElementById("couponCode");
   const chanInput = document.getElementById("couponChannel"); // "dining" | "delivery"
+  // Color the Channel select using signature styles
+if (chanInput) {
+  const paintSelect = () => {
+    chanInput.classList.toggle("chan-delivery", chanInput.value === "delivery");
+    chanInput.classList.toggle("chan-dining",   chanInput.value === "dining");
+  };
+  paintSelect();
+  chanInput.addEventListener("change", paintSelect);
+}
+
   const typeInput = document.getElementById("couponType");    // "percent" | "flat"
   const valInput  = document.getElementById("couponValue");
 
