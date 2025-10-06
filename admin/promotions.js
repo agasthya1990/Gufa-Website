@@ -170,19 +170,8 @@ export function initPromotions() {
   const newCouponForm = document.getElementById("newCouponForm");
   const codeInput = document.getElementById("couponCode");
   const chanInput = document.getElementById("couponChannel"); // "dining" | "delivery"
-  // Color the Channel select using signature styles
-if (chanInput) {
-  const paintSelect = () => {
-    chanInput.classList.toggle("chan-delivery", chanInput.value === "delivery");
-    chanInput.classList.toggle("chan-dining",   chanInput.value === "dining");
-  };
-  paintSelect();
-  chanInput.addEventListener("change", paintSelect);
-}
-
   const typeInput = document.getElementById("couponType");    // "percent" | "flat"
   const valInput  = document.getElementById("couponValue");
-
   const bannersList = document.getElementById("bannersList");
   const newBannerForm = document.getElementById("newBannerForm");
   const bannerFile = document.getElementById("bannerFile");
