@@ -178,17 +178,17 @@ export function initPromotions() {
   const bannerTitle = document.getElementById("bannerTitle");
 
   // --- Inject Usage Limit field (optional) — additive, no layout change ---
-  if (newCouponForm && !document.getElementById("couponUsageLimit")) {
-    const lim = document.createElement("input");
-    lim.id = "couponUsageLimit";
-    lim.className = "adm-input";
-    lim.type = "number";
-    lim.placeholder = "Usage Limit";
-    lim.min = "1";
-    lim.style.width = "160px";
-    const submit = newCouponForm.querySelector('button[type="submit"], input[type="submit"]');
-    newCouponForm.insertBefore(lim, submit || null);
-  }
+  
+if (newCouponForm && !document.getElementById("couponUsageLimit")) {
+  const limCell = document.getElementById("couponUsageLimitCell");
+  const lim = document.createElement("input");
+  lim.id = "couponUsageLimit";
+  lim.type = "number";
+  lim.placeholder = "Usage Limit (optional)";
+  lim.min = "1";
+  lim.className = "adm-input";
+  (limCell || newCouponForm).appendChild(lim);
+}
 
 // ---------- Coupons (add columns + toggle; keep delete) ----------
 if (couponsList) {
