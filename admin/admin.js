@@ -930,37 +930,50 @@ async function openBulkPromosModal(triggerEl) {
   };
 
   // 5) Fetch promotions — **COUPONS ONLY** — build same checkbox UI as row Promotions
-  let rows = [];
-  try {
-    if (typeof PROMOS_BY_ID === 'object' && PROMOS_BY_ID && Object.keys(PROMOS_BY_ID).length) {
-      for (const [id, p] of Object.entries(PROMOS_BY_ID)) {
-        if (p?.kind !== 'coupon') continue; // filter banners out
-        const typeTxt =
-          p.type === 'percent' ? `${p.value}% off`
-          : (p.value !== undefined ? `₹${p.value} off` : 'promo');
-        const chan = p.channel || ''; // 'delivery' | 'dining' | ''
-        const label = [p.code || '(no code)', chan === 'dining' ? 'Dining' : 'Delivery', typeTxt]
-                       .filter(Boolean).join(' • ');
-        rows.push({ id, label, channel: chan });
-      }
-    } else {
-      const snap = await getDocs(collection(db, 'promotions'));
-      snap.forEach(d => {
-        const p = d.data() || {};
-        if (p?.kind !== 'coupon') return; // coupons only
-        const typeTxt =
-          p.type === 'percent' ? `${p.value}% off`
-          : (p.value !== undefined ? `₹${p.value} off` : 'promo');
-        const chan = p.channel || '';
-        const label = [p.code || '(no code)', chan === 'dining' ? 'Dining' : 'Delivery', typeTxt]
-                       .filter(Boolean).join(' • ');
-        rows.push({ id: d.id, label, channel: chan });
-      });
+let rows = [];
+try {
+  if (typeof PROMOS_BY_ID === 'object' && PROMOS_BY_ID && Object.keys(PROMOS_BY_ID).length) {
+    for (const [id, p] of Object.entries(PROMOS_BY_ID)) {
+      if (p?.kind !== 'coupon') continue;              // coupons only
+      const inactive  = p.active === false;            // hide inactive
+      const limit     = p.usageLimit ?? null;
+      const used      = p.usedCount ?? 0;
+      const exhausted = limit !== null && used >= limit; // hide exhausted
+      if (inactive || exhausted) continue;
+
+      const typeTxt =
+        p.type === 'percent' ? `${p.value}% off`
+        : (p.value !== undefined ? `₹${p.value} off` : 'promo');
+      const chan = p.channel || '';
+      const label = [p.code || '(no code)', chan === 'dining' ? 'Dining' : 'Delivery', typeTxt]
+                     .filter(Boolean).join(' • ');
+      rows.push({ id, label, channel: chan });
     }
-  } catch (e) {
-    console.error('[BulkPromos] fetch failed:', e);
-    rows = [];
+  } else {
+    const snap = await getDocs(collection(db, 'promotions'));
+    snap.forEach(d => {
+      const p = d.data() || {};
+      if (p?.kind !== 'coupon') return;
+      const inactive  = p.active === false;
+      const limit     = p.usageLimit ?? null;
+      const used      = p.usedCount ?? 0;
+      const exhausted = limit !== null && used >= limit;
+      if (inactive || exhausted) return;
+
+      const typeTxt =
+        p.type === 'percent' ? `${p.value}% off`
+        : (p.value !== undefined ? `₹${p.value} off` : 'promo');
+      const chan = p.channel || '';
+      const label = [p.code || '(no code)', chan === 'dining' ? 'Dining' : 'Delivery', typeTxt]
+                     .filter(Boolean).join(' • ');
+      rows.push({ id: d.id, label, channel: chan });
+    });
   }
+} catch (e) {
+  console.error('[BulkPromos] fetch failed:', e);
+  rows = [];
+}
+
 
   // 6) Hydrate list (checkboxes + badges)
   if (!rows.length) {
@@ -1305,35 +1318,47 @@ async function openAssignPromotionsModal(itemId, currentIds = [], triggerEl) {
     const ppClear = ov.querySelector('#ppClear');
 
     // 4) Fetch promotions — **COUPONS ONLY**
-    let rows = [];
-    if (Object.keys(PROMOS_BY_ID).length) {
-      for (const [id, p] of Object.entries(PROMOS_BY_ID)) {
-        if (p?.kind !== 'coupon') continue; // ✅ enforce coupon-only
-        const typeTxt = p.type === 'percent' ? `${p.value}% off` : `₹${p.value} off`;
-        rows.push({
-          id,
-          code: p.code || '(no code)',
-          channel: p.channel || '', // 'delivery' | 'dining' | ''
-          label: [p.code || '(no code)', p.channel === 'dining' ? 'Dining' : 'Delivery', typeTxt]
-                  .filter(Boolean).join(' • ')
-        });
-      }
-    } else {
-      // Fallback to Firestore — again **COUPONS ONLY**
-      const snap = await getDocs(collection(db, 'promotions'));
-      snap.forEach(d => {
-        const p = d.data() || {};
-        if (p?.kind !== 'coupon') return; // ✅ filter banners out
-        const typeTxt = p.type === 'percent' ? `${p.value}% off` : (p.value !== undefined ? `₹${p.value} off` : 'promo');
-        rows.push({
-          id: d.id,
-          code: p.code || '(no code)',
-          channel: p.channel || '',
-          label: [p.code || '(no code)', p.channel === 'dining' ? 'Dining' : 'Delivery', typeTxt]
-                  .filter(Boolean).join(' • ')
-        });
-      });
-    }
+let rows = [];
+if (Object.keys(PROMOS_BY_ID).length) {
+  for (const [id, p] of Object.entries(PROMOS_BY_ID)) {
+    if (p?.kind !== 'coupon') continue;             // coupons only
+    const inactive  = p.active === false;           // hide inactive
+    const limit     = p.usageLimit ?? null;
+    const used      = p.usedCount ?? 0;
+    const exhausted = limit !== null && used >= limit; // hide exhausted
+    if (inactive || exhausted) continue;
+
+    const typeTxt = p.type === 'percent' ? `${p.value}% off` : `₹${p.value} off`;
+    rows.push({
+      id,
+      code: p.code || '(no code)',
+      channel: p.channel || '',
+      label: [p.code || '(no code)', p.channel === 'dining' ? 'Dining' : 'Delivery', typeTxt]
+              .filter(Boolean).join(' • ')
+    });
+  }
+} else {
+  // Fallback to Firestore — again **COUPONS ONLY**
+  const snap = await getDocs(collection(db, 'promotions'));
+  snap.forEach(d => {
+    const p = d.data() || {};
+    if (p?.kind !== 'coupon') return;
+    const inactive  = p.active === false;
+    const limit     = p.usageLimit ?? null;
+    const used      = p.usedCount ?? 0;
+    const exhausted = limit !== null && used >= limit;
+    if (inactive || exhausted) return;
+
+    const typeTxt = p.type === 'percent' ? `${p.value}% off` : (p.value !== undefined ? `₹${p.value} off` : 'promo');
+    rows.push({
+      id: d.id,
+      code: p.code || '(no code)',
+      channel: p.channel || '',
+      label: [p.code || '(no code)', p.channel === 'dining' ? 'Dining' : 'Delivery', typeTxt]
+              .filter(Boolean).join(' • ')
+    });
+  });
+}
 
     // 5) Colored channel badge helper
     const channelBadge = (ch) => {
