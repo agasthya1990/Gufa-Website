@@ -80,16 +80,16 @@ export function initPromotions() {
       <h3>Coupons</h3>
       <div id="couponsList" style="margin-bottom:8px"></div>
       <form id="newCouponForm" class="adm-row" style="gap:8px">
-        <input id="couponCode" class="adm-input" placeholder="Code" />
+        <input id="couponCode" class="adm-input" placeholder="Code (eg. 'WELCOME20')" />
         <select id="couponChannel" class="adm-select">
           <option value="delivery">Delivery</option>
           <option value="dining">Dining</option>
         </select>
         <select id="couponType" class="adm-select">
-          <option value="% Off">% Off</option>
-          <option value="₹ Off">₹ Off</option>
+          <option value="percent">% Off</option>
+          <option value="flat">₹ Off</option>
         </select>
-        <input id="couponValue" class="adm-input" type="number" placeholder="Value " style="width:120px" />
+        <input id="couponValue" class="adm-input" type="number" placeholder="Value" style="width:120px" />
         <button type="submit" class="adm-btn adm-btn--primary">Add</button>
       </form>
 
@@ -108,7 +108,7 @@ export function initPromotions() {
   const newCouponForm = document.getElementById("newCouponForm");
   const codeInput = document.getElementById("couponCode");
   const chanInput = document.getElementById("couponChannel"); // "dining" | "delivery"
-  const typeInput = document.getElementById("couponType");    // "% Off" | "₹ Off"
+  const typeInput = document.getElementById("couponType");    // "percent" | "flat"
   const valInput  = document.getElementById("couponValue");
 
   const bannersList = document.getElementById("bannersList");
@@ -123,7 +123,7 @@ export function initPromotions() {
       snap.forEach(d => {
         const p = d.data();
         if (p?.kind !== "coupon") return;
-        const label = p.type === "% Off" ? `${p.value}% off` : `₹${p.value} off`;
+        const label = p.type === "percent" ? `${p.value}% off` : `₹${p.value} off`;
         rows.push(`
           <div class="adm-list-row">
             <span class="adm-pill ${p.channel === "dining" ? "adm-pill--dining":"adm-pill--delivery"}">${p.code || d.id}</span>
@@ -150,7 +150,7 @@ export function initPromotions() {
       e.preventDefault();
       const code = (codeInput?.value || "").trim();
       const channel = chanInput?.value || "delivery";
-      const type = typeInput?.value || "% Off";
+      const type = typeInput?.value || "percent";
       const value = Number(valInput?.value || 0);
       if (!code || !(value > 0)) return alert("Enter code and positive value");
 
