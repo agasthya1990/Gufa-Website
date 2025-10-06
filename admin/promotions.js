@@ -6,7 +6,7 @@
 import { db, storage } from "./firebase.js";
 import {
   collection, doc, setDoc, updateDoc, deleteDoc, onSnapshot,
-  serverTimestamp, query, orderBy, getDocs
+  serverTimestamp, query, orderBy, getDocs, where, arrayRemove
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 import {
   ref as storageRef, uploadBytesResumable, getDownloadURL
@@ -188,16 +188,45 @@ export function initPromotions() {
 
       // Toggle status (additive)
       couponsList.querySelectorAll(".jsToggleCoupon").forEach(btn => {
-        btn.onclick = async () => {
-          const id = btn.dataset.id;
-          const currentlyActive = btn.dataset.active === "true";
-          btn.disabled = true;
-          try {
-            await updateDoc(doc(db, "promotions", id), { active: !currentlyActive, updatedAt: serverTimestamp() });
-          } catch (e){ console.error(e); alert("Failed to update status."); }
-          finally { btn.disabled = false; }
-        };
+  btn.onclick = async () => {
+    btn.disabled = true;
+    try {
+      const promoId = btn.dataset.id;
+      const currentlyActive = btn.dataset.active === "true";
+
+      // 1) Flip the coupon's active flag.
+      await updateDoc(doc(db, "promotions", promoId), {
+        active: !currentlyActive,
+        updatedAt: serverTimestamp()
       });
+
+      // 2) If we are DISABLING, remove this coupon from all menu items that reference it.
+      if (currentlyActive) {
+        const q = query(
+          collection(db, "menuItems"),
+          where("promotions", "array-contains", promoId)
+        );
+        const snap = await getDocs(q);
+
+        const ops = [];
+        snap.forEach(d => {
+          ops.push(
+            updateDoc(doc(db, "menuItems", d.id), {
+              promotions: arrayRemove(promoId),
+              updatedAt: serverTimestamp()
+            })
+          );
+        });
+        await Promise.all(ops);
+      }
+
+      // (Optional) You can update the data-active attribute for instant button UI feedback:
+      // btn.dataset.active = String(!currentlyActive);
+    } finally {
+      btn.disabled = false;
+    }
+  };
+});
 
       // Delete (kept)
       couponsList.querySelectorAll(".jsDelCoupon").forEach(btn => {
