@@ -1,35 +1,24 @@
-# Write a full replacement promotions.js with the requested and preserved features.
+# Create a clean, JavaScript-only promotions.js file that matches the user's import pattern
 from pathlib import Path
 
-code = r'''// /admin/promotions.js — FULL REWRITE
-// Promotions Admin: Coupons (Dining|Delivery) + Banners + Linking + Publish targets
-// Preserves earlier features (add/delete/list + banner resize/upload) and adds:
-// - Coupon usageLimit & usedCount (setup only), Status column & Enable/Disable toggle
-// - Link Coupons popover for banners
-// - Publish popover (Delivery/Dining) + "Published To" column
-// - Banner Activate/Disable toggle
-// - Filters so inactive coupons don’t appear in selectors
+js = r"""// /admin/promotions.js — FULL, CLEAN REWRITE (JS-only)
+// Promotions Admin: Coupons (Dining|Delivery) + Banners + Link Coupons + Publish targets
+// Preserves earlier flows (add/delete/list + banner resize/upload) and adds:
+// - Coupon usageLimit & usedCount, Status + Enable/Disable, Usage Limit column
+// - Banner Link Coupons popover, Publish (Delivery/Dining) popover, Published To column
+// - Banner Enable/Disable
+// - Filters hide inactive/exhausted coupons in selectors
 //
-// Requires: firebase.js exports { db, storage, auth }
+// Requires firebase.js to export: db, storage, auth
 // DOM contract (admin.html):
 //   #promotionsRoot
 //   Coupon form:   #newCouponForm with inputs #couponCode #couponChannel #couponType #couponValue
-//                  (added) #couponUsageLimit
+//                  (script adds #couponUsageLimit if missing)
 //   Coupon list:   #couponsList
 //   Banner form:   #newBannerForm with inputs #bannerTitle #bannerFile
 //   Banner list:   #bannersList
-//
-// Firestore: collection "promotions"
-// - Coupon doc: {
-//     kind:"coupon", code, channel:"delivery"|"dining", type:"percent"|"flat", value:number,
-//     usageLimit:number|null, usedCount:number, active:boolean, createdAt, updatedAt
-//   }
-// - Banner doc: {
-//     kind:"banner", title, imageUrl, linkedCouponIds:string[],
-//     targets:{delivery:boolean,dining:boolean}, active:boolean, createdAt, updatedAt
-//   }
 
-import { db, storage, auth } from "./firebase.js";
+import { db, storage } from "./firebase.js";
 import {
   collection, doc, setDoc, updateDoc, deleteDoc, onSnapshot,
   serverTimestamp, query, orderBy
@@ -37,50 +26,57 @@ import {
 import {
   ref as storageRef, uploadBytesResumable, getDownloadURL
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
-import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 
 // ===== Config =====
 const BANNER_W = 200;
 const BANNER_H = 50;
 const BANNER_MIME = "image/jpeg";
 const BANNER_QUALITY = 0.85;
+const MAX_UPLOAD_MB = 10;
 const BANNERS_DIR = "promoBanners";
-const MAX_UPLOAD_MB = 2.5;
 
-// ===== Utilities =====
-function $(id){ return document.getElementById(id); }
-function isImageType(file){ return file && /^image\/(png|jpe?g|webp)$/i.test(file.type); }
-function fileTooLarge(file){ return file && file.size > MAX_UPLOAD_MB * 1024 * 1024; }
+// ===== Helpers =====
+const $ = (id) => document.getElementById(id);
+const isImageType = (file) => file && /^image\/(png|jpe?g|webp)$/i.test(file.type);
+const fileTooLarge = (file) => file && file.size > MAX_UPLOAD_MB * 1024 * 1024;
 
 function fileToImage(file){
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = reject;
-    img.src = URL.createObjectURL(file);
+  return new Promise((res, rej) => {
+    const fr = new FileReader();
+    fr.onload = (e) => {
+      const img = new Image();
+      img.onload = () => res(img);
+      img.onerror = rej;
+      img.src = e.target.result;
+    };
+    fr.onerror = rej;
+    fr.readAsDataURL(file);
   });
 }
 
-// Center‑crop square to banner size and export JPEG blob
 async function resizeToBannerBlob(file) {
   const img = await fileToImage(file);
+  const sw = img.naturalWidth || img.width;
+  const sh = img.naturalHeight || img.height;
+  const side = Math.min(sw, sh);
+  const sx = Math.max(0, Math.floor((sw - side) / 2));
+  const sy = Math.max(0, Math.floor((sh - side) / 2));
+
   const canvas = document.createElement("canvas");
-  const ctx = canvas.getContext("2d");
-
-  // Crop to square first
-  const side = Math.min(img.naturalWidth, img.naturalHeight);
-  const sx = (img.naturalWidth - side) / 2;
-  const sy = (img.naturalHeight - side) / 2;
-
   canvas.width = BANNER_W;
   canvas.height = BANNER_H;
+  const ctx = canvas.getContext("2d");
   ctx.fillStyle = "#fff";
   ctx.fillRect(0, 0, BANNER_W, BANNER_H);
   ctx.drawImage(img, sx, sy, side, side, 0, 0, BANNER_W, BANNER_H);
 
-  return new Promise((resolve) => {
-    canvas.toBlob((blob) => resolve(blob), BANNER_MIME, BANNER_QUALITY);
-  });
+  return new Promise((res, rej) =>
+    canvas.toBlob(
+      (b) => (b ? res(b) : rej(new Error("Failed generating banner blob"))),
+      BANNER_MIME,
+      BANNER_QUALITY
+    )
+  );
 }
 
 function ensurePopoverStyles(){
@@ -95,6 +91,7 @@ function ensurePopoverStyles(){
     .adm-btn { border:2px solid #111; background:#fff; padding:4px 8px; border-radius:8px; cursor:pointer; }
     .adm-btn[disabled] { opacity:.6; cursor:not-allowed; }
     .adm-input { border:2px solid #111; border-radius:8px; padding:4px 8px; }
+    .adm-select { border:2px solid #111; border-radius:8px; padding:4px 8px; }
     .adm-muted { opacity:.7; }
   `;
   const s = document.createElement("style");
@@ -115,18 +112,48 @@ function toggleAttachedPopover(pop, trigger){
   requestAnimationFrame(() => pop.classList.add("show"));
 }
 
-function pill(txt, color){ return `<span class="adm-pill" style="border-color:${color};">${txt}</span>`; }
-function statusPill(active){
-  return active ? `<strong style="color:#16a34a">Active</strong>`
-                : `<strong style="color:#dc2626">Inactive</strong>`;
-}
+const pill = (txt, color) => `<span class="adm-pill" style="border-color:${color};">${txt}</span>`;
+const statusPill = (active) => active
+  ? `<strong style="color:#16a34a">Active</strong>`
+  : `<strong style="color:#dc2626">Inactive</strong>`;
 
 // ===== Main =====
 export function initPromotions(){
   const root = $("promotionsRoot");
-  if (!root) return;
+  if (!root) return; // guard
 
   ensurePopoverStyles();
+
+  // Build the shell once if needed
+  if (!root.dataset.wired){
+    root.dataset.wired = "1";
+    root.innerHTML = `
+      <h3>Coupons</h3>
+      <div id="couponsList" style="margin-bottom:8px"></div>
+      <form id="newCouponForm" class="adm-row" style="gap:8px">
+        <input id="couponCode" class="adm-input" placeholder="Code" autocomplete="off"/>
+        <select id="couponChannel" class="adm-select">
+          <option value="delivery">Delivery</option>
+          <option value="dining">Dining</option>
+        </select>
+        <select id="couponType" class="adm-select">
+          <option value="percent">Percent</option>
+          <option value="flat">Flat</option>
+        </select>
+        <input id="couponValue" class="adm-input" type="number" placeholder="Value" style="width:120px" />
+        <!-- usage limit inserted by script if not present -->
+        <button type="submit" class="adm-btn">Add</button>
+      </form>
+
+      <h3 style="margin-top:16px">Banners</h3>
+      <div id="bannersList" style="margin-bottom:8px"></div>
+      <form id="newBannerForm" class="adm-row" style="gap:8px">
+        <input id="bannerTitle" class="adm-input" placeholder="Title (optional)" />
+        <input id="bannerFile" class="adm-file" type="file" accept="image/*" />
+        <button type="submit" class="adm-btn">Upload</button>
+      </form>
+    `;
+  }
 
   // Elements
   const newCouponForm = $("newCouponForm");
@@ -135,7 +162,7 @@ export function initPromotions(){
   const newBannerForm = $("newBannerForm");
   const bannersList = $("bannersList");
 
-  // ---- 1) Coupon form: add Usage Limit input if missing
+  // 1) Ensure Usage Limit input exists
   (function ensureUsageLimitField(){
     if (!newCouponForm) return;
     if (!$("#couponUsageLimit")){
@@ -146,13 +173,12 @@ export function initPromotions(){
       lim.placeholder = "Usage limit (optional)";
       lim.className = "adm-input";
       lim.style.width = "180px";
-      // insert before submit
       const submit = newCouponForm.querySelector('button[type="submit"], input[type="submit"]');
       newCouponForm.insertBefore(lim, submit || null);
     }
   })();
 
-  // ---- 2) Create coupon: include usageLimit, usedCount, active
+  // 2) Create coupon
   if (newCouponForm){
     const codeInput = $("couponCode");
     const chanInput = $("couponChannel");
@@ -170,7 +196,7 @@ export function initPromotions(){
 
       if (!code) return alert("Enter a coupon code.");
       if (!(value > 0)) return alert("Enter a positive discount value.");
-      if (usageLimit !== null && !(usageLimit > 0)) return alert("Usage limit must be a positive number.");
+      if (usageLimit !== null && !(usageLimit > 0)) return alert("Usage limit must be positive.");
 
       const id = crypto.randomUUID();
       const payload = {
@@ -183,6 +209,10 @@ export function initPromotions(){
       };
       newCouponForm.querySelectorAll("button, input[type=submit]").forEach(b => b.disabled = true);
       try {
+        await setDoc(doc(db, "promotions"), payload).then(() => {});
+        // use doc with random ID via add: but we want our UUID — mimic by setDoc with explicit id:
+      } catch (_) {}
+      try {
         await setDoc(doc(db, "promotions", id), payload);
         newCouponForm.reset();
       } catch (err){
@@ -194,7 +224,7 @@ export function initPromotions(){
     };
   }
 
-  // ---- 3) Coupons list with Usage Limit + Status + Toggle
+  // 3) Coupons list
   if (couponsList){
     onSnapshot(query(collection(db, "promotions"), orderBy("createdAt","desc")), (snap) => {
       const rows = [];
@@ -244,7 +274,7 @@ export function initPromotions(){
     });
   }
 
-  // ---- 4) Create banner: resize to 200x50, upload, save doc
+  // 4) Create banner
   if (newBannerForm){
     const titleInput = $("bannerTitle");
     const fileInput  = $("bannerFile");
@@ -285,7 +315,7 @@ export function initPromotions(){
     };
   }
 
-  // ---- 5) Banners list with Link Coupons + Publish + Published To + Enable/Disable + Delete
+  // 5) Banners list
   if (bannersList){
     onSnapshot(query(collection(db, "promotions"), orderBy("createdAt","desc")), (snap) => {
       const rows = [];
@@ -338,7 +368,7 @@ export function initPromotions(){
         };
       });
 
-      // Link Coupons (active coupons only)
+      // Link Coupons (active + not exhausted)
       bannersList.querySelectorAll(".jsLinkCoupons").forEach(btn => {
         btn.onclick = async () => {
           const row = btn.closest(".adm-list-row");
@@ -357,7 +387,7 @@ export function initPromotions(){
           `;
           toggleAttachedPopover(panel, btn);
 
-          // Build coupons checklist (active + not exhausted if limit present)
+          // Build coupons checklist
           const cpList = panel.querySelector("#cpList");
           const actives = [];
           await new Promise((resolve, reject) => {
@@ -417,7 +447,7 @@ export function initPromotions(){
           panel.querySelector(".jsPubCancel").onclick = () => panel.remove();
           panel.querySelector(".jsPubSave").onclick = async () => {
             const delivery = panel.querySelector("#pubDelivery").checked;
-            const dining = panel.querySelector("#pubDining").checked;
+            const dining   = panel.querySelector("#pubDining").checked;
             try {
               panel.querySelector(".jsPubSave").disabled = true;
               await updateDoc(doc(db, "promotions", bannerId), {
@@ -431,10 +461,11 @@ export function initPromotions(){
       });
     });
   }
+}
 
-} // end initPromotions
-
-// ===== Boot once on auth (safe) =====
+// Boot once (auth-gated like your previous version)
+import { auth } from "./firebase.js";
+import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
 if (typeof window !== "undefined"){
   if (!window.__PROMOTIONS_BOOTED__){
     window.__PROMOTIONS_BOOTED__ = true;
@@ -443,7 +474,7 @@ if (typeof window !== "undefined"){
     });
   }
 }
-'''
+"""
 
-Path("/mnt/data/promotions.rewritten.js").write_text(code, encoding="utf-8")
-print("Wrote /mnt/data/promotions.rewritten.js")
+Path("/mnt/data/promotions.fixed.js").write_text(js, encoding="utf-8")
+print("Wrote /mnt/data/promotions.fixed.js")
