@@ -333,10 +333,12 @@ if (couponsList) {
   // ---------- Banners (add link/publish/status; keep delete) ----------
 if (bannersList) {
   // Pre-render header so labels never disappear while data loads
+  
   bannersList.innerHTML = `
     <div class="adm-grid adm-grid-banners adm-grid-head">
       <div>Preview</div>
       <div>Title</div>
+      <div>Linked Coupons</div>
       <div>Published To</div>
       <div>Status</div>
       <div>Actions</div>
@@ -351,13 +353,24 @@ if (bannersList) {
         <div class="adm-grid adm-grid-banners adm-grid-head">
           <div>Preview</div>
           <div>Title</div>
+          <div>Linked Coupons</div>
           <div>Published To</div>
           <div>Status</div>
           <div>Actions</div>
         </div>
       `;
-      const rows = [];
 
+      // 1) Build a local coupon map from this same snapshot (id -> {code, channel})
+      const couponMap = {};
+      snap.forEach(d => {
+        const v = d.data();
+        if (v?.kind === "coupon") {
+          couponMap[d.id] = { code: v.code || d.id, channel: v.channel };
+        }
+      });
+
+      // 2) Build the banner rows
+      const rows = [];
       snap.forEach(d => {
         const p = d.data();
         if (p?.kind !== "banner") return;
@@ -366,10 +379,23 @@ if (bannersList) {
           ? ["delivery","dining"].filter(k => p.targets?.[k]).map(k => k[0].toUpperCase()+k.slice(1)).join(", ")
           : "—";
 
+        // Linked coupons as color-coded pills; fallback to id if coupon missing
+        let linkedHTML = "—";
+        const arr = Array.isArray(p.linkedCouponIds) ? p.linkedCouponIds : [];
+        if (arr.length) {
+          linkedHTML = arr.map(cid => {
+            const c = couponMap[cid];
+            if (!c) return `<span class="adm-pill">${cid.slice(0,6)}</span>`;
+            const cls = c.channel === "dining" ? "adm-pill--dining" : "adm-pill--delivery";
+            return `<span class="adm-pill ${cls}">${c.code}</span>`;
+          }).join(" ");
+        }
+
         rows.push(`
           <div class="adm-grid adm-grid-banners" data-id="${d.id}">
             <div><img src="${p.imageUrl}" alt="" width="80" height="20" style="object-fit:cover;border-radius:6px;border:1px solid #eee"/></div>
             <div>${p.title || "(untitled)"}</div>
+            <div>${linkedHTML}</div>
             <div class="adm-muted">${publishedTo}</div>
             <div>${statusPill(p.active !== false)}</div>
             <div class="adm-actions">
@@ -385,6 +411,7 @@ if (bannersList) {
       bannersList.innerHTML = rows.length
         ? (headerB + rows.join(""))
         : (headerB + `<div class="adm-muted" style="padding:8px">No banners</div>`);
+
 
       // Delete (kept)
       bannersList.querySelectorAll(".jsDelBanner").forEach(btn => {
