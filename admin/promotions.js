@@ -106,7 +106,6 @@ function ensureColumnStyles(){
     .adm-grid{display:grid;gap:8px;align-items:center;padding:6px 8px;border-bottom:1px dashed #eee}
     .adm-grid-head{font-weight:600;background:#fafafa;border-bottom:2px solid #111}
     .adm-grid-coupons{grid-template-columns: 1fr .9fr 1fr 1fr .8fr auto}
-    .adm-grid-banners{grid-template-columns: 100px 1fr 1.2fr 1fr .8fr auto}
     .adm-actions{display:flex;gap:8px;justify-content:flex-end}
   `;
   const s = document.createElement("style");
