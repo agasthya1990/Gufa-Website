@@ -326,8 +326,8 @@ export function initPromotions() {
             <div style="font-weight:600;margin-bottom:6px">Link Coupons</div>
             <div class="list" style="max-height:40vh;overflow:auto;min-width:260px"></div>
             <div class="actions">
-              <button class="adm-btn jsCancel">Cancel</button>
-              <button class="adm-btn adm-btn--primary jsSave">Save</button>
+            <button class="adm-btn adm-btn--primary jsSave">Save</button>
+            <button class="adm-btn jsCancel">Cancel</button>
             </div>
           `;
           const listEl = pop.querySelector(".list");
@@ -376,8 +376,8 @@ export function initPromotions() {
             <label class="row"><input type="checkbox" value="delivery" class="jsTarget"> <span>Delivery Menu</span></label>
             <label class="row"><input type="checkbox" value="dining" class="jsTarget"> <span>Dining Menu</span></label>
             <div class="actions">
-              <button class="adm-btn jsCancel">Cancel</button>
               <button class="adm-btn adm-btn--primary jsSave">Save</button>
+              <button class="adm-btn jsCancel">Cancel</button>
             </div>
           `;
           const btnSave = pop.querySelector(".jsSave");
