@@ -143,25 +143,25 @@ export function initPromotions() {
       <input id="couponValue" class="adm-input" type="number" placeholder="Value" />
     </div>
   </div>
+  <div id="couponUsageLimitCell"></div>
   <div><strong style="color:#16a34a">Active</strong></div>
   <div class="adm-actions">
-    <button type="submit" class="adm-btn adm-btn--primary">Add</button>
+  <button type="submit" class="adm-btn adm-btn--primary">Add</button>
   </div>
 </form>
-
 <div id="couponsList" style="margin-bottom:12px"></div>
-
 <h3>Banners</h3>
 <form id="newBannerForm" class="adm-grid adm-grid-banners" style="margin-bottom:8px">
   <div><input id="bannerFile" class="adm-file" type="file" accept="image/*" /></div>
-  <div><input id="bannerTitle" class="adm-input" placeholder="Title" /></div>
+  <div><input id="bannerTitle" class="adm-input" placeholder="Title (optional)" /></div>
   <div class="adm-muted">—</div>
   <div><strong style="color:#16a34a">Active</strong></div>
   <div class="adm-actions">
-    <button type="submit" class="adm-btn adm-btn--primary">Upload</button>
+  <button type="submit" class="adm-btn adm-btn--primary">Upload</button>
   </div>
 </form>
 <div id="bannersList" style="margin-bottom:12px"></div>
+
     `;
   }
 
@@ -190,10 +190,25 @@ export function initPromotions() {
     newCouponForm.insertBefore(lim, submit || null);
   }
 
-  // ---------- Coupons (add columns + toggle; keep delete) ----------
-  if (couponsList) {
-    onSnapshot(query(collection(db, "promotions"), orderBy("createdAt", "desc")), (snap) => {
-            const header = `
+// ---------- Coupons (add columns + toggle; keep delete) ----------
+if (couponsList) {
+  // Pre-render header so labels never disappear while data loads
+  couponsList.innerHTML = `
+    <div class="adm-grid adm-grid-coupons adm-grid-head">
+      <div>Code</div>
+      <div>Channel</div>
+      <div>Value</div>
+      <div>Usage Limit</div>
+      <div>Status</div>
+      <div>Actions</div>
+    </div>
+    <div class="adm-muted" style="padding:8px">Loading…</div>
+  `;
+
+  onSnapshot(
+    query(collection(db, "promotions"), orderBy("createdAt", "desc")),
+    (snap) => {
+      const header = `
         <div class="adm-grid adm-grid-coupons adm-grid-head">
           <div>Code</div>
           <div>Channel</div>
@@ -204,15 +219,18 @@ export function initPromotions() {
         </div>
       `;
       const rows = [];
+
       snap.forEach(d => {
         const p = d.data();
         if (p?.kind !== "coupon") return;
+
         const valueTxt = p.type === "percent" ? `${p.value}% off` : `₹${p.value} off`;
-        const lim = (p.usageLimit ?? "∞");
-        const chan = (p.channel === "dining") ? "Dining" : "Delivery";
+        const lim      = (p.usageLimit ?? "∞");
+        const chan     = (p.channel === "dining") ? "Dining" : "Delivery";
+
         rows.push(`
           <div class="adm-grid adm-grid-coupons">
-            <div><span class="adm-pill ${p.channel === "dining" ? "adm-pill--dining":"adm-pill--delivery"}">${p.code || d.id}</span></div>
+            <div><span class="adm-pill ${p.channel === "dining" ? "adm-pill--dining" : "adm-pill--delivery"}">${p.code || d.id}</span></div>
             <div>${chan}</div>
             <div class="adm-muted">${valueTxt}</div>
             <div class="adm-muted"><strong>${lim}</strong></div>
@@ -226,49 +244,49 @@ export function initPromotions() {
           </div>
         `);
       });
-      couponsList.innerHTML = rows.length ? (header + rows.join("")) : (header + `<div class="adm-muted" style="padding:8px">No coupons</div>`);
 
-      // Toggle status (additive)
+      couponsList.innerHTML = rows.length
+        ? (header + rows.join(""))
+        : (header + `<div class="adm-muted" style="padding:8px">No coupons</div>`);
+
+      // Toggle status (unchanged logic, just re-indented)
       couponsList.querySelectorAll(".jsToggleCoupon").forEach(btn => {
-  btn.onclick = async () => {
-    btn.disabled = true;
-    try {
-      const promoId = btn.dataset.id;
-      const currentlyActive = btn.dataset.active === "true";
+        btn.onclick = async () => {
+          btn.disabled = true;
+          try {
+            const promoId = btn.dataset.id;
+            const currentlyActive = btn.dataset.active === "true";
 
-      // 1) Flip the coupon's active flag.
-      await updateDoc(doc(db, "promotions", promoId), {
-        active: !currentlyActive,
-        updatedAt: serverTimestamp()
-      });
-
-      // 2) If we are DISABLING, remove this coupon from all menu items that reference it.
-      if (currentlyActive) {
-        const q = query(
-          collection(db, "menuItems"),
-          where("promotions", "array-contains", promoId)
-        );
-        const snap = await getDocs(q);
-
-        const ops = [];
-        snap.forEach(d => {
-          ops.push(
-            updateDoc(doc(db, "menuItems", d.id), {
-              promotions: arrayRemove(promoId),
+            // 1) Flip the coupon's active flag.
+            await updateDoc(doc(db, "promotions", promoId), {
+              active: !currentlyActive,
               updatedAt: serverTimestamp()
-            })
-          );
-        });
-        await Promise.all(ops);
-      }
+            });
 
-      // (Optional) You can update the data-active attribute for instant button UI feedback:
-      // btn.dataset.active = String(!currentlyActive);
-    } finally {
-      btn.disabled = false;
-    }
-  };
-});
+            // 2) If DISABLING, remove this coupon from all menu items that reference it.
+            if (currentlyActive) {
+              const q = query(
+                collection(db, "menuItems"),
+                where("promotions", "array-contains", promoId)
+              );
+              const itSnap = await getDocs(q);
+
+              const ops = [];
+              itSnap.forEach(it => {
+                ops.push(
+                  updateDoc(doc(db, "menuItems", it.id), {
+                    promotions: arrayRemove(promoId),
+                    updatedAt: serverTimestamp()
+                  })
+                );
+              });
+              await Promise.all(ops);
+            }
+          } finally {
+            btn.disabled = false;
+          }
+        };
+      });
 
       // Delete (kept)
       couponsList.querySelectorAll(".jsDelCoupon").forEach(btn => {
@@ -279,10 +297,13 @@ export function initPromotions() {
           finally { btn.disabled = false; }
         };
       });
-    });
-  }
+    }
+  );
+}
+
 
   // Create coupon (add usageLimit/usedCount/active defaults; keep original fields)
+  
   if (newCouponForm) {
     newCouponForm.onsubmit = async (e) => {
       e.preventDefault();
@@ -310,9 +331,23 @@ export function initPromotions() {
   }
 
   // ---------- Banners (add link/publish/status; keep delete) ----------
-  if (bannersList) {
-    onSnapshot(query(collection(db, "promotions"), orderBy("createdAt", "desc")), (snap) => {
-            const headerB = `
+if (bannersList) {
+  // Pre-render header so labels never disappear while data loads
+  bannersList.innerHTML = `
+    <div class="adm-grid adm-grid-banners adm-grid-head">
+      <div>Preview</div>
+      <div>Title</div>
+      <div>Published To</div>
+      <div>Status</div>
+      <div>Actions</div>
+    </div>
+    <div class="adm-muted" style="padding:8px">Loading…</div>
+  `;
+
+  onSnapshot(
+    query(collection(db, "promotions"), orderBy("createdAt", "desc")),
+    (snap) => {
+      const headerB = `
         <div class="adm-grid adm-grid-banners adm-grid-head">
           <div>Preview</div>
           <div>Title</div>
@@ -322,12 +357,15 @@ export function initPromotions() {
         </div>
       `;
       const rows = [];
+
       snap.forEach(d => {
         const p = d.data();
         if (p?.kind !== "banner") return;
+
         const publishedTo = (p.targets && (p.targets.delivery || p.targets.dining))
           ? ["delivery","dining"].filter(k => p.targets?.[k]).map(k => k[0].toUpperCase()+k.slice(1)).join(", ")
           : "—";
+
         rows.push(`
           <div class="adm-grid adm-grid-banners" data-id="${d.id}">
             <div><img src="${p.imageUrl}" alt="" width="80" height="20" style="object-fit:cover;border-radius:6px;border:1px solid #eee"/></div>
@@ -343,7 +381,10 @@ export function initPromotions() {
           </div>
         `);
       });
-      bannersList.innerHTML = rows.length ? (headerB + rows.join("")) : (headerB + `<div class="adm-muted" style="padding:8px">No banners</div>`);
+
+      bannersList.innerHTML = rows.length
+        ? (headerB + rows.join(""))
+        : (headerB + `<div class="adm-muted" style="padding:8px">No banners</div>`);
 
       // Delete (kept)
       bannersList.querySelectorAll(".jsDelBanner").forEach(btn => {
@@ -355,7 +396,7 @@ export function initPromotions() {
         };
       });
 
-      // Enable/Disable (additive)
+      // Enable/Disable (kept)
       bannersList.querySelectorAll(".jsToggleBanner").forEach(btn => {
         btn.onclick = async () => {
           const id = btn.dataset.id;
@@ -367,7 +408,7 @@ export function initPromotions() {
         };
       });
 
-      // Link Coupons popover (active + not-exhausted) — additive
+      // Link Coupons popover (active + not-exhausted) — kept
       bannersList.querySelectorAll(".jsLinkCoupons").forEach(btn => {
         btn.onclick = async (e) => {
           e.preventDefault();
@@ -378,8 +419,8 @@ export function initPromotions() {
             <div style="font-weight:600;margin-bottom:6px">Link Coupons</div>
             <div class="list" style="max-height:40vh;overflow:auto;min-width:260px"></div>
             <div class="actions">
-            <button class="adm-btn adm-btn--primary jsSave">Save</button>
-            <button class="adm-btn jsCancel">Cancel</button>
+              <button class="adm-btn adm-btn--primary jsSave">Save</button>
+              <button class="adm-btn jsCancel">Cancel</button>
             </div>
           `;
           const listEl = pop.querySelector(".list");
@@ -388,7 +429,7 @@ export function initPromotions() {
 
           // One-shot fetch of coupons (active & not exhausted)
           const snapAll = await getDocs(query(collection(db, "promotions")));
-          const rows = [];
+          const rowsC = [];
           snapAll.forEach(docu => {
             const v = docu.data() || {};
             if (v.kind !== "coupon") return;
@@ -398,10 +439,10 @@ export function initPromotions() {
             const active = v.active !== false;
             if (!active || exhausted) return;
             const title = v.type === "percent" ? `${v.value}% off` : `₹${v.value} off`;
-            rows.push({ id: docu.id, label: `${v.code || docu.id} • ${title} • ${(v.channel === "dining") ? "Dining" : "Delivery"}` });
+            rowsC.push({ id: docu.id, label: `${v.code || docu.id} • ${title} • ${(v.channel === "dining") ? "Dining" : "Delivery"}` });
           });
-          listEl.innerHTML = rows.length
-            ? rows.map(r => `<label class="row"><input type="checkbox" value="${r.id}"> <span>${r.label}</span></label>`).join("")
+          listEl.innerHTML = rowsC.length
+            ? rowsC.map(r => `<label class="row"><input type="checkbox" value="${r.id}"> <span>${r.label}</span></label>`).join("")
             : `<div class="adm-muted">(No active coupons available)</div>`;
 
           btnCancel.onclick = () => pop.classList.remove("show");
@@ -416,7 +457,7 @@ export function initPromotions() {
         };
       });
 
-      // Publish popover (Delivery/Dining) — additive
+      // Publish popover (Delivery/Dining) — kept
       bannersList.querySelectorAll(".jsPublish").forEach(btn => {
         btn.onclick = async (e) => {
           e.preventDefault();
@@ -447,10 +488,12 @@ export function initPromotions() {
           toggleAttachedPopover(pop, btn);
         };
       });
-    });
-  }
+    }
+  );
+}
 
   // Create banner (add defaults for new features; keep your uploader flow)
+  
   if (newBannerForm) {
     newBannerForm.onsubmit = async (e) => {
       e.preventDefault();
