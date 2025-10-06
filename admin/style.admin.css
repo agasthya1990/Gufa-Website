@@ -508,8 +508,8 @@ button {
   grid-template-columns: 180px 120px 220px 140px 120px 1fr;
 }
 #panel-promotions .adm-grid-banners {
-  /* Preview | Title | Published To | Status | Actions */
-  grid-template-columns: 140px 1fr 220px 120px 1fr;
+  /* Preview | Title | Linked Coupons | Published To | Status | Actions */
+  grid-template-columns: 140px 1fr 1.1fr 220px 120px 1fr;
 }
 
 /* Actions aligned */
@@ -533,3 +533,7 @@ button {
 }
 #panel-promotions #newCouponForm .adm-select { min-width: 110px; }
 #panel-promotions #newCouponForm #couponValue { max-width: 120px; }
+
+/* Ensure cells don’t overflow and push subsequent cells to a new line */
+#panel-promotions .adm-grid > div { min-width: 0; }
+#panel-promotions .adm-actions { display:flex; gap:8px; justify-content:flex-end; }
