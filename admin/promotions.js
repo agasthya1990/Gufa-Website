@@ -86,17 +86,17 @@ export function initPromotions() {
           <option value="dining">Dining</option>
         </select>
         <select id="couponType" class="adm-select">
-          <option value="percent">Percent</option>
-          <option value="flat">Flat</option>
+          <option value="% Off">% Off</option>
+          <option value="₹ Off">₹ Off</option>
         </select>
-        <input id="couponValue" class="adm-input" type="number" placeholder="Value" style="width:120px" />
+        <input id="couponValue" class="adm-input" type="number" placeholder="Value " style="width:120px" />
         <button type="submit" class="adm-btn adm-btn--primary">Add</button>
       </form>
 
       <h3 style="margin-top:16px">Banners</h3>
       <div id="bannersList" style="margin-bottom:8px"></div>
       <form id="newBannerForm" class="adm-row" style="gap:8px">
-        <input id="bannerTitle" class="adm-input" placeholder="Title (optional)" />
+        <input id="bannerTitle" class="adm-input" placeholder="Title" />
         <input id="bannerFile" class="adm-file" type="file" accept="image/*" />
         <button type="submit" class="adm-btn adm-btn--primary">Upload</button>
       </form>
@@ -108,7 +108,7 @@ export function initPromotions() {
   const newCouponForm = document.getElementById("newCouponForm");
   const codeInput = document.getElementById("couponCode");
   const chanInput = document.getElementById("couponChannel"); // "dining" | "delivery"
-  const typeInput = document.getElementById("couponType");    // "percent" | "flat"
+  const typeInput = document.getElementById("couponType");    // "% Off" | "₹ Off"
   const valInput  = document.getElementById("couponValue");
 
   const bannersList = document.getElementById("bannersList");
@@ -123,7 +123,7 @@ export function initPromotions() {
       snap.forEach(d => {
         const p = d.data();
         if (p?.kind !== "coupon") return;
-        const label = p.type === "percent" ? `${p.value}% off` : `₹${p.value} off`;
+        const label = p.type === "% Off" ? `${p.value}% off` : `₹${p.value} off`;
         rows.push(`
           <div class="adm-list-row">
             <span class="adm-pill ${p.channel === "dining" ? "adm-pill--dining":"adm-pill--delivery"}">${p.code || d.id}</span>
@@ -150,7 +150,7 @@ export function initPromotions() {
       e.preventDefault();
       const code = (codeInput?.value || "").trim();
       const channel = chanInput?.value || "delivery";
-      const type = typeInput?.value || "percent";
+      const type = typeInput?.value || "% Off";
       const value = Number(valInput?.value || 0);
       if (!code || !(value > 0)) return alert("Enter code and positive value");
 
