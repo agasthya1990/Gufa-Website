@@ -155,13 +155,13 @@ export function initPromotions() {
   <div id="newBannerLinkedCell">
     <div class="inline-tools">
       <button type="button" class="adm-btn chip-btn jsNewLinkCoupons">Link Coupons</button>
-      <span id="newBannerLinkedPreview" class="adm-muted">—</span>
+      <span id="newBannerLinkedPreview" class="adm-muted">(Preview)</span>
     </div>
   </div>
   <div id="newBannerTargetsCell">
     <div class="inline-tools">
       <button type="button" class="adm-btn chip-btn jsNewPublish">Publish</button>
-      <span id="newBannerTargetsPreview" class="adm-muted">—</span>
+      <span id="newBannerTargetsPreview" class="adm-muted">(Preview)</span>
     </div>
   </div>
   <div class="adm-actions">
