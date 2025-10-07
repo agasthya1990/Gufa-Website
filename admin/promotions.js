@@ -364,8 +364,8 @@ if (btnChForm) {
         <span>Dining</span>
       </label>
       <div class="actions" style="margin-top:8px">
-        <button class="adm-btn jsCancel">Cancel</button>
         <button class="adm-btn adm-btn--primary jsSave">Save</button>
+        <button class="adm-btn jsCancel">Cancel</button>
       </div>
     `;
     const btnSave   = pop.querySelector(".jsSave");
