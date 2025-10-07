@@ -1607,8 +1607,8 @@ button {
 #panel-promotions .adm-pop input.adm-input,
 #panel-promotions .adm-pop select.adm-select {
   display: block;
-  inline-size: 100% !important; /* logical width to avoid rtl/ltr issues */
-  max-inline-size: 100% !important;
+  inline-size: 80% !important; /* logical width to avoid rtl/ltr issues */
+  max-inline-size: 80% !important;
   height: 36px;
   line-height: 36px;
   padding: 0 10px;
@@ -1630,7 +1630,7 @@ button {
 #panel-promotions .adm-pop .actions {
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
+  gap: 4px;
   margin-top: 12px;
   max-inline-size: 100%;
   flex-wrap: wrap;
@@ -1639,7 +1639,7 @@ button {
   height: 36px;
   line-height: 36px;
   padding: 0 12px;
-  border-radius: 9999px;
+  border-radius: 10999px;
   white-space: nowrap;
 }
 
