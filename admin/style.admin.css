@@ -1104,3 +1104,163 @@ button {
 
 /* Keep Delivery/Dining & status colors intact elsewhere (unchanged) */
 
+/* =========================================================
+   PROMOTIONS — Decoupled, zoom-safe Add rows (Coupons + Banners)
+   Append only — overrides any earlier grid styles for the forms
+   ========================================================= */
+
+/* Turn BOTH add forms into flexible, wrapping toolbars (not grid) */
+#panel-promotions #newCouponForm,
+#panel-promotions #newBannerForm {
+  display: flex !important;            /* defeat any grid template */
+  flex-wrap: wrap;                     /* wrap to new line when tight */
+  align-items: flex-end;               /* align controls nicely */
+  gap: 10px 12px;                      /* row/column gaps */
+  grid-template-columns: none !important;
+}
+
+/* Ensure every child can shrink without pushing neighbors */
+#panel-promotions #newCouponForm > *,
+#panel-promotions #newBannerForm > * {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+/* -------------------------------------
+   ADD COUPON (decoupled + adaptive)
+   ------------------------------------- */
+
+/* Code */
+#panel-promotions #couponCode {
+  flex: 2 1 clamp(220px, 28vw, 420px);
+  box-sizing: border-box;
+}
+
+/* Channel (button) */
+#panel-promotions #couponChannelsCell,
+#panel-promotions #couponChannelsCell .jsCouponChannels {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+/* Value = type dropdown + number input (kept side-by-side) */
+#panel-promotions #couponType {
+  flex: 0 1 120px;
+  min-width: 110px;
+  box-sizing: border-box;
+}
+#panel-promotions #couponValue {
+  flex: 0 1 2.5cm;                     /* your exact spec */
+  min-width: 2.5cm;
+  max-width: 2.5cm;
+  box-sizing: border-box;
+}
+
+/* Usage Limit (stay compact; never “eat” Value) */
+#panel-promotions #couponUsageLimit {
+  flex: 0 1 clamp(140px, 14vw, 180px);
+  min-width: 140px;
+  box-sizing: border-box;
+}
+
+/* Status preview (“Active”) – normal body size */
+#panel-promotions #newCouponForm > .couponStatusPreview {
+  flex: 0 0 auto;
+  font-size: 14px;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+/* Actions — wrap/stack INSIDE their cell when tight */
+#panel-promotions #newCouponForm .adm-actions {
+  display: flex;
+  gap: 8px;
+  flex: 1 0 180px;                     /* takes remaining space but can shrink */
+  justify-content: flex-end;
+  flex-wrap: wrap;                      /* wraps inside its own area */
+}
+#panel-promotions #newCouponForm .adm-actions .adm-btn {
+  flex: 0 1 auto;
+  min-width: 88px;
+  white-space: nowrap;
+}
+
+/* -------------------------------------
+   ADD BANNER (decoupled + adaptive)
+   ------------------------------------- */
+
+/* File input — keep native button; no stretched shell */
+#panel-promotions #newBannerForm .adm-file {
+  border: none; padding: 0; background: transparent; width: auto; box-shadow: none;
+}
+#panel-promotions #newBannerForm .adm-file::file-selector-button {
+  font: inherit; border:1px solid #111; border-radius:9999px;
+  background:#fff; color:#111; padding:6px 12px; cursor:pointer;
+}
+
+/* Title — exactly 5.5cm but allowed to go narrower when very tight */
+#panel-promotions #bannerTitle {
+  flex: 0 1 5.5cm;
+  width: 5.5cm;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+/* Link Coupons / Publish buttons — cohesive and non-overlapping */
+#panel-promotions #newBannerLinkedCell,
+#panel-promotions #newBannerTargetsCell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 clamp(200px, 24vw, 360px); /* grow when space, shrink when tight */
+  min-width: 200px;
+}
+#panel-promotions #newBannerLinkedCell .inline-tools,
+#panel-promotions #newBannerTargetsCell .inline-tools {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+}
+
+/* Status preview (“Active”) */
+#panel-promotions #newBannerForm > .bannerStatusPreview {
+  flex: 0 0 auto;
+  font-size: 14px;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+/* Actions — wrap/stack within their space */
+#panel-promotions #newBannerForm .adm-actions {
+  display: flex;
+  gap: 8px;
+  flex: 1 0 200px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+#panel-promotions #newBannerForm .adm-actions .adm-btn {
+  flex: 0 1 auto;
+  min-width: 88px;
+  white-space: nowrap;
+}
+
+/* -------------------------------------
+   General safeguards for add forms
+   ------------------------------------- */
+#panel-promotions #newCouponForm input.adm-input,
+#panel-promotions #newCouponForm select.adm-select,
+#panel-promotions #newBannerForm input.adm-input,
+#panel-promotions #newBannerForm select.adm-select {
+  width: auto;
+  max-width: 100%;
+  font-size: 14px;                     /* keep body size (no tiny text) */
+  line-height: 1.4;
+}
+
+#panel-promotions #newBannerForm .adm-btn,
+#panel-promotions #newCouponForm .adm-btn {
+  border-radius: 9999px;               /* pill look, consistent with rest */
+  padding: 6px 12px;
+  font-size: 13px;
+  line-height: 1.2;
+  box-shadow: none;
+}
