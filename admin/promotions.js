@@ -148,15 +148,11 @@ export function initPromotions() {
 <h3>Coupons</h3>
 <form id="newCouponForm" class="adm-grid adm-grid-coupons" style="margin-bottom:8px">
   <div><input id="couponCode" class="adm-input" placeholder="Code (e.g. WELCOME20)" /></div>
-  <div id="couponChannelsCell">
-  <label style="display:inline-flex;align-items:center;gap:6px;margin-right:10px">
-    <input type="checkbox" id="couponChDelivery" checked>
-    <span>Delivery</span>
-  </label>
-  <label style="display:inline-flex;align-items:center;gap:6px">
-    <input type="checkbox" id="couponChDining">
-    <span>Dining</span>
-  </label>
+ <div id="couponChannelsCell">
+  <div class="inline-tools">
+    <button type="button" class="adm-btn chip-btn jsCouponChannels">Channel</button>
+    <span id="couponChannelsPreview">Delivery</span>
+  </div>
 </div>
 
   <div>
@@ -336,6 +332,65 @@ if (newCouponForm && !document.getElementById("couponUsageLimit")) {
   (limCell || newCouponForm).appendChild(lim);
 }
 
+// --- Add Coupon: local state + helpers (Channel button -> checklist popover) ---
+let NEW_COUPON_CHANNELS = { delivery: true, dining: false };
+
+const btnChForm = document.querySelector(".jsCouponChannels");
+const chPrev    = document.getElementById("couponChannelsPreview");
+
+function renderNewCouponChannels(){
+  if (!chPrev) return;
+  const picks = [];
+  if (NEW_COUPON_CHANNELS.delivery) picks.push("Delivery");
+  if (NEW_COUPON_CHANNELS.dining)  picks.push("Dining");
+  chPrev.textContent = picks.length ? picks.join(", ") : "—";
+}
+// initial paint
+renderNewCouponChannels();
+
+if (btnChForm) {
+  btnChForm.onclick = (e) => {
+    e.preventDefault();
+    const pop = document.createElement("div");
+    pop.className = "adm-pop";
+    pop.innerHTML = `
+      <div style="font-weight:600;margin-bottom:6px">Select Channel(s)</div>
+      <label class="row" style="display:flex;align-items:center;gap:8px">
+        <input type="checkbox" class="jsCh" value="delivery" ${NEW_COUPON_CHANNELS.delivery ? "checked":""}>
+        <span>Delivery</span>
+      </label>
+      <label class="row" style="display:flex;align-items:center;gap:8px">
+        <input type="checkbox" class="jsCh" value="dining" ${NEW_COUPON_CHANNELS.dining ? "checked":""}>
+        <span>Dining</span>
+      </label>
+      <div class="actions" style="margin-top:8px">
+        <button class="adm-btn jsCancel">Cancel</button>
+        <button class="adm-btn adm-btn--primary jsSave">Save</button>
+      </div>
+    `;
+    const btnSave   = pop.querySelector(".jsSave");
+    const btnCancel = pop.querySelector(".jsCancel");
+
+    btnCancel.onclick = () => pop.classList.remove("show");
+    btnSave.onclick = () => {
+      const boxes = pop.querySelectorAll(".jsCh");
+      let del = false, din = false;
+      boxes.forEach(b => {
+        if (b.value === "delivery") del = b.checked;
+        if (b.value === "dining")   din = b.checked;
+      });
+      // require at least one
+      if (!del && !din) { alert("Pick at least one channel"); return; }
+      NEW_COUPON_CHANNELS = { delivery: del, dining: din };
+      renderNewCouponChannels();
+      pop.classList.remove("show");
+    };
+
+    toggleAttachedPopover(pop, btnChForm);
+  };
+}
+
+  
 // ---------- Coupons (add columns + toggle; keep delete) ----------
 if (couponsList) {
   // Pre-render header so labels never disappear while data loads
