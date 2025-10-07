@@ -699,4 +699,102 @@ button {
 #panel-promotions .adm-grid .adm-pill { white-space: nowrap; }
 #panel-promotions .adm-grid .inline-tools { flex-wrap: wrap; }
 
+/* =========================================================
+   PROMOTIONS — DESKTOP-RESPONSIVE GRID (ZOOM-SAFE), TIDY UI
+   (APPEND ONLY — no JS changes)
+   ========================================================= */
+
+/* 1) Same column template for header + rows (prevents drift) */
+#panel-promotions .adm-grid-head.adm-grid-coupons,
+#panel-promotions .adm-grid-coupons {
+  /* Code | Channel | Value | Usage | Status | Actions */
+  grid-template-columns:
+    minmax(120px, 1.6fr)
+    minmax(130px, 1.2fr)
+    minmax(120px, 1.1fr)
+    minmax(110px, 1.1fr)
+    minmax(110px, 1fr)
+    minmax(160px, 1.3fr) !important;
+}
+
+#panel-promotions .adm-grid-head.adm-grid-banners,
+#panel-promotions .adm-grid-banners {
+  /* Preview | Title | Linked | Published | Status | Actions */
+  grid-template-columns:
+    120px
+    minmax(180px, 1.6fr)
+    minmax(200px, 1.8fr)
+    minmax(140px, 1.2fr)
+    minmax(110px, 1fr)
+    minmax(170px, 1.2fr) !important;
+}
+
+/* 2) Never let a cell force the grid wider; allow content to wrap */
+#panel-promotions .adm-grid > div {
+  min-width: 0;                 /* allow columns to shrink */
+  overflow: hidden;             /* no spill over neighbor columns */
+  overflow-wrap: anywhere;      /* wrap long tokens safely */
+  display: block;               /* avoid flex pushing widths */
+}
+
+/* 3) Actions: always live under Actions column; stack when tight (any zoom) */
+#panel-promotions .adm-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  align-items: center;
+  flex-wrap: wrap;              /* wrap within the Actions cell when tight */
+  max-width: 100%;
+}
+#panel-promotions .adm-actions .adm-btn {
+  white-space: nowrap;          /* keep labels readable */
+  flex: 0 1 auto;               /* shrink if needed but don’t grow past the cell */
+  max-width: 100%;
+}
+/* when the viewport (or zoomed page) gets tight, stack vertically */
+@media (max-width: 1250px) {
+  #panel-promotions .adm-actions { flex-direction: column; align-items: stretch; }
+  #panel-promotions .adm-actions .adm-btn { width: 100%; }
+}
+
+/* 4) Consistent typography for Value / Usage Limit / Published To */
+#panel-promotions .adm-grid-coupons > div:nth-child(3),
+#panel-promotions .adm-grid-coupons > div:nth-child(4),
+#panel-promotions .adm-grid-banners > div:nth-child(4) {
+  font-size: 14px;              /* match body, not tiny */
+  line-height: 1.4;
+}
+/* keep muted color but not smaller font */
+#panel-promotions .adm-muted { color: #6b7280; font-size: inherit; }
+
+/* 5) Add-row inputs: compact, no bar overflow */
+#panel-promotions #couponCode       { width: clamp(200px, 28vw, 320px); }
+#panel-promotions #couponType       { width: 120px; }
+#panel-promotions #couponValue      { width: 120px; }
+#panel-promotions #couponUsageLimit { width: 160px; }
+
+/* Banner add row: native file button only; title ~6cm */
+#panel-promotions #newBannerForm .adm-file {
+  border: none; padding: 0; background: transparent; width: auto; box-shadow: none; font-size: initial;
+}
+#panel-promotions #newBannerForm .adm-file::file-selector-button {
+  font: inherit; border:1px solid #111; border-radius:9999px; background:#fff; color:#111; padding:6px 12px; cursor:pointer;
+}
+#panel-promotions #bannerTitle { width: 6cm; max-width: 100%; }
+
+/* 6) Delivery / Dining (Channel & Published To): keep signature colors */
+#panel-promotions .adm-pill { display:inline-block; padding:3px 10px; border-radius:999px; font-size:12px; font-weight:700; border:1px solid var(--adm-border); }
+#panel-promotions .adm-pill--delivery { background:#eef2ff; color:#1e40af; border-color:#1e40af; }
+#panel-promotions .adm-pill--dining   { background:#ecfdf5;  color:#065f46; border-color:#065f46; }
+
+/* 7) Row rhythm & header treatment (stable at any zoom) */
+#panel-promotions .adm-grid { grid-auto-rows: minmax(44px, auto); align-items: center; }
+#panel-promotions .adm-grid-head {
+  background: #f9fafb;
+  font-weight: 700;
+  border-top: 1px solid var(--adm-border);
+  border-bottom: 2px solid var(--adm-border);
+}
+#panel-promotions .adm-grid-head > div,
+#panel-promotions .adm-grid > div { padding: 10px 12px; }
 
