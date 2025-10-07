@@ -1370,3 +1370,111 @@ button {
 #panel-promotions #newBannerForm > * { min-width: 0; max-width: 100%; }
 #panel-promotions #newBannerLinkedCell .inline-tools,
 #panel-promotions #newBannerTargetsCell .inline-tools { flex-wrap: wrap; gap: 8px; }
+
+/* =========================================================
+   PROMOTIONS — Add Banner: cohesive, aligned controls
+   (APPEND ONLY; no JS changes)
+   ========================================================= */
+
+/* Make the Add Banner row a flexible toolbar (already decoupled from list) */
+#panel-promotions #newBannerForm {
+  display: flex !important;
+  flex-wrap: wrap;
+  align-items: center;                 /* align with inputs (“bars”) */
+  gap: 10px 12px;
+}
+
+/* Order the controls so they appear naturally:
+   File → Title → Link Coupons → Publish → Upload → (Status) */
+#panel-promotions #newBannerForm .adm-file        { order: 10; }
+#panel-promotions #newBannerForm #bannerTitle     { order: 20; }
+#panel-promotions #newBannerForm #newBannerLinkedCell  { order: 30; }
+#panel-promotions #newBannerForm #newBannerTargetsCell { order: 40; }
+#panel-promotions #newBannerForm .adm-actions     { order: 50; }
+/* (Status preview, if any, remains after this in DOM order) */
+
+/* Keep each block compact — no huge flex bases that create odd gaps */
+#panel-promotions #newBannerForm #newBannerLinkedCell,
+#panel-promotions #newBannerForm #newBannerTargetsCell,
+#panel-promotions #newBannerForm .adm-actions {
+  flex: 0 0 auto;                      /* size to content, sit next to each other */
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* Inside “Linked” / “Published” wrappers: buttons align neatly; previews hidden */
+#panel-promotions #newBannerForm #newBannerLinkedCell .inline-tools,
+#panel-promotions #newBannerForm #newBannerTargetsCell .inline-tools {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+#panel-promotions #newBannerLinkedPreview,
+#panel-promotions #newBannerTargetsPreview {
+  display: none;                        /* keep buttons tight & contiguous */
+}
+
+/* Uniform control height so buttons line up with inputs */
+:root { --promo-ctrl-h: 36px; }
+
+#panel-promotions #newBannerForm input.adm-input,
+#panel-promotions #newBannerForm select.adm-select {
+  height: var(--promo-ctrl-h);
+  line-height: var(--promo-ctrl-h);
+  padding: 0 10px;
+  font-size: 14px;
+  box-sizing: border-box;
+}
+
+/* File input styled as a button at same height */
+#panel-promotions #newBannerForm .adm-file {
+  border: none; padding: 0; background: transparent; width: auto; box-shadow: none;
+}
+#panel-promotions #newBannerForm .adm-file::file-selector-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: var(--promo-ctrl-h);
+  line-height: var(--promo-ctrl-h);
+  padding: 0 12px;
+  font-size: 14px;
+  border: 1px solid #111; border-radius: 9999px;
+  background: #fff; color: #111; cursor: pointer;
+}
+
+/* Title width per spec, but allowed to shrink if space is tight */
+#panel-promotions #newBannerForm #bannerTitle {
+  flex: 0 1 5.5cm;
+  width: 5.5cm;
+  max-width: 100%;
+}
+
+/* Make Link / Publish / Upload same visual size & aligned */
+#panel-promotions #newBannerForm .adm-btn,
+#panel-promotions #newBannerForm .chip-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: var(--promo-ctrl-h);
+  line-height: var(--promo-ctrl-h);
+  padding: 0 12px;
+  font-size: 14px;
+  border-radius: 9999px;
+  box-shadow: none;
+  white-space: nowrap;
+}
+
+/* Keep Upload right after Publish (not shoved to the far right) */
+#panel-promotions #newBannerForm .adm-actions {
+  display: inline-flex;
+  justify-content: flex-start;          /* sit in-flow next to Publish */
+  gap: 8px;
+}
+
+/* Safety: nothing overflows at any desktop zoom */
+#panel-promotions #newBannerForm > * {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
