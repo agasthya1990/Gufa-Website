@@ -1472,6 +1472,100 @@ button {
   gap: 8px;
 }
 
+/* =========================================================
+   PROMOTIONS — Popovers: wide, spacious, no overflow (desktop zoom safe)
+   Append only
+   ========================================================= */
+#panel-promotions .adm-pop {
+  position: fixed;                   /* match JS for viewport-based placement */
+  box-sizing: border-box;
+  width: clamp(420px, 52vw, 760px);  /* roomy by default, never absurdly wide */
+  max-width: calc(100vw - 32px);     /* clamp to viewport with padding */
+  max-height: min(72vh, 600px);      /* scroll inside if tall */
+  overflow: auto;
+  padding: 16px 18px;
+  border-radius: 12px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  box-shadow: 0 12px 28px rgba(0,0,0,.12), 0 2px 8px rgba(0,0,0,.06);
+  z-index: 9999;
+}
+
+/* Title at top of popovers */
+#panel-promotions .adm-pop > div:first-child {
+  font-weight: 700;
+  font-size: 15px;
+  margin-bottom: 12px;
+}
+
+/* Forms inside "Edit" popovers — breathe and align */
+#panel-promotions .adm-pop [style*="grid-template-columns:120px"] {
+  display: grid !important;
+  grid-template-columns: 150px minmax(260px, 1fr) !important; /* wider input column */
+  gap: 12px !important;
+  align-items: center !important;
+}
+
+/* Inputs/selects in popovers never overflow their column */
+#panel-promotions .adm-pop input.adm-input,
+#panel-promotions .adm-pop select.adm-select {
+  width: 100%;
+  max-width: 100%;
+  min-height: 36px;
+  line-height: 36px;
+  padding: 0 10px;
+  font-size: 14px;
+  box-sizing: border-box;
+}
+
+/* Checklists (Link Coupons / Channel / Publish) — roomy, scrollable */
+#panel-promotions .adm-pop .list {
+  display: grid;
+  grid-template-columns: 1fr;
+  row-gap: 8px;
+  max-height: 46vh;
+  overflow: auto;
+  padding-right: 4px;
+}
+#panel-promotions .adm-pop label.row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  line-height: 1.3;
+  padding: 2px 0;
+}
+#panel-promotions .adm-pop label.row input[type="checkbox"] {
+  width: 16px; height: 16px;
+}
+
+/* Actions row (Save / Cancel) */
+#panel-promotions .adm-pop .actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+}
+#panel-promotions .adm-pop .actions .adm-btn {
+  border-radius: 9999px;
+  height: 36px; line-height: 36px;
+  padding: 0 12px;
+  font-size: 14px;
+}
+
+/* Safety: long words / codes never stretch the sheet */
+#panel-promotions .adm-pop,
+#panel-promotions .adm-pop * { overflow-wrap: anywhere; }
+
+/* Optional: tidy "tail" (still looks correct when flipped) */
+#panel-promotions .adm-pop::after {
+  content: ""; position: absolute; border: 8px solid transparent; border-bottom-color: #e5e7eb;
+  top: -8px; left: 24px;
+}
+#panel-promotions .adm-pop::before {
+  content: ""; position: absolute; border: 7px solid transparent; border-bottom-color: #fff;
+  top: -7px; left: 24px;
+}
+
 /* Safety: nothing overflows at any desktop zoom */
 #panel-promotions #newBannerForm > * {
   min-width: 0;
