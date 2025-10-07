@@ -905,15 +905,15 @@ button {
 
 /* Coupon "Value" input: exactly 2.5cm wide */
 #panel-promotions #couponValue {
-  width: 2.5cm !important;
-  max-width: 2.5cm !important;
+  width: 1cm !important;
+  max-width: 1cm !important;
   box-sizing: border-box;
 }
 
 /* Banner "Title" input: exactly 5.5cm wide */
 #panel-promotions #newBannerForm #bannerTitle,
 #panel-promotions #bannerTitle {
-  width: 5.5cm !important;
-  max-width: 5.5cm !important;
+  width: 4cm !important;
+  max-width: 4cm !important;
   box-sizing: border-box;
 }
