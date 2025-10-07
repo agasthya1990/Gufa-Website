@@ -1264,3 +1264,109 @@ button {
   line-height: 1.2;
   box-shadow: none;
 }
+
+/* =========================================================
+   PROMOTIONS — Unified control sizing & alignment for ADD rows
+   (APPEND ONLY; no JS changes)
+   ========================================================= */
+
+/* 0) A single control height across inputs, selects and buttons */
+:root { --promo-ctrl-h: 36px; }
+
+#panel-promotions #newCouponForm,
+#panel-promotions #newBannerForm {
+  align-items: center;                 /* align baselines visually */
+  gap: 10px 12px;                      /* row/column gaps */
+}
+
+/* Inputs & selects use the same height */
+#panel-promotions #newCouponForm input.adm-input,
+#panel-promotions #newCouponForm select.adm-select,
+#panel-promotions #newBannerForm input.adm-input,
+#panel-promotions #newBannerForm select.adm-select {
+  height: var(--promo-ctrl-h);
+  line-height: var(--promo-ctrl-h);
+  padding: 0 10px;
+  font-size: 14px;
+  box-sizing: border-box;
+}
+
+/* All action/utility buttons (Channel, Link Coupons, Publish, Add, Upload) match height */
+#panel-promotions #newCouponForm .adm-btn,
+#panel-promotions #newCouponForm .chip-btn,
+#panel-promotions #newBannerForm .adm-btn,
+#panel-promotions #newBannerForm .chip-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: var(--promo-ctrl-h);
+  line-height: var(--promo-ctrl-h);
+  padding: 0 12px;
+  font-size: 14px;
+  border-radius: 9999px;               /* pill */
+  box-shadow: none;
+  white-space: nowrap;
+}
+
+/* Native file button styled to the same size as other controls */
+#panel-promotions #newBannerForm .adm-file {
+  border: none; padding: 0; background: transparent; width: auto; box-shadow: none;
+}
+#panel-promotions #newBannerForm .adm-file::file-selector-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: var(--promo-ctrl-h);
+  line-height: var(--promo-ctrl-h);
+  padding: 0 12px;
+  font-size: 14px;
+  border: 1px solid #111; border-radius: 9999px;
+  background: #fff; color: #111; cursor: pointer;
+}
+
+/* Keep “Value” pair together and aligned; never collided by Usage Limit */
+#panel-promotions #couponType {
+  flex: 0 1 120px; min-width: 110px; height: var(--promo-ctrl-h);
+}
+#panel-promotions #couponValue {
+  flex: 0 1 2.5cm; min-width: 2.5cm; max-width: 2.5cm; height: var(--promo-ctrl-h);
+}
+#panel-promotions #couponUsageLimit {
+  flex: 0 1 clamp(140px, 14vw, 180px); min-width: 140px; height: var(--promo-ctrl-h);
+}
+
+/* Channel / Link Coupons / Publish buttons align cleanly with fields next to them */
+#panel-promotions #couponChannelsCell .jsCouponChannels,
+#panel-promotions #newBannerLinkedCell .adm-btn,
+#panel-promotions #newBannerTargetsCell .adm-btn {
+  height: var(--promo-ctrl-h);
+}
+
+/* Title input exact width + alignment */
+#panel-promotions #bannerTitle {
+  flex: 0 1 5.5cm;
+  width: 5.5cm; max-width: 100%;
+  height: var(--promo-ctrl-h);
+}
+
+/* Place Add/Upload buttons right after fields (not pushed to far right) */
+#panel-promotions #newCouponForm .adm-actions,
+#panel-promotions #newBannerForm .adm-actions {
+  display: inline-flex;                /* sit in natural flow */
+  align-items: center;
+  gap: 8px;
+  justify-content: flex-start;         /* no right push */
+  flex: 0 0 auto;                      /* do not grow */
+  max-width: 100%;
+}
+#panel-promotions #newCouponForm .adm-actions .adm-btn,
+#panel-promotions #newBannerForm .adm-actions .adm-btn {
+  height: var(--promo-ctrl-h);
+  min-width: 88px;
+}
+
+/* Safeguards: no element forces overflow; wrap when tight */
+#panel-promotions #newCouponForm > *,
+#panel-promotions #newBannerForm > * { min-width: 0; max-width: 100%; }
+#panel-promotions #newBannerLinkedCell .inline-tools,
+#panel-promotions #newBannerTargetsCell .inline-tools { flex-wrap: wrap; gap: 8px; }
