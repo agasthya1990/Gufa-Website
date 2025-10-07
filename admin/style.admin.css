@@ -507,10 +507,7 @@ button {
   /* Code | Channel | Value | Usage | Status | Actions */
   grid-template-columns: 180px 120px 220px 140px 120px 1fr;
 }
-#panel-promotions .adm-grid-banners {
-  /* Preview | Title | Linked Coupons | Published To | Status | Actions */
-  grid-template-columns: 140px 1fr 1.1fr 220px 120px 1fr;
-}
+
 
 /* Actions aligned */
 #panel-promotions .adm-actions { display:flex; gap:8px; justify-content:flex-end; }
@@ -569,3 +566,67 @@ button {
 
 /* ensure grid cells can shrink content and keep columns aligned */
 #panel-promotions .adm-grid > div { min-width: 0; }
+
+/* ================================
+   Promotions — Typography & Rhythm (CSS-only)
+   ================================ */
+#panel-promotions,
+#panel-promotions * {
+  font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+  font-size: 14px;
+  line-height: 1.4;
+  color: var(--adm-fg);
+}
+
+/* Headings: consistent look */
+#panel-promotions h3 {
+  margin: 14px 0 8px;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+/* Grid baselines — same height & padding for all rows/cells */
+#panel-promotions .adm-grid {
+  display: grid;
+  grid-auto-rows: minmax(44px, auto);
+  align-items: center;
+  border-bottom: 1px solid var(--adm-border);
+}
+#panel-promotions .adm-grid > div {
+  padding: 10px 12px;
+  min-width: 0; /* prevents overflow pushing next columns down */
+}
+
+/* Header row */
+#panel-promotions .adm-grid-head {
+  background: #f9fafb;
+  font-weight: 700;
+  border-top: 1px solid var(--adm-border);
+  border-bottom: 2px solid var(--adm-border);
+}
+
+/* Actions aligned right; uniform small pill buttons */
+#panel-promotions .adm-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+#panel-promotions .adm-btn,
+#panel-promotions .chip-btn {
+  border-radius: 9999px;
+  padding: 6px 12px;
+  font-size: 13px;
+  line-height: 1.2;
+  box-shadow: none;                 /* flat */
+}
+#panel-promotions .adm-btn { border: 1px solid #111; background: #fff; color: #111; }
+#panel-promotions .adm-btn--primary { background: #111; color: #fff; border-color: #111; }
+#panel-promotions .adm-actions .adm-btn { min-width: 88px; }
+
+/* Linked pill lists wrap nicely inside their column */
+#panel-promotions .inline-tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+/* Keep Delivery/Dining distinction only (colors already defined elsewhere) */
+.adm-pill { display:inline-block; padding:3px 10px; border-radius:999px; font-size:12px; font-weight:700; }
+.adm-pill--delivery { background:#eef2ff; color:#1e40af; border:1px solid #1e40af; }
+.adm-pill--dining   { background:#ecfdf5; color:#065f46; border:1px solid #065f46; }
