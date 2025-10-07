@@ -522,7 +522,8 @@ if (bannersList) {
       bannersList.innerHTML = rows.length
         ? (headerB + rows.join(""))
         : (headerB + `<div class="adm-muted" style="padding:8px">No banners</div>`);
-
+    }); 
+  } 
 
       // Delete (kept)
       bannersList.querySelectorAll(".jsDelBanner").forEach(btn => {
@@ -548,7 +549,7 @@ if (bannersList) {
      });
 
   // Create banner (add defaults for new features; keep your uploader flow)
-  
+
   if (newBannerForm) {
     newBannerForm.onsubmit = async (e) => {
       e.preventDefault();
