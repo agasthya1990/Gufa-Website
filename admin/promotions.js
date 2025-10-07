@@ -149,9 +149,7 @@ export function initPromotions() {
 <form id="newCouponForm" class="adm-grid adm-grid-coupons" style="margin-bottom:8px">
   <div><input id="couponCode" class="adm-input" placeholder="Code (e.g. WELCOME20)" /></div>
  <div id="couponChannelsCell">
-  <div class="inline-tools">
     <button type="button" class="adm-btn chip-btn jsCouponChannels">Channel</button>
-    <span id="couponChannelsPreview">Delivery</span>
   </div>
 </div>
 
@@ -336,17 +334,6 @@ if (newCouponForm && !document.getElementById("couponUsageLimit")) {
 let NEW_COUPON_CHANNELS = { delivery: true, dining: false };
 
 const btnChForm = document.querySelector(".jsCouponChannels");
-const chPrev    = document.getElementById("couponChannelsPreview");
-
-function renderNewCouponChannels(){
-  if (!chPrev) return;
-  const picks = [];
-  if (NEW_COUPON_CHANNELS.delivery) picks.push("Delivery");
-  if (NEW_COUPON_CHANNELS.dining)  picks.push("Dining");
-  chPrev.textContent = picks.length ? picks.join(", ") : "—";
-}
-// initial paint
-renderNewCouponChannels();
 
 if (btnChForm) {
   btnChForm.onclick = (e) => {
@@ -364,8 +351,8 @@ if (btnChForm) {
         <span>Dining</span>
       </label>
       <div class="actions" style="margin-top:8px">
-        <button class="adm-btn adm-btn--primary jsSave">Save</button>
         <button class="adm-btn jsCancel">Cancel</button>
+        <button class="adm-btn adm-btn--primary jsSave">Save</button>
       </div>
     `;
     const btnSave   = pop.querySelector(".jsSave");
@@ -382,7 +369,6 @@ if (btnChForm) {
       // require at least one
       if (!del && !din) { alert("Pick at least one channel"); return; }
       NEW_COUPON_CHANNELS = { delivery: del, dining: din };
-      renderNewCouponChannels();
       pop.classList.remove("show");
     };
 
@@ -587,42 +573,40 @@ couponsList.querySelectorAll(".jsEditCoupon").forEach(btn => {
     newCouponForm.onsubmit = async (e) => {
       e.preventDefault();
       const code = (codeInput?.value || "").trim();
-      const chDelivery = !!document.getElementById("couponChDelivery")?.checked;
-      const chDining   = !!document.getElementById("couponChDining")?.checked;
       const type = typeInput?.value || "percent";
       const value = Number(valInput?.value || 0);
 
-// require at least one channel
-if (!code || !(value > 0) || (!chDelivery && !chDining)) {
+// validate: need code, positive value, and at least one channel chosen in the popover
+const del = !!NEW_COUPON_CHANNELS.delivery;
+const din = !!NEW_COUPON_CHANNELS.dining;
+
+if (!code || !(value > 0) || (!del && !din)) {
   return alert("Enter code, positive value, and select at least one channel");
 }
 
-// backward-compat single 'channel' string (useful elsewhere if referenced)
-  const legacyChannel =
-  chDelivery && chDining ? "both" :
-  chDining ? "dining" : "delivery";
+// legacy single 'channel' string for backward compatibility
+const legacyChannel = del && din ? "both" : (din ? "dining" : "delivery");
 
 const id = crypto.randomUUID();
 await setDoc(doc(db, "promotions", id), {
   kind: "coupon",
   code,
-  channel: legacyChannel,                   // keep legacy for older UI
-  channels: { delivery: chDelivery, dining: chDining }, // new checklist
+  channel: legacyChannel,                      // legacy (old UI paths)
+  channels: { delivery: del, dining: din },    // new checklist source of truth
   type,
   value,
   usageLimit: Number(document.getElementById("couponUsageLimit")?.value || "") || null,
   createdAt: serverTimestamp(),
   active: true
 });
+
 newCouponForm.reset();
-// reset to common default: Delivery checked, Dining unchecked
-const dEl = document.getElementById("couponChDelivery");
-const gEl = document.getElementById("couponChDining");
-if (dEl) dEl.checked = true;
-if (gEl) gEl.checked = false;
+// reset popover state to default (Delivery only)
+NEW_COUPON_CHANNELS = { delivery: true, dining: false };
 
     };
   }
+
 
 // ---------- Banners (add link/publish/status; keep delete) ----------
 if (bannersList) {
