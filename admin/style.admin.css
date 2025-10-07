@@ -570,13 +570,13 @@ button {
 /* ================================
    Promotions — Typography & Rhythm (CSS-only)
    ================================ */
-#panel-promotions,
-#panel-promotions * {
+#panel-promotions {
   font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
   font-size: 14px;
   line-height: 1.4;
-  color: var(--adm-fg);
+  /* no global color here — preserves Delivery/Dining + Active/Inactive colors */
 }
+
 
 /* Headings: consistent look */
 #panel-promotions h3 {
@@ -627,6 +627,11 @@ button {
 #panel-promotions .inline-tools { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 
 /* Keep Delivery/Dining distinction only (colors already defined elsewhere) */
-.adm-pill { display:inline-block; padding:3px 10px; border-radius:999px; font-size:12px; font-weight:700; }
-.adm-pill--delivery { background:#eef2ff; color:#1e40af; border:1px solid #1e40af; }
-.adm-pill--dining   { background:#ecfdf5; color:#065f46; border:1px solid #065f46; }
+#panel-promotions .adm-pill { display:inline-block; padding:3px 10px; border-radius:999px; font-size:12px; font-weight:700; border:1px solid var(--adm-border); }
+#panel-promotions .adm-pill--delivery { background:#eef2ff; color:#1e40af; border-color:#1e40af; }
+#panel-promotions .adm-pill--dining   { background:#ecfdf5;  color:#065f46; border-color:#065f46; }
+
+#panel-promotions .adm-grid-banners{
+  /* Preview | Title | Linked Coupons | Published To | Status | Actions */
+  grid-template-columns: 140px 1fr 1.1fr 220px 120px 1fr;
+}
