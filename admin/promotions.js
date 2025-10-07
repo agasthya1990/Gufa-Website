@@ -143,7 +143,6 @@ export function initPromotions() {
     </div>
   </div>
   <div id="couponUsageLimitCell"></div>
-  <div><strong style="color:#16a34a">Active</strong></div>
   <div class="adm-actions">
   <button type="submit" class="adm-btn adm-btn--primary">Add</button>
   </div>
@@ -165,7 +164,6 @@ export function initPromotions() {
       <span id="newBannerTargetsPreview" class="adm-muted">—</span>
     </div>
   </div>
-  <div><strong style="color:#16a34a">Active</strong></div>
   <div class="adm-actions">
   <button type="submit" class="adm-btn adm-btn--primary chip-btn">Upload</button>
   </div>
