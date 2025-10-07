@@ -153,13 +153,21 @@ export function initPromotions() {
 <form id="newBannerForm" class="adm-grid adm-grid-banners" style="margin-bottom:8px">
   <div><input id="bannerFile" class="adm-file" type="file" accept="image/*" /></div>
   <div><input id="bannerTitle" class="adm-input" placeholder="Title" /></div>
-  <div id="newBannerLinkedCell" class="adm-muted">—</div>
-  <div id="newBannerTargetsCell" class="adm-muted">—</div>
+  <div id="newBannerLinkedCell">
+    <div class="inline-tools">
+      <button type="button" class="adm-btn chip-btn jsNewLinkCoupons">Link Coupons</button>
+      <span id="newBannerLinkedPreview" class="adm-muted">—</span>
+    </div>
+  </div>
+  <div id="newBannerTargetsCell">
+    <div class="inline-tools">
+      <button type="button" class="adm-btn chip-btn jsNewPublish">Publish</button>
+      <span id="newBannerTargetsPreview" class="adm-muted">—</span>
+    </div>
+  </div>
   <div><strong style="color:#16a34a">Active</strong></div>
   <div class="adm-actions">
-    <button type="button" class="adm-btn jsNewLinkCoupons">Link Coupons</button>
-    <button type="button" class="adm-btn jsNewPublish">Publish</button>
-    <button type="submit" class="adm-btn adm-btn--primary">Upload</button>
+  <button type="submit" class="adm-btn adm-btn--primary chip-btn">Upload</button>
   </div>
 </form>
 <div id="bannersList" style="margin-bottom:12px"></div>
@@ -179,19 +187,20 @@ const bannerFile = document.getElementById("bannerFile");
 const bannerTitle = document.getElementById("bannerTitle");
 
 // --- Add Banner: local state + helpers (for in-form popovers) ---
+  
 let NEW_BANNER_LINKED = [];                          // coupon ids
 let NEW_BANNER_TARGETS = { delivery: false, dining: false };
 let COUPON_CACHE = null;                             // {id: {code, channel}} once fetched
 
-const linkedCell  = document.getElementById("newBannerLinkedCell");
-const targetsCell = document.getElementById("newBannerTargetsCell");
-const btnLinkForm = document.querySelector(".jsNewLinkCoupons");
-const btnPubForm  = document.querySelector(".jsNewPublish");
+const btnLinkForm  = document.querySelector(".jsNewLinkCoupons");
+const btnPubForm   = document.querySelector(".jsNewPublish");
+const linkedPrev   = document.getElementById("newBannerLinkedPreview");
+const targetsPrev  = document.getElementById("newBannerTargetsPreview");
 
 function renderNewBannerLinked(){
-  if (!linkedCell) return;
-  if (!NEW_BANNER_LINKED.length) { linkedCell.innerHTML = "—"; return; }
-  linkedCell.innerHTML = NEW_BANNER_LINKED.map(id => {
+  if (!linkedPrev) return;
+  if (!NEW_BANNER_LINKED.length) { linkedPrev.innerHTML = "—"; return; }
+  linkedPrev.innerHTML = NEW_BANNER_LINKED.map(id => {
     const c = COUPON_CACHE?.[id];
     if (!c) return `<span class="adm-pill">${id.slice(0,6)}</span>`;
     const cls = c.channel === "dining" ? "adm-pill--dining" : "adm-pill--delivery";
@@ -200,11 +209,11 @@ function renderNewBannerLinked(){
 }
 
 function renderNewBannerTargets(){
-  if (!targetsCell) return;
+  if (!targetsPrev) return;
   const picks = [];
   if (NEW_BANNER_TARGETS.delivery) picks.push("Delivery");
   if (NEW_BANNER_TARGETS.dining)  picks.push("Dining");
-  targetsCell.innerHTML = picks.length ? picks.join(", ") : "—";
+  targetsPrev.textContent = picks.length ? picks.join(", ") : "—";
 }
 
 // In-form: open Link Coupons popover
@@ -239,8 +248,8 @@ if (btnLinkForm) {
       <div style="font-weight:600;margin-bottom:6px">Link Coupons</div>
       <div class="list" style="max-height:40vh;overflow:auto;min-width:260px">${rows}</div>
       <div class="actions">
-        <button class="adm-btn jsCancel">Cancel</button>
-        <button class="adm-btn adm-btn--primary jsSave">Save</button>
+      <button class="adm-btn adm-btn--primary jsSave">Save</button>
+      <button class="adm-btn jsCancel">Cancel</button>
       </div>
     `;
 
@@ -270,8 +279,8 @@ if (btnPubForm) {
       <label class="row"><input type="checkbox" value="delivery" class="jsTarget" ${NEW_BANNER_TARGETS.delivery ? "checked":""}> <span>Delivery Menu</span></label>
       <label class="row"><input type="checkbox" value="dining" class="jsTarget" ${NEW_BANNER_TARGETS.dining ? "checked":""}> <span>Dining Menu</span></label>
       <div class="actions">
-        <button class="adm-btn jsCancel">Cancel</button>
-        <button class="adm-btn adm-btn--primary jsSave">Save</button>
+      <button class="adm-btn adm-btn--primary jsSave">Save</button>
+      <button class="adm-btn jsCancel">Cancel</button>
       </div>
     `;
     const btnSave = pop.querySelector(".jsSave");
