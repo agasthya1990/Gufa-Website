@@ -5,9 +5,10 @@
 
 import { db, storage } from "./firebase.js";
 import {
-  collection, doc, setDoc, updateDoc, deleteDoc, onSnapshot,
+  collection, doc, getDoc, setDoc, updateDoc, deleteDoc, onSnapshot,
   serverTimestamp, query, orderBy, getDocs, where, arrayRemove
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
 import {
   ref as storageRef, uploadBytesResumable, getDownloadURL
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
@@ -475,20 +476,7 @@ rows.push(`
         };
       });
 
-      // Delete (kept)
-      couponsList.querySelectorAll(".jsDelCoupon").forEach(btn => {
-        btn.onclick = async () => {
-          if (!confirm("Delete this coupon?")) return;
-          btn.disabled = true;
-          try { await deleteDoc(doc(db, "promotions", btn.dataset.id)); }
-          finally { btn.disabled = false; }
-        };
-      });
-    }
-  );
-}
-
-  // Edit Coupon (code, channels checklist, type, value, usageLimit)
+// Edit Coupon (code, channels checklist, type, value, usageLimit)
   
 couponsList.querySelectorAll(".jsEditCoupon").forEach(btn => {
   btn.onclick = async () => {
@@ -565,6 +553,19 @@ couponsList.querySelectorAll(".jsEditCoupon").forEach(btn => {
     toggleAttachedPopover(pop, btn);
   };
 });
+      
+      // Delete (kept)
+      couponsList.querySelectorAll(".jsDelCoupon").forEach(btn => {
+        btn.onclick = async () => {
+          if (!confirm("Delete this coupon?")) return;
+          btn.disabled = true;
+          try { await deleteDoc(doc(db, "promotions", btn.dataset.id)); }
+          finally { btn.disabled = false; }
+        };
+      });
+    }
+  );
+}
 
 
   // Create coupon (add usageLimit/usedCount/active defaults; keep original fields)
@@ -684,6 +685,7 @@ if (bannersList) {
         `);
       });
 
+      
       bannersList.innerHTML = rows.length
         ? (headerB + rows.join(""))
         : (headerB + `<div class="adm-muted" style="padding:8px">No banners</div>`);
@@ -708,91 +710,87 @@ if (bannersList) {
           finally { btn.disabled = false; }
         };
       });
+      
+      // Edit Banner (title + linked coupons + publish targets)
+      bannersList.querySelectorAll(".jsEditBanner").forEach(btn => {
+        btn.onclick = async () => {
+          const id = btn.dataset.id;
+          const ref = doc(db, "promotions", id);
+          const snap = await getDoc(ref);
+          const p = snap.exists() ? snap.data() : {};
+
+          // Load coupon cache (active & not exhausted) for linking
+          const couponCache = {};
+          const all = await getDocs(query(collection(db, "promotions")));
+          all.forEach(d => {
+            const v = d.data() || {};
+            if (v.kind !== "coupon") return;
+            const limit = v.usageLimit ?? null;
+            const used  = v.usedCount ?? 0;
+            const exhausted = limit !== null && used >= limit;
+            const active = v.active !== false;
+            if (!active || exhausted) return;
+            couponCache[d.id] = { code: v.code || d.id, channel: v.channel, channels: v.channels || null };
+          });
+
+          const linked = Array.isArray(p.linkedCouponIds) ? p.linkedCouponIds.slice() : [];
+          const deliveryChecked = !!p?.targets?.delivery;
+          const diningChecked   = !!p?.targets?.dining;
+
+          const rows = Object.entries(couponCache).map(([cid, c]) => {
+            const text = `${c.code} • ${channelsToText(c)}`;
+            const checked = linked.includes(cid) ? "checked" : "";
+            return `<label class="row"><input type="checkbox" value="${cid}" ${checked}> <span>${text}</span></label>`;
+          }).join("") || `<div class="adm-muted">(No active coupons available)</div>`;
+
+          const pop = document.createElement("div");
+          pop.className = "adm-pop";
+          pop.innerHTML = `
+            <div style="font-weight:600;margin-bottom:6px">Edit Banner</div>
+            <div style="display:grid;grid-template-columns:120px 1fr;gap:8px;align-items:center">
+              <label>Title</label>
+              <input class="adm-input jsTitle" value="${p.title || ""}">
+              <label>Linked Coupons</label>
+              <div class="list" style="max-height:40vh;overflow:auto;min-width:260px">${rows}</div>
+              <label>Publish To</label>
+              <div>
+                <label style="display:inline-flex;align-items:center;gap:6px;margin-right:10px">
+                  <input type="checkbox" class="jsTgt" value="delivery" ${deliveryChecked?"checked":""}> <span>Delivery</span>
+                </label>
+                <label style="display:inline-flex;align-items:center;gap:6px">
+                  <input type="checkbox" class="jsTgt" value="dining" ${diningChecked?"checked":""}> <span>Dining</span>
+                </label>
+              </div>
+            </div>
+            <div class="actions" style="margin-top:10px">
+              <button class="adm-btn jsCancel">Cancel</button>
+              <button class="adm-btn adm-btn--primary jsSave">Save</button>
+            </div>
+          `;
+
+          const elTitle = pop.querySelector(".jsTitle");
+          const btnSave = pop.querySelector(".jsSave");
+          const btnCancel = pop.querySelector(".jsCancel");
+
+          btnCancel.onclick = () => pop.classList.remove("show");
+          btnSave.onclick = async () => {
+            const title = (elTitle.value || "").trim();
+            const ids = Array.from(pop.querySelectorAll('input[type="checkbox"]:not(.jsTgt):checked')).map(i => i.value);
+            const checked = Array.from(pop.querySelectorAll(".jsTgt:checked")).map(i => i.value);
+            const targets = { delivery: checked.includes("delivery"), dining: checked.includes("dining") };
+            try {
+              await updateDoc(ref, { title, linkedCouponIds: ids, targets, updatedAt: serverTimestamp() });
+            } catch (e){ console.error(e); alert("Failed to save banner"); }
+            pop.classList.remove("show");
+          };
+
+          toggleAttachedPopover(pop, btn);
+        };
+      });
     } 
   );  
 } 
 
-// Edit Banner (title + linked coupons + publish targets)
-bannersList.querySelectorAll(".jsEditBanner").forEach(btn => {
-  btn.onclick = async () => {
-    const id = btn.dataset.id;
-    const ref = doc(db, "promotions", id);
-    const snap = await getDoc(ref);
-    const p = snap.exists() ? snap.data() : {};
-
-    // Load coupon cache (active & not exhausted) for linking
-    const couponCache = {};
-    const all = await getDocs(query(collection(db, "promotions")));
-    all.forEach(d => {
-      const v = d.data() || {};
-      if (v.kind !== "coupon") return;
-      const limit = v.usageLimit ?? null;
-      const used  = v.usedCount ?? 0;
-      const exhausted = limit !== null && used >= limit;
-      const active = v.active !== false;
-      if (!active || exhausted) return;
-      couponCache[d.id] = { code: v.code || d.id, channel: v.channel, channels: v.channels || null };
-    });
-
-    const linked = Array.isArray(p.linkedCouponIds) ? p.linkedCouponIds.slice() : [];
-    const deliveryChecked = !!p?.targets?.delivery;
-    const diningChecked   = !!p?.targets?.dining;
-
-    const rows = Object.entries(couponCache).map(([cid, c]) => {
-      const text = `${c.code} • ${channelsToText(c)}`;
-      const checked = linked.includes(cid) ? "checked" : "";
-      return `<label class="row"><input type="checkbox" value="${cid}" ${checked}> <span>${text}</span></label>`;
-    }).join("") || `<div class="adm-muted">(No active coupons available)</div>`;
-
-    const pop = document.createElement("div");
-    pop.className = "adm-pop";
-    pop.innerHTML = `
-      <div style="font-weight:600;margin-bottom:6px">Edit Banner</div>
-      <div style="display:grid;grid-template-columns:120px 1fr;gap:8px;align-items:center">
-        <label>Title</label>
-        <input class="adm-input jsTitle" value="${p.title || ""}">
-        <label>Linked Coupons</label>
-        <div class="list" style="max-height:40vh;overflow:auto;min-width:260px">${rows}</div>
-        <label>Publish To</label>
-        <div>
-          <label style="display:inline-flex;align-items:center;gap:6px;margin-right:10px">
-            <input type="checkbox" class="jsTgt" value="delivery" ${deliveryChecked?"checked":""}> <span>Delivery</span>
-          </label>
-          <label style="display:inline-flex;align-items:center;gap:6px">
-            <input type="checkbox" class="jsTgt" value="dining" ${diningChecked?"checked":""}> <span>Dining</span>
-          </label>
-        </div>
-      </div>
-      <div class="actions" style="margin-top:10px">
-        <button class="adm-btn jsCancel">Cancel</button>
-        <button class="adm-btn adm-btn--primary jsSave">Save</button>
-      </div>
-    `;
-
-    const elTitle = pop.querySelector(".jsTitle");
-    const btnSave = pop.querySelector(".jsSave");
-    const btnCancel = pop.querySelector(".jsCancel");
-
-    btnCancel.onclick = () => pop.classList.remove("show");
-    btnSave.onclick = async () => {
-      const title = (elTitle.value || "").trim();
-      const ids = Array.from(pop.querySelectorAll('input[type="checkbox"]:not(.jsTgt):checked')).map(i => i.value);
-      const checked = Array.from(pop.querySelectorAll(".jsTgt:checked")).map(i => i.value);
-      const targets = { delivery: checked.includes("delivery"), dining: checked.includes("dining") };
-      try {
-        await updateDoc(ref, {
-          title,
-          linkedCouponIds: ids,
-          targets,
-          updatedAt: serverTimestamp()
-        });
-      } catch (e){ console.error(e); alert("Failed to save banner"); }
-      pop.classList.remove("show");
-    };
-
-    toggleAttachedPopover(pop, btn);
-  };
-});
 
   
   // Create banner (add defaults for new features; keep your uploader flow)
