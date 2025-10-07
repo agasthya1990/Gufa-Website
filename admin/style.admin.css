@@ -537,3 +537,35 @@ button {
 /* Ensure cells don’t overflow and push subsequent cells to a new line */
 #panel-promotions .adm-grid > div { min-width: 0; }
 #panel-promotions .adm-actions { display:flex; gap:8px; justify-content:flex-end; }
+
+/* ================================
+   Promotions — pill buttons & inline tools
+   ================================ */
+#panel-promotions .chip-btn,
+#panel-promotions .adm-btn {
+  border-radius: 9999px;
+  padding: 6px 12px;
+  font-size: 12.5px;
+  line-height: 1.2;
+  box-shadow: none;           /* no 3D/shadow */
+}
+
+#panel-promotions .adm-btn { border: 1px solid #111; background: #fff; color: #111; }
+#panel-promotions .adm-btn--primary { background: #111; color: #fff; border-color: #111; }
+
+#panel-promotions .inline-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;            /* pills wrap neatly if many coupons */
+}
+
+#panel-promotions #newBannerLinkedPreview,
+#panel-promotions #newBannerTargetsPreview {
+  display: inline-flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* ensure grid cells can shrink content and keep columns aligned */
+#panel-promotions .adm-grid > div { min-width: 0; }
