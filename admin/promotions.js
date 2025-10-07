@@ -443,10 +443,9 @@ if (couponsList) {
     };
   }
 
-  // ---------- Banners (add link/publish/status; keep delete) ----------
+// ---------- Banners (add link/publish/status; keep delete) ----------
 if (bannersList) {
   // Pre-render header so labels never disappear while data loads
-  
   bannersList.innerHTML = `
     <div class="adm-grid adm-grid-banners adm-grid-head">
       <div>Preview</div>
@@ -512,8 +511,8 @@ if (bannersList) {
             <div class="adm-muted">${publishedTo}</div>
             <div>${statusPill(p.active !== false)}</div>
             <div class="adm-actions">
-            <button class="adm-btn jsToggleBanner" data-id="${d.id}" data-active="${p.active !== false}">${(p.active !== false) ? "Disable" : "Enable"}</button>
-            <button class="adm-btn jsDelBanner" data-id="${d.id}">Delete</button>
+              <button class="adm-btn jsToggleBanner" data-id="${d.id}" data-active="${p.active !== false}">${(p.active !== false) ? "Disable" : "Enable"}</button>
+              <button class="adm-btn jsDelBanner" data-id="${d.id}">Delete</button>
             </div>
           </div>
         `);
@@ -522,10 +521,8 @@ if (bannersList) {
       bannersList.innerHTML = rows.length
         ? (headerB + rows.join(""))
         : (headerB + `<div class="adm-muted" style="padding:8px">No banners</div>`);
-    }); 
-  } 
 
-      // Delete (kept)
+      // 🔧 Wire events **inside** the snapshot (so they match the latest DOM)
       bannersList.querySelectorAll(".jsDelBanner").forEach(btn => {
         btn.onclick = async () => {
           if (!confirm("Delete this banner?")) return;
@@ -535,7 +532,6 @@ if (bannersList) {
         };
       });
 
-      // Enable/Disable (kept)
       bannersList.querySelectorAll(".jsToggleBanner").forEach(btn => {
         btn.onclick = async () => {
           const id = btn.dataset.id;
@@ -546,7 +542,9 @@ if (bannersList) {
           finally { btn.disabled = false; }
         };
       });
-     });
+    } 
+  );  
+} 
 
   // Create banner (add defaults for new features; keep your uploader flow)
 
