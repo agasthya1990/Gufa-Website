@@ -545,7 +545,7 @@ if (bannersList) {
           finally { btn.disabled = false; }
         };
       });
-
+     });
 
   // Create banner (add defaults for new features; keep your uploader flow)
   
