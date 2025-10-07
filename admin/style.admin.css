@@ -917,3 +917,51 @@ button {
   max-width: 3.5cm !important;
   box-sizing: border-box;
 }
+/* =========================================================
+   PROMOTIONS — Align "Value" (type + number) and prevent overlap
+   (APPEND ONLY)
+   ========================================================= */
+
+/* Ensure each cell in the add-coupon row can shrink without pushing neighbors */
+#panel-promotions #newCouponForm > div { min-width: 0; }
+
+/* The Value column (3rd cell in the add-coupon grid) holds the type + number.
+   Keep them side-by-side, properly spaced, and confined within the cell. */
+#panel-promotions #newCouponForm > div:nth-child(3) > div {
+  display: flex;              /* your markup already uses flex inline; this reinforces it */
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap;          /* don’t wrap into Usage Limit’s column */
+  max-width: 100%;
+}
+
+/* Fixed widths so they never fight each other or spill into Usage Limit */
+#panel-promotions #couponType {
+  flex: 0 0 110px;
+  width: 110px;
+  min-width: 110px;
+  box-sizing: border-box;
+}
+#panel-promotions #couponValue {
+  flex: 0 0 2.5cm;            /* per your spec */
+  width: 2.5cm;
+  min-width: 2.5cm;
+  box-sizing: border-box;
+}
+
+/* Keep the Usage Limit input suitably compact so it never “eats” Value */
+#panel-promotions #couponUsageLimit {
+  width: 160px;
+  min-width: 140px;
+  max-width: 180px;
+  box-sizing: border-box;
+}
+
+/* Safety: ensure the Actions cell’s buttons wrap inside their own column (never over the Status cell) */
+#panel-promotions .adm-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  flex-wrap: wrap;            /* wrap within Actions column if space is tight */
+  max-width: 100%;
+}
