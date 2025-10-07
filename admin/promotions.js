@@ -523,10 +523,10 @@ couponsList.querySelectorAll(".jsEditCoupon").forEach(btn => {
         <label>Channels</label>
         <div>
           <label style="display:inline-flex;align-items:center;gap:6px;margin-right:10px">
-            <input type="checkbox" class="jsChDel" ${chDel ? "checked":""}> <span>Delivery</span>
+            <input type="checkbox" class="jsChDel" ${chDel ? "checked":""}> 
           </label>
           <label style="display:inline-flex;align-items:center;gap:6px">
-            <input type="checkbox" class="jsChDin" ${chDin ? "checked":""}> <span>Dining</span>
+            <input type="checkbox" class="jsChDin" ${chDin ? "checked":""}>
           </label>
         </div>
         <label>Type</label>
