@@ -913,7 +913,7 @@ button {
 /* Banner "Title" input: exactly 5.5cm wide */
 #panel-promotions #newBannerForm #bannerTitle,
 #panel-promotions #bannerTitle {
-  width: 4cm !important;
-  max-width: 4cm !important;
+  width: 3.5cm !important;
+  max-width: 3.5cm !important;
   box-sizing: border-box;
 }
