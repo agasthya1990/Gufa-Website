@@ -965,3 +965,142 @@ button {
   flex-wrap: wrap;            /* wrap within Actions column if space is tight */
   max-width: 100%;
 }
+
+/* =========================================================
+   PROMOTIONS — Add rows (Coupons + Banners) zoom-safe alignment
+   Append only — no JS changes
+   ========================================================= */
+
+/* Use the same row rhythm as the tables and let cells shrink safely */
+#panel-promotions form.adm-grid { grid-auto-rows: minmax(44px, auto); align-items: center; }
+#panel-promotions #newCouponForm.adm-grid-coupons > div,
+#panel-promotions #newBannerForm.adm-grid-banners > div { min-width: 0; overflow: hidden; }
+
+/* ---------- ADD COUPON: keep columns stable and stop collisions ---------- */
+
+/* Code field never stretches past its column; stays compact when zoomed */
+#panel-promotions #couponCode {
+  width: clamp(200px, 28vw, 320px);
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+/* Channel cell (button only) behaves nicely and doesn't push neighbors */
+#panel-promotions #newCouponForm .jsCouponChannels { white-space: nowrap; flex: 0 0 auto; }
+
+/* Value cell = type dropdown + number input side-by-side, confined in cell */
+#panel-promotions #newCouponForm > div:nth-child(3) {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap;              /* never wraps into Usage Limit column */
+  max-width: 100%;
+}
+#panel-promotions #couponType {
+  flex: 0 0 110px;
+  width: 110px;
+  min-width: 110px;
+  box-sizing: border-box;
+}
+#panel-promotions #couponValue {
+  flex: 0 0 2.5cm;                /* your exact spec */
+  width: 2.5cm;
+  min-width: 2.5cm;
+  box-sizing: border-box;
+}
+
+/* Usage Limit stays compact so it never "eats" Value */
+#panel-promotions #newCouponForm > div:nth-child(4) { display: block; }
+#panel-promotions #couponUsageLimit {
+  width: clamp(140px, 14vw, 180px);
+  min-width: 140px;
+  max-width: 180px;
+  box-sizing: border-box;
+}
+
+/* Status text in add row uses normal body size (not tiny) */
+#panel-promotions #newCouponForm > div:nth-child(5) {
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+/* Actions live under the Actions column; wrap/stack inside their own cell */
+#panel-promotions #newCouponForm .adm-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  flex-wrap: wrap;                /* wraps within Actions cell at tight zooms */
+  max-width: 100%;
+}
+#panel-promotions #newCouponForm .adm-actions .adm-btn {
+  flex: 0 1 auto;
+  min-width: 88px;
+  white-space: nowrap;
+}
+
+/* ---------- ADD BANNER: align inputs and controls cleanly ---------- */
+
+/* Keep native file button; no stretched shell */
+#panel-promotions #newBannerForm .adm-file {
+  border: none; padding: 0; background: transparent; width: auto; box-shadow: none; font-size: initial;
+}
+#panel-promotions #newBannerForm .adm-file::file-selector-button {
+  font: inherit; border:1px solid #111; border-radius:9999px; background:#fff; color:#111; padding:6px 12px; cursor:pointer;
+}
+
+/* Title width = 5.5cm (your spec), but never exceeds its column */
+#panel-promotions #bannerTitle {
+  width: 5.5cm;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+/* Linked Coupons / Published To cells: tools wrap politely inside the cell */
+#panel-promotions #newBannerForm #newBannerLinkedCell,
+#panel-promotions #newBannerForm #newBannerTargetsCell {
+  display: flex;
+  align-items: center;
+}
+#panel-promotions #newBannerForm #newBannerLinkedCell .inline-tools,
+#panel-promotions #newBannerForm #newBannerTargetsCell .inline-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;                /* wraps chips/buttons without pushing columns */
+  max-width: 100%;
+}
+
+/* Status text in add banner row uses body size */
+#panel-promotions #newBannerForm > div:nth-child(5) {
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+/* Actions: same wrapping behavior as coupons; never spills into Status */
+#panel-promotions #newBannerForm .adm-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  max-width: 100%;
+}
+#panel-promotions #newBannerForm .adm-actions .adm-btn {
+  flex: 0 1 auto;
+  min-width: 88px;
+  white-space: nowrap;
+}
+
+/* ---------- General safeguards for add rows ---------- */
+
+/* Inputs/selects never overflow their cell at any zoom */
+#panel-promotions #newCouponForm input.adm-input,
+#panel-promotions #newCouponForm select.adm-select,
+#panel-promotions #newBannerForm input.adm-input,
+#panel-promotions #newBannerForm select.adm-select {
+  max-width: 100%;
+  width: auto;
+  box-sizing: border-box;
+}
+
+/* Keep Delivery/Dining & status colors intact elsewhere (unchanged) */
+
