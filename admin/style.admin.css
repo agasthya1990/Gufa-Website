@@ -635,3 +635,66 @@ button {
   /* Preview | Title | Linked Coupons | Published To | Status | Actions */
   grid-template-columns: 140px 1fr 1.1fr 220px 120px 1fr;
 }
+
+/* ================================
+   Promotions — responsive rows, clean file input, tidy widths
+   (APPEND-ONLY)
+   ================================ */
+
+/* Even, balanced tracks on desktop */
+#panel-promotions .adm-grid-coupons,
+#panel-promotions .adm-grid-banners { column-gap: 12px; }
+
+#panel-promotions .adm-grid-coupons {
+  /* Code | Channel | Value | Usage | Status | Actions */
+  grid-template-columns: 1.1fr 0.9fr 0.8fr 0.8fr 0.7fr auto;
+}
+
+#panel-promotions .adm-grid-banners {
+  /* Preview fixed | Title | Linked | Published | Status | Actions */
+  grid-template-columns: 120px 1fr 1fr 0.9fr 0.7fr auto;
+}
+
+/* Tighten tracks a bit on medium screens */
+@media (max-width: 980px) {
+  #panel-promotions .adm-grid-coupons {
+    grid-template-columns: 1fr 0.8fr 0.7fr 0.7fr 0.6fr auto;
+  }
+  #panel-promotions .adm-grid-banners {
+    grid-template-columns: 100px 1fr 0.9fr 0.8fr 0.6fr auto;
+  }
+}
+
+/* Stack action buttons vertically inside the Actions cell on small screens */
+@media (max-width: 720px) {
+  #panel-promotions .adm-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  #panel-promotions .adm-actions .adm-btn { width: 100%; }
+}
+
+/* "Choose File" – show only native button (no shell/filename strip) */
+#panel-promotions #newBannerForm input[type="file"].adm-file {
+  border: none; padding: 0; background: transparent; width: auto; box-shadow: none;
+  font-size: 0; /* hides filename text area so only the button remains */
+}
+#panel-promotions #newBannerForm input[type="file"].adm-file::file-selector-button {
+  font-size: 13px; line-height: 1.2;
+  border: 1px solid #111; border-radius: 9999px;
+  background: #fff; color: #111; padding: 6px 12px; cursor: pointer;
+}
+
+/* Title ~ 6cm for cleaner add-row composition */
+#panel-promotions #newBannerForm #bannerTitle { width: 6cm; max-width: 100%; }
+#panel-promotions #newBannerForm #bannerTitle::placeholder { color: var(--adm-muted); }
+
+/* Keep Delivery / Dining pills vivid wherever they appear */
+#panel-promotions .adm-pill--delivery { background:#eef2ff; color:#1e40af; border-color:#1e40af; }
+#panel-promotions .adm-pill--dining   { background:#ecfdf5; color:#065f46; border-color:#065f46; }
+
+/* Tighter vertical rhythm + guard against overflow */
+#panel-promotions .adm-grid > div { padding: 10px 10px; min-width: 0; }
+#panel-promotions .adm-grid-head > div { padding: 12px 10px; }
+#panel-promotions .adm-grid .adm-pill { white-space: nowrap; }
+#panel-promotions .adm-grid .inline-tools { flex-wrap: wrap; }
