@@ -114,6 +114,27 @@ function ensureColumnStyles(){
   document.head.appendChild(s);
 }
 
+// Represent a coupon's channels (supports old string field or new checklist)
+function channelsToText(p){
+  if (p?.channels && (p.channels.delivery || p.channels.dining)) {
+    const out = [];
+    if (p.channels.delivery) out.push("Delivery");
+    if (p.channels.dining)  out.push("Dining");
+    return out.join(", ");
+  }
+  // fallback to legacy single-value 'channel'
+  return (p?.channel === "dining") ? "Dining" : "Delivery";
+}
+function primaryChannelClass(p){
+  // for pill coloring; if both checked, bias to Delivery so it's consistent
+  const ch = p?.channels;
+  if (ch && (ch.delivery || ch.dining)) {
+    return ch.dining && !ch.delivery ? "adm-pill--dining" : "adm-pill--delivery";
+  }
+  return p?.channel === "dining" ? "adm-pill--dining" : "adm-pill--delivery";
+}
+
+
 // ===== Public init (same entry point, same shell) =====
 export function initPromotions() {
   const root = document.getElementById("promotionsRoot");
@@ -127,12 +148,17 @@ export function initPromotions() {
 <h3>Coupons</h3>
 <form id="newCouponForm" class="adm-grid adm-grid-coupons" style="margin-bottom:8px">
   <div><input id="couponCode" class="adm-input" placeholder="Code (e.g. WELCOME20)" /></div>
-  <div>
-    <select id="couponChannel" class="adm-select">
-      <option value="delivery">Delivery</option>
-      <option value="dining">Dining</option>
-    </select>
-  </div>
+  <div id="couponChannelsCell">
+  <label style="display:inline-flex;align-items:center;gap:6px;margin-right:10px">
+    <input type="checkbox" id="couponChDelivery" checked>
+    <span>Delivery</span>
+  </label>
+  <label style="display:inline-flex;align-items:center;gap:6px">
+    <input type="checkbox" id="couponChDining">
+    <span>Dining</span>
+  </label>
+</div>
+
   <div>
     <div style="display:flex; gap:8px; align-items:center;">
       <select id="couponType" class="adm-select">
@@ -344,25 +370,25 @@ if (couponsList) {
         const p = d.data();
         if (p?.kind !== "coupon") return;
 
-        const valueTxt = p.type === "percent" ? `${p.value}% off` : `₹${p.value} off`;
-        const lim      = (p.usageLimit ?? "∞");
-        const chan     = (p.channel === "dining") ? "Dining" : "Delivery";
+const valueTxt = p.type === "percent" ? `${p.value}% off` : `₹${p.value} off`;
+const lim = (p.usageLimit ?? "∞");
+rows.push(`
+  <div class="adm-grid adm-grid-coupons">
+    <div><span class="adm-pill ${primaryChannelClass(p)}">${p.code || d.id}</span></div>
+    <div>${channelsToText(p)}</div>
+    <div class="adm-muted">${valueTxt}</div>
+    <div class="adm-muted"><strong>${lim}</strong></div>
+    <div>${statusPill(p.active !== false)}</div>
+    <div class="adm-actions">
+      <button data-id="${d.id}" class="adm-btn jsEditCoupon">Edit</button>
+      <button data-id="${d.id}" data-active="${p.active !== false}" class="adm-btn jsToggleCoupon">
+        ${(p.active !== false) ? "Disable" : "Enable"}
+      </button>
+      <button data-id="${d.id}" class="adm-btn jsDelCoupon">Delete</button>
+    </div>
+  </div>
+`);
 
-        rows.push(`
-          <div class="adm-grid adm-grid-coupons">
-            <div><span class="adm-pill ${p.channel === "dining" ? "adm-pill--dining" : "adm-pill--delivery"}">${p.code || d.id}</span></div>
-            <div>${chan}</div>
-            <div class="adm-muted">${valueTxt}</div>
-            <div class="adm-muted"><strong>${lim}</strong></div>
-            <div>${statusPill(p.active !== false)}</div>
-            <div class="adm-actions">
-              <button data-id="${d.id}" data-active="${p.active !== false}" class="adm-btn jsToggleCoupon">
-                ${(p.active !== false) ? "Disable" : "Enable"}
-              </button>
-              <button data-id="${d.id}" class="adm-btn jsDelCoupon">Delete</button>
-            </div>
-          </div>
-        `);
       });
 
       couponsList.innerHTML = rows.length
@@ -421,6 +447,84 @@ if (couponsList) {
   );
 }
 
+  // Edit Coupon (code, channels checklist, type, value, usageLimit)
+  
+couponsList.querySelectorAll(".jsEditCoupon").forEach(btn => {
+  btn.onclick = async () => {
+    const id = btn.dataset.id;
+    const ref = doc(db, "promotions", id);
+    const snap = await getDoc(ref);
+    const p = snap.exists() ? snap.data() : {};
+
+    const chDel = !!p?.channels?.delivery || p?.channel === "delivery" || p?.channel === "both";
+    const chDin = !!p?.channels?.dining   || p?.channel === "dining"   || p?.channel === "both";
+    const pop = document.createElement("div");
+    pop.className = "adm-pop";
+    pop.innerHTML = `
+      <div style="font-weight:600;margin-bottom:6px">Edit Coupon</div>
+      <div style="display:grid;grid-template-columns:120px 1fr;gap:8px;align-items:center">
+        <label>Code</label>
+        <input class="adm-input jsCode" value="${(p.code || "")}">
+        <label>Channels</label>
+        <div>
+          <label style="display:inline-flex;align-items:center;gap:6px;margin-right:10px">
+            <input type="checkbox" class="jsChDel" ${chDel ? "checked":""}> <span>Delivery</span>
+          </label>
+          <label style="display:inline-flex;align-items:center;gap:6px">
+            <input type="checkbox" class="jsChDin" ${chDin ? "checked":""}> <span>Dining</span>
+          </label>
+        </div>
+        <label>Type</label>
+        <select class="adm-select jsType">
+          <option value="percent" ${p.type==="percent"?"selected":""}>% off</option>
+          <option value="flat" ${p.type==="flat"?"selected":""}>₹ off</option>
+        </select>
+        <label>Value</label>
+        <input class="adm-input jsValue" type="number" value="${p.value ?? ""}">
+        <label>Usage Limit</label>
+        <input class="adm-input jsLimit" type="number" value="${p.usageLimit ?? ""}" placeholder="(optional)">
+      </div>
+      <div class="actions" style="margin-top:10px">
+        <button class="adm-btn jsCancel">Cancel</button>
+        <button class="adm-btn adm-btn--primary jsSave">Save</button>
+      </div>
+    `;
+
+    const elCode  = pop.querySelector(".jsCode");
+    const elDel   = pop.querySelector(".jsChDel");
+    const elDin   = pop.querySelector(".jsChDin");
+    const elType  = pop.querySelector(".jsType");
+    const elValue = pop.querySelector(".jsValue");
+    const elLimit = pop.querySelector(".jsLimit");
+    const btnSave = pop.querySelector(".jsSave");
+    const btnCancel = pop.querySelector(".jsCancel");
+
+    btnCancel.onclick = () => pop.classList.remove("show");
+    btnSave.onclick = async () => {
+      const code = (elCode.value || "").trim();
+      const v = Number(elValue.value || 0);
+      const lim = elLimit.value ? Number(elLimit.value) : null;
+      const d = !!elDel.checked, g = !!elDin.checked;
+      if (!code || !(v>0) || (!d && !g)) { alert("Fill code, positive value, and at least one channel"); return; }
+      const legacy = d && g ? "both" : (g ? "dining" : "delivery");
+      try {
+        await updateDoc(ref, {
+          code,
+          channel: legacy,
+          channels: { delivery: d, dining: g },
+          type: elType.value || "percent",
+          value: v,
+          usageLimit: lim,
+          updatedAt: serverTimestamp()
+        });
+      } catch (e){ console.error(e); alert("Failed to save coupon"); }
+      pop.classList.remove("show");
+    };
+
+    toggleAttachedPopover(pop, btn);
+  };
+});
+
 
   // Create coupon (add usageLimit/usedCount/active defaults; keep original fields)
   
@@ -428,25 +532,40 @@ if (couponsList) {
     newCouponForm.onsubmit = async (e) => {
       e.preventDefault();
       const code = (codeInput?.value || "").trim();
-      const channel = chanInput?.value || "delivery";
+      const chDelivery = !!document.getElementById("couponChDelivery")?.checked;
+      const chDining   = !!document.getElementById("couponChDining")?.checked;
       const type = typeInput?.value || "percent";
       const value = Number(valInput?.value || 0);
-      const limInput = document.getElementById("couponUsageLimit");
-      const usageLimit = limInput?.value ? Number(limInput.value) : null;
 
-      if (!code || !(value > 0)) return alert("Enter code and positive value");
-      if (usageLimit !== null && !(usageLimit > 0)) return alert("Usage limit must be a positive number.");
+// require at least one channel
+if (!code || !(value > 0) || (!chDelivery && !chDining)) {
+  return alert("Enter code, positive value, and select at least one channel");
+}
 
-      const id = crypto.randomUUID();
-      await setDoc(doc(db, "promotions", id), {
-        kind: "coupon",
-        code, channel, type, value,
-        usageLimit: usageLimit ?? null,
-        usedCount: 0,
-        active: true,
-        createdAt: serverTimestamp(),
-      });
-      newCouponForm.reset();
+// backward-compat single 'channel' string (useful elsewhere if referenced)
+  const legacyChannel =
+  chDelivery && chDining ? "both" :
+  chDining ? "dining" : "delivery";
+
+const id = crypto.randomUUID();
+await setDoc(doc(db, "promotions", id), {
+  kind: "coupon",
+  code,
+  channel: legacyChannel,                   // keep legacy for older UI
+  channels: { delivery: chDelivery, dining: chDining }, // new checklist
+  type,
+  value,
+  usageLimit: Number(document.getElementById("couponUsageLimit")?.value || "") || null,
+  createdAt: serverTimestamp(),
+  active: true
+});
+newCouponForm.reset();
+// reset to common default: Delivery checked, Dining unchecked
+const dEl = document.getElementById("couponChDelivery");
+const gEl = document.getElementById("couponChDining");
+if (dEl) dEl.checked = true;
+if (gEl) gEl.checked = false;
+
     };
   }
 
@@ -518,8 +637,9 @@ if (bannersList) {
             <div class="adm-muted">${publishedTo}</div>
             <div>${statusPill(p.active !== false)}</div>
             <div class="adm-actions">
-              <button class="adm-btn jsToggleBanner" data-id="${d.id}" data-active="${p.active !== false}">${(p.active !== false) ? "Disable" : "Enable"}</button>
-              <button class="adm-btn jsDelBanner" data-id="${d.id}">Delete</button>
+            <button class="adm-btn jsEditBanner" data-id="${d.id}">Edit</button>
+            <button class="adm-btn jsToggleBanner" data-id="${d.id}" data-active="${p.active !== false}">${(p.active !== false) ? "Disable" : "Enable"}</button>
+            <button class="adm-btn jsDelBanner" data-id="${d.id}">Delete</button>
             </div>
           </div>
         `);
@@ -553,6 +673,89 @@ if (bannersList) {
   );  
 } 
 
+// Edit Banner (title + linked coupons + publish targets)
+bannersList.querySelectorAll(".jsEditBanner").forEach(btn => {
+  btn.onclick = async () => {
+    const id = btn.dataset.id;
+    const ref = doc(db, "promotions", id);
+    const snap = await getDoc(ref);
+    const p = snap.exists() ? snap.data() : {};
+
+    // Load coupon cache (active & not exhausted) for linking
+    const couponCache = {};
+    const all = await getDocs(query(collection(db, "promotions")));
+    all.forEach(d => {
+      const v = d.data() || {};
+      if (v.kind !== "coupon") return;
+      const limit = v.usageLimit ?? null;
+      const used  = v.usedCount ?? 0;
+      const exhausted = limit !== null && used >= limit;
+      const active = v.active !== false;
+      if (!active || exhausted) return;
+      couponCache[d.id] = { code: v.code || d.id, channel: v.channel, channels: v.channels || null };
+    });
+
+    const linked = Array.isArray(p.linkedCouponIds) ? p.linkedCouponIds.slice() : [];
+    const deliveryChecked = !!p?.targets?.delivery;
+    const diningChecked   = !!p?.targets?.dining;
+
+    const rows = Object.entries(couponCache).map(([cid, c]) => {
+      const text = `${c.code} • ${channelsToText(c)}`;
+      const checked = linked.includes(cid) ? "checked" : "";
+      return `<label class="row"><input type="checkbox" value="${cid}" ${checked}> <span>${text}</span></label>`;
+    }).join("") || `<div class="adm-muted">(No active coupons available)</div>`;
+
+    const pop = document.createElement("div");
+    pop.className = "adm-pop";
+    pop.innerHTML = `
+      <div style="font-weight:600;margin-bottom:6px">Edit Banner</div>
+      <div style="display:grid;grid-template-columns:120px 1fr;gap:8px;align-items:center">
+        <label>Title</label>
+        <input class="adm-input jsTitle" value="${p.title || ""}">
+        <label>Linked Coupons</label>
+        <div class="list" style="max-height:40vh;overflow:auto;min-width:260px">${rows}</div>
+        <label>Publish To</label>
+        <div>
+          <label style="display:inline-flex;align-items:center;gap:6px;margin-right:10px">
+            <input type="checkbox" class="jsTgt" value="delivery" ${deliveryChecked?"checked":""}> <span>Delivery</span>
+          </label>
+          <label style="display:inline-flex;align-items:center;gap:6px">
+            <input type="checkbox" class="jsTgt" value="dining" ${diningChecked?"checked":""}> <span>Dining</span>
+          </label>
+        </div>
+      </div>
+      <div class="actions" style="margin-top:10px">
+        <button class="adm-btn jsCancel">Cancel</button>
+        <button class="adm-btn adm-btn--primary jsSave">Save</button>
+      </div>
+    `;
+
+    const elTitle = pop.querySelector(".jsTitle");
+    const btnSave = pop.querySelector(".jsSave");
+    const btnCancel = pop.querySelector(".jsCancel");
+
+    btnCancel.onclick = () => pop.classList.remove("show");
+    btnSave.onclick = async () => {
+      const title = (elTitle.value || "").trim();
+      const ids = Array.from(pop.querySelectorAll('input[type="checkbox"]:not(.jsTgt):checked')).map(i => i.value);
+      const checked = Array.from(pop.querySelectorAll(".jsTgt:checked")).map(i => i.value);
+      const targets = { delivery: checked.includes("delivery"), dining: checked.includes("dining") };
+      try {
+        await updateDoc(ref, {
+          title,
+          linkedCouponIds: ids,
+          targets,
+          updatedAt: serverTimestamp()
+        });
+      } catch (e){ console.error(e); alert("Failed to save banner"); }
+      pop.classList.remove("show");
+    };
+
+    toggleAttachedPopover(pop, btn);
+  };
+});
+
+  
   // Create banner (add defaults for new features; keep your uploader flow)
 
   if (newBannerForm) {
