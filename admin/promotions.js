@@ -152,11 +152,13 @@ export function initPromotions() {
 <h3>Banners</h3>
 <form id="newBannerForm" class="adm-grid adm-grid-banners" style="margin-bottom:8px">
   <div><input id="bannerFile" class="adm-file" type="file" accept="image/*" /></div>
-  <div><input id="bannerTitle" class="adm-input" placeholder="Title (optional)" /></div>
-  <div class="adm-muted">—</div>
-  <div class="adm-muted">—</div>
+  <div><input id="bannerTitle" class="adm-input" placeholder="Title" /></div>
+  <div id="newBannerLinkedCell" class="adm-muted">—</div>
+  <div id="newBannerTargetsCell" class="adm-muted">—</div>
   <div><strong style="color:#16a34a">Active</strong></div>
   <div class="adm-actions">
+    <button type="button" class="adm-btn jsNewLinkCoupons">Link Coupons</button>
+    <button type="button" class="adm-btn jsNewPublish">Publish</button>
     <button type="submit" class="adm-btn adm-btn--primary">Upload</button>
   </div>
 </form>
@@ -172,9 +174,121 @@ export function initPromotions() {
   const typeInput = document.getElementById("couponType");    // "percent" | "flat"
   const valInput  = document.getElementById("couponValue");
   const bannersList = document.getElementById("bannersList");
-  const newBannerForm = document.getElementById("newBannerForm");
-  const bannerFile = document.getElementById("bannerFile");
-  const bannerTitle = document.getElementById("bannerTitle");
+const newBannerForm = document.getElementById("newBannerForm");
+const bannerFile = document.getElementById("bannerFile");
+const bannerTitle = document.getElementById("bannerTitle");
+
+// --- Add Banner: local state + helpers (for in-form popovers) ---
+let NEW_BANNER_LINKED = [];                          // coupon ids
+let NEW_BANNER_TARGETS = { delivery: false, dining: false };
+let COUPON_CACHE = null;                             // {id: {code, channel}} once fetched
+
+const linkedCell  = document.getElementById("newBannerLinkedCell");
+const targetsCell = document.getElementById("newBannerTargetsCell");
+const btnLinkForm = document.querySelector(".jsNewLinkCoupons");
+const btnPubForm  = document.querySelector(".jsNewPublish");
+
+function renderNewBannerLinked(){
+  if (!linkedCell) return;
+  if (!NEW_BANNER_LINKED.length) { linkedCell.innerHTML = "—"; return; }
+  linkedCell.innerHTML = NEW_BANNER_LINKED.map(id => {
+    const c = COUPON_CACHE?.[id];
+    if (!c) return `<span class="adm-pill">${id.slice(0,6)}</span>`;
+    const cls = c.channel === "dining" ? "adm-pill--dining" : "adm-pill--delivery";
+    return `<span class="adm-pill ${cls}">${c.code}</span>`;
+  }).join(" ");
+}
+
+function renderNewBannerTargets(){
+  if (!targetsCell) return;
+  const picks = [];
+  if (NEW_BANNER_TARGETS.delivery) picks.push("Delivery");
+  if (NEW_BANNER_TARGETS.dining)  picks.push("Dining");
+  targetsCell.innerHTML = picks.length ? picks.join(", ") : "—";
+}
+
+// In-form: open Link Coupons popover
+if (btnLinkForm) {
+  btnLinkForm.onclick = async (e) => {
+    e.preventDefault();
+    // fetch coupon cache once (active & not exhausted)
+    if (!COUPON_CACHE) {
+      COUPON_CACHE = {};
+      const snapAll = await getDocs(query(collection(db, "promotions")));
+      snapAll.forEach(d => {
+        const v = d.data() || {};
+        if (v.kind !== "coupon") return;
+        const limit = v.usageLimit ?? null;
+        const used  = v.usedCount ?? 0;
+        const exhausted = limit !== null && used >= limit;
+        const active = v.active !== false;
+        if (!active || exhausted) return;
+        COUPON_CACHE[d.id] = { code: v.code || d.id, channel: v.channel };
+      });
+    }
+
+    const pop = document.createElement("div");
+    pop.className = "adm-pop";
+    const rows = Object.entries(COUPON_CACHE).map(([id, c]) => {
+      const label = `${c.code} • ${c.channel === "dining" ? "Dining" : "Delivery"}`;
+      const checked = NEW_BANNER_LINKED.includes(id) ? "checked" : "";
+      return `<label class="row"><input type="checkbox" value="${id}" ${checked}> <span>${label}</span></label>`;
+    }).join("") || `<div class="adm-muted">(No active coupons available)</div>`;
+
+    pop.innerHTML = `
+      <div style="font-weight:600;margin-bottom:6px">Link Coupons</div>
+      <div class="list" style="max-height:40vh;overflow:auto;min-width:260px">${rows}</div>
+      <div class="actions">
+        <button class="adm-btn jsCancel">Cancel</button>
+        <button class="adm-btn adm-btn--primary jsSave">Save</button>
+      </div>
+    `;
+
+    const listEl = pop.querySelector(".list");
+    const btnSave = pop.querySelector(".jsSave");
+    const btnCancel = pop.querySelector(".jsCancel");
+
+    btnCancel.onclick = () => pop.classList.remove("show");
+    btnSave.onclick = () => {
+      NEW_BANNER_LINKED = Array.from(listEl.querySelectorAll('input[type="checkbox"]:checked')).map(i => i.value);
+      renderNewBannerLinked();
+      pop.classList.remove("show");
+    };
+
+    toggleAttachedPopover(pop, btnLinkForm);
+  };
+}
+
+// In-form: open Publish popover
+if (btnPubForm) {
+  btnPubForm.onclick = (e) => {
+    e.preventDefault();
+    const pop = document.createElement("div");
+    pop.className = "adm-pop";
+    pop.innerHTML = `
+      <div style="font-weight:600;margin-bottom:6px">Publish Banner To</div>
+      <label class="row"><input type="checkbox" value="delivery" class="jsTarget" ${NEW_BANNER_TARGETS.delivery ? "checked":""}> <span>Delivery Menu</span></label>
+      <label class="row"><input type="checkbox" value="dining" class="jsTarget" ${NEW_BANNER_TARGETS.dining ? "checked":""}> <span>Dining Menu</span></label>
+      <div class="actions">
+        <button class="adm-btn jsCancel">Cancel</button>
+        <button class="adm-btn adm-btn--primary jsSave">Save</button>
+      </div>
+    `;
+    const btnSave = pop.querySelector(".jsSave");
+    const btnCancel = pop.querySelector(".jsCancel");
+
+    btnCancel.onclick = () => pop.classList.remove("show");
+    btnSave.onclick = () => {
+      const checked = Array.from(pop.querySelectorAll(".jsTarget:checked")).map(i => i.value);
+      NEW_BANNER_TARGETS = { delivery: checked.includes("delivery"), dining: checked.includes("dining") };
+      renderNewBannerTargets();
+      pop.classList.remove("show");
+    };
+
+    toggleAttachedPopover(pop, btnPubForm);
+  };
+}
+
 
   // --- Inject Usage Limit field (optional) — additive, no layout change ---
   
@@ -398,10 +512,8 @@ if (bannersList) {
             <div class="adm-muted">${publishedTo}</div>
             <div>${statusPill(p.active !== false)}</div>
             <div class="adm-actions">
-              <button class="adm-btn jsLinkCoupons" data-id="${d.id}">Link Coupons</button>
-              <button class="adm-btn jsPublish" data-id="${d.id}">Publish</button>
-              <button class="adm-btn jsToggleBanner" data-id="${d.id}" data-active="${p.active !== false}">${(p.active !== false) ? "Disable" : "Enable"}</button>
-              <button class="adm-btn jsDelBanner" data-id="${d.id}">Delete</button>
+            <button class="adm-btn jsToggleBanner" data-id="${d.id}" data-active="${p.active !== false}">${(p.active !== false) ? "Disable" : "Enable"}</button>
+            <button class="adm-btn jsDelBanner" data-id="${d.id}">Delete</button>
             </div>
           </div>
         `);
@@ -434,89 +546,6 @@ if (bannersList) {
         };
       });
 
-      // Link Coupons popover (active + not-exhausted) — kept
-      bannersList.querySelectorAll(".jsLinkCoupons").forEach(btn => {
-        btn.onclick = async (e) => {
-          e.preventDefault();
-          const id = btn.dataset.id;
-          const pop = document.createElement("div");
-          pop.className = "adm-pop";
-          pop.innerHTML = `
-            <div style="font-weight:600;margin-bottom:6px">Link Coupons</div>
-            <div class="list" style="max-height:40vh;overflow:auto;min-width:260px"></div>
-            <div class="actions">
-              <button class="adm-btn adm-btn--primary jsSave">Save</button>
-              <button class="adm-btn jsCancel">Cancel</button>
-            </div>
-          `;
-          const listEl = pop.querySelector(".list");
-          const btnSave = pop.querySelector(".jsSave");
-          const btnCancel = pop.querySelector(".jsCancel");
-
-          // One-shot fetch of coupons (active & not exhausted)
-          const snapAll = await getDocs(query(collection(db, "promotions")));
-          const rowsC = [];
-          snapAll.forEach(docu => {
-            const v = docu.data() || {};
-            if (v.kind !== "coupon") return;
-            const limit = v.usageLimit ?? null;
-            const used = v.usedCount ?? 0;
-            const exhausted = limit !== null && used >= limit;
-            const active = v.active !== false;
-            if (!active || exhausted) return;
-            const title = v.type === "percent" ? `${v.value}% off` : `₹${v.value} off`;
-            rowsC.push({ id: docu.id, label: `${v.code || docu.id} • ${title} • ${(v.channel === "dining") ? "Dining" : "Delivery"}` });
-          });
-          listEl.innerHTML = rowsC.length
-            ? rowsC.map(r => `<label class="row"><input type="checkbox" value="${r.id}"> <span>${r.label}</span></label>`).join("")
-            : `<div class="adm-muted">(No active coupons available)</div>`;
-
-          btnCancel.onclick = () => pop.classList.remove("show");
-          btnSave.onclick = async () => {
-            const ids = Array.from(listEl.querySelectorAll('input[type="checkbox"]:checked')).map(i => i.value);
-            try { await updateDoc(doc(db, "promotions", id), { linkedCouponIds: ids, updatedAt: serverTimestamp() }); }
-            catch (err){ console.error(err); alert("Failed to link coupons."); }
-            pop.classList.remove("show");
-          };
-
-          toggleAttachedPopover(pop, btn);
-        };
-      });
-
-      // Publish popover (Delivery/Dining) — kept
-      bannersList.querySelectorAll(".jsPublish").forEach(btn => {
-        btn.onclick = async (e) => {
-          e.preventDefault();
-          const id = btn.dataset.id;
-          const pop = document.createElement("div");
-          pop.className = "adm-pop";
-          pop.innerHTML = `
-            <div style="font-weight:600;margin-bottom:6px">Publish Banner To</div>
-            <label class="row"><input type="checkbox" value="delivery" class="jsTarget"> <span>Delivery Menu</span></label>
-            <label class="row"><input type="checkbox" value="dining" class="jsTarget"> <span>Dining Menu</span></label>
-            <div class="actions">
-              <button class="adm-btn adm-btn--primary jsSave">Save</button>
-              <button class="adm-btn jsCancel">Cancel</button>
-            </div>
-          `;
-          const btnSave = pop.querySelector(".jsSave");
-          const btnCancel = pop.querySelector(".jsCancel");
-
-          btnCancel.onclick = () => pop.classList.remove("show");
-          btnSave.onclick = async () => {
-            const checked = Array.from(pop.querySelectorAll(".jsTarget:checked")).map(i => i.value);
-            const targets = { delivery: checked.includes("delivery"), dining: checked.includes("dining") };
-            try { await updateDoc(doc(db, "promotions", id), { targets, updatedAt: serverTimestamp() }); }
-            catch (err){ console.error(err); alert("Failed to publish banner."); }
-            pop.classList.remove("show");
-          };
-
-          toggleAttachedPopover(pop, btn);
-        };
-      });
-    }
-  );
-}
 
   // Create banner (add defaults for new features; keep your uploader flow)
   
@@ -540,15 +569,18 @@ if (bannersList) {
 
       const id = crypto.randomUUID();
       await setDoc(doc(db, "promotions", id), {
-        kind: "banner",
-        title: (bannerTitle?.value || "").trim(),
-        imageUrl,
-        linkedCouponIds: [],
-        targets: { delivery: false, dining: false },
-        createdAt: serverTimestamp(),
-        active: true
-      });
-      newBannerForm.reset();
+  kind: "banner",
+  title: (bannerTitle?.value || "").trim(),
+  imageUrl,
+  linkedCouponIds: Array.isArray(NEW_BANNER_LINKED) ? NEW_BANNER_LINKED : [],
+  targets: {
+    delivery: !!NEW_BANNER_TARGETS?.delivery,
+    dining:  !!NEW_BANNER_TARGETS?.dining
+  },
+  createdAt: serverTimestamp(),
+  active: true
+});
+ newBannerForm.reset();
     };
   }
 }
