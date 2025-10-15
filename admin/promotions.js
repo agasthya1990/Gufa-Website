@@ -86,45 +86,81 @@ function ensurePopoverStyles(){
   s.textContent = css;
   document.head.appendChild(s);
 }
+
+
+// Track which trigger opened which popover so we can re-position on resize/scroll
+const POP_TRIG = new WeakMap();
+
 function toggleAttachedPopover(pop, trigger){
   ensurePopoverStyles();
   ensureColumnStyles();
 
-  // Close any open popovers
-  const open = pop.classList.contains("show");
-  document.querySelectorAll(".adm-pop.show").forEach(el => el.classList.remove("show"));
-  if (open) return;
+  // Close any open popovers first
+  const wasOpen = pop.classList.contains("show");
+  document.querySelectorAll(".adm-pop.show").forEach(el => {
+    el.classList.remove("show");
+    // remove any listeners attached for live positioning
+    const off = el._popPositionOff;
+    if (typeof off === "function") { try { off(); } catch(_){} }
+    delete el._popPositionOff;
+  });
+  if (wasOpen) return;
 
-  // Measure the trigger
-  const r = trigger.getBoundingClientRect();
+  // Always append to <body> (global CSS already styles .adm-pop).
+  // Body-mount keeps positioning consistent regardless of panel/container transforms.
+  document.body.appendChild(pop);
 
-  // Mount inside the promotions panel so your #panel-promotions .adm-pop CSS applies
-  const container = document.getElementById("panel-promotions") || document.body;
-  container.appendChild(pop);
+  // Remember the trigger for this popover
+  POP_TRIG.set(pop, trigger);
 
-  // Pre-measure the popover width for clamping (temporarily show invisibly)
-  pop.style.visibility = "hidden";
-  pop.style.display = "block";
-  const popW = pop.offsetWidth || 360; // sensible fallback if CSS hasn’t applied yet
-  pop.style.display = "";
-  pop.style.visibility = "";
+  // Compute + clamp within viewport
+  const positionNow = () => {
+    const t = POP_TRIG.get(pop);
+    if (!t) return;
 
-  // Compute a viewport-safe left position (clamp within [16px, pageRight-16px])
-  const pageLeft = window.scrollX;
-  const pageRight = pageLeft + document.documentElement.clientWidth;
-  const margin = 16;
+    const r = t.getBoundingClientRect();
+    // Tentative placement: directly under the trigger
+    let top  = window.scrollY + r.bottom + 6;
 
-  let left = pageLeft + r.left; // prefer opening aligned with the trigger
-  const maxLeft = pageRight - popW - margin;
-  const minLeft = pageLeft + margin;
-  if (left > maxLeft) left = Math.max(minLeft, maxLeft);
-  if (left < minLeft) left = minLeft;
+    // Pre-measure width for horizontal clamping
+    const prevVis = pop.style.visibility;
+    const prevDisp = pop.style.display;
+    pop.style.visibility = "hidden";
+    pop.style.display = "block";
+    const popW = Math.max(pop.offsetWidth || 0, 280); // safe fallback
+    pop.style.display = prevDisp;
+    pop.style.visibility = prevVis;
 
-  // Final placement
-  pop.style.top = `${window.scrollY + r.bottom + 6}px`;
-  pop.style.left = `${left}px`;
+    const pageLeft  = window.scrollX;
+    const pageRight = pageLeft + document.documentElement.clientWidth;
+    const margin = 16;
+    let left = window.scrollX + r.left;
 
-  // Reveal with your existing animation
+    const maxLeft = pageRight - popW - margin;
+    const minLeft = pageLeft + margin;
+    if (left > maxLeft) left = Math.max(minLeft, maxLeft);
+    if (left < minLeft) left = minLeft;
+
+    pop.style.top  = `${top}px`;
+    pop.style.left = `${left}px`;
+  };
+
+  // Initial place
+  positionNow();
+
+  // Live re-position on resize/scroll (covers zoom/layout changes)
+  const onResize = () => positionNow();
+  const onScroll = () => positionNow();
+  window.addEventListener("resize", onResize, { passive: true });
+  window.addEventListener("scroll", onScroll, { passive: true });
+
+  // Store an "off" hook on the element so we can clean up when closing
+  pop._popPositionOff = () => {
+    window.removeEventListener("resize", onResize);
+    window.removeEventListener("scroll", onScroll);
+  };
+
+  // Reveal
   requestAnimationFrame(() => pop.classList.add("show"));
 }
 
@@ -367,11 +403,13 @@ let NEW_COUPON_CHANNELS = { delivery: true, dining: false };
 const btnChForm = document.querySelector(".jsCouponChannels");
 
 if (btnChForm) {
-  btnChForm.onclick = (e) => {
-    e.preventDefault();
-    const pop = document.createElement("div");
-    pop.className = "adm-pop";
-    pop.innerHTML = `
+btnChForm.onclick = (e) => {
+  e.preventDefault();
+  const pop = document.createElement("div");
+  pop.className = "adm-pop";
+  pop.setAttribute("data-size", "sm"); // <-- make Channel popover compact
+  pop.innerHTML = `
+
       <div style="font-weight:600;margin-bottom:6px">Select Channel(s)</div>
       <label class="row" style="display:flex;align-items:center;gap:8px">
         <input type="checkbox" class="jsCh" value="delivery" ${NEW_COUPON_CHANNELS.delivery ? "checked":""}>
