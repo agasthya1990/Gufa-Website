@@ -89,15 +89,45 @@ function ensurePopoverStyles(){
 function toggleAttachedPopover(pop, trigger){
   ensurePopoverStyles();
   ensureColumnStyles();
+
+  // Close any open popovers
   const open = pop.classList.contains("show");
   document.querySelectorAll(".adm-pop.show").forEach(el => el.classList.remove("show"));
   if (open) return;
+
+  // Measure the trigger
   const r = trigger.getBoundingClientRect();
+
+  // Mount inside the promotions panel so your #panel-promotions .adm-pop CSS applies
+  const container = document.getElementById("panel-promotions") || document.body;
+  container.appendChild(pop);
+
+  // Pre-measure the popover width for clamping (temporarily show invisibly)
+  pop.style.visibility = "hidden";
+  pop.style.display = "block";
+  const popW = pop.offsetWidth || 360; // sensible fallback if CSS hasn’t applied yet
+  pop.style.display = "";
+  pop.style.visibility = "";
+
+  // Compute a viewport-safe left position (clamp within [16px, pageRight-16px])
+  const pageLeft = window.scrollX;
+  const pageRight = pageLeft + document.documentElement.clientWidth;
+  const margin = 16;
+
+  let left = pageLeft + r.left; // prefer opening aligned with the trigger
+  const maxLeft = pageRight - popW - margin;
+  const minLeft = pageLeft + margin;
+  if (left > maxLeft) left = Math.max(minLeft, maxLeft);
+  if (left < minLeft) left = minLeft;
+
+  // Final placement
   pop.style.top = `${window.scrollY + r.bottom + 6}px`;
-  pop.style.left = `${window.scrollX + r.left}px`;
-  document.body.appendChild(pop);
+  pop.style.left = `${left}px`;
+
+  // Reveal with your existing animation
   requestAnimationFrame(() => pop.classList.add("show"));
 }
+
 const statusPill = (active) =>
   active ? `<strong style="color:#16a34a">Active</strong>` : `<strong style="color:#dc2626">Inactive</strong>`;
 // Column grid styles (lightweight; mirrors catalogue feel)
