@@ -1649,3 +1649,9 @@ button {
   overflow-wrap: anywhere;
   word-break: break-word;
 }
+
+/* Promotions — compact popover size token */
+#panel-promotions .adm-pop[data-size="sm"] {
+  width: clamp(280px, 40vw, 420px);
+  max-width: calc(100vw - 32px);
+}
