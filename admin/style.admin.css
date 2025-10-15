@@ -1783,3 +1783,21 @@ button {
   flex-wrap: wrap;
   max-width: 100%;
 }
+
+/* === FINAL OVERRIDE — Channel popover compact like Publish ===
+   Only affects the Channel chooser (data-kind="channel") */
+.adm-pop[data-kind="channel"],
+#panel-promotions .adm-pop[data-kind="channel"]{
+  /* tighter than the generic [data-size="sm"] */
+  width: clamp(220px, 28vw, 320px) !important;
+  max-width: calc(100vw - 32px) !important;
+  box-sizing: border-box;
+  padding: 12px 14px; /* same comfy feel */
+}
+
+/* Keep buttons from widening it at narrow view/zoom */
+.adm-pop[data-kind="channel"] .actions,
+#panel-promotions .adm-pop[data-kind="channel"] .actions{
+  flex-wrap: wrap;
+  max-width: 100%;
+}
