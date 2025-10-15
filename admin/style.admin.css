@@ -1655,3 +1655,61 @@ button {
   width: clamp(280px, 40vw, 420px);
   max-width: calc(100vw - 32px);
 }
+
+/* Promotions — prevent over-stretching inside Edit popovers */
+#panel-promotions .adm-pop [style*="grid-template-columns:120px"] > *:nth-child(2n) {
+  min-width: 0;                 /* allow the field column to shrink within grid */
+}
+
+/* Ensure long tokens (codes, IDs) wrap instead of forcing width growth */
+#panel-promotions .adm-pop,
+#panel-promotions .adm-pop * {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* Clamp every common control to the container width */
+#panel-promotions .adm-pop input.adm-input,
+#panel-promotions .adm-pop select.adm-select,
+#panel-promotions .adm-pop textarea,
+#panel-promotions .adm-pop .list,
+#panel-promotions .adm-pop .row > * {
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+/* Checklist rows: keep text from pushing the layout wide */
+#panel-promotions .adm-pop .list label.row span {
+  display: inline-block;
+  max-width: 100%;
+}
+
+#panel-promotions .adm-pop .actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+  flex-wrap: wrap;          /* prevent buttons from stretching the bubble */
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+#panel-promotions .adm-pop [style*="grid-template-columns:120px"] {
+  display: grid !important;
+  grid-template-columns: 140px minmax(220px, 1fr) !important;
+  gap: 10px !important;
+  align-items: center !important;
+  max-width: 100%;                 /* never exceed the bubble */
+  box-sizing: border-box;
+}
+
+#panel-promotions .adm-pop .list {
+  display: grid;
+  grid-template-columns: 1fr;
+  row-gap: 6px;
+  max-height: 44vh;
+  overflow: auto;
+  padding-right: 4px;                 /* avoid scrollbar overlap */
+  max-width: 100%;                    /* never overflow the bubble */
+  box-sizing: border-box;
+}
