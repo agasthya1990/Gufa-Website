@@ -1735,88 +1735,6 @@ button {
   width: clamp(280px, 40vw, 420px);
 }
 
-/* === Promotions: Compact popover override (Channel picker only) ===
-   Uses the existing data-size="sm" set in JS, and overrides any wider defaults */
-.adm-pop[data-size="sm"],
-#panel-promotions .adm-pop[data-size="sm"] {
-  width: clamp(260px, 36vw, 420px) !important;   /* narrower than default popovers */
-  max-width: calc(100vw - 32px) !important;      /* guard on tiny viewports */
-  box-sizing: border-box;
-}
-
-/* Let actions wrap inside the compact popover instead of widening it */
-.adm-pop[data-size="sm"] .actions,
-#panel-promotions .adm-pop[data-size="sm"] .actions {
-  flex-wrap: wrap;
-  max-width: 100%;
-}
-
-/* === Channel popover: compact like "Publish" === */
-.adm-pop[data-kind="channel"],
-#panel-promotions .adm-pop[data-kind="channel"] {
-  /* override wide defaults just for Channel */
-  width: clamp(240px, 32vw, 360px) !important;
-  max-width: calc(100vw - 32px) !important;
-  box-sizing: border-box;
-  padding: 12px 14px;
-}
-
-/* keep buttons from widening the compact sheet */
-.adm-pop[data-kind="channel"] .actions,
-#panel-promotions .adm-pop[data-kind="channel"] .actions {
-  flex-wrap: wrap;
-  max-width: 100%;
-}
-
-/* Channel popover — compact safety net */
-.adm-pop[data-kind="channel"],
-#panel-promotions .adm-pop[data-kind="channel"] {
-  width: clamp(240px, 32vw, 360px) !important;
-  max-width: calc(100vw - 32px) !important;
-  box-sizing: border-box;
-  padding: 12px 14px;
-}
-
-/* Prevent buttons from widening it */
-.adm-pop[data-kind="channel"] .actions,
-#panel-promotions .adm-pop[data-kind="channel"] .actions {
-  flex-wrap: wrap;
-  max-width: 100%;
-}
-
-/* === FINAL OVERRIDE — Channel popover compact like Publish ===
-   Only affects the Channel chooser (data-kind="channel") */
-.adm-pop[data-kind="channel"],
-#panel-promotions .adm-pop[data-kind="channel"]{
-  /* tighter than the generic [data-size="sm"] */
-  width: clamp(100px, 28vw, 320px) !important;
-  max-width: calc(100vw - 32px) !important;
-  box-sizing: border-box;
-  padding: 12px 14px; /* same comfy feel */
-}
-
-/* keep buttons from widening the compact sheet */
-.adm-pop[data-kind="channel"] .actions,
-#panel-promotions .adm-pop[data-kind="channel"] .actions {
-  flex-wrap: wrap;
-  max-width: 100%;
-
-/* === FINAL OVERRIDE — Channel popover compact (Publish-style) === */
-/* Target only the Channel chooser via data-kind set in JS */
-.adm-pop[data-kind="channel"],
-#panel-promotions .adm-pop[data-kind="channel"]{
-  width: clamp(220px, 28vw, 320px) !important;  /* tighter than generic 'sm' */
-  max-width: calc(100vw - 32px) !important;
-  box-sizing: border-box;
-  padding: 12px 14px;                            /* same comfy feel as Publish */
-}
-
-/* Ensure action buttons never widen the compact sheet */
-.adm-pop[data-kind="channel"] .actions,
-#panel-promotions .adm-pop[data-kind="channel"] .actions{
-  flex-wrap: wrap;
-  max-width: 100%;
-}
 
 /* === FINAL OVERRIDE — Channel popover: ultracompact frame === */
 /* We target the body-mounted sheet and the panel-scoped variant, both. */
@@ -1825,7 +1743,7 @@ body > .adm-pop[data-kind="channel"],
 #panel-promotions .adm-pop[data-kind="channel"] {
   /* Hard cap: pick one tiny width band */
   min-width: 100px !important;
-  width: 180px !important;
+  width: 100px !important;
   max-width: 100px !important;
 
   /* Comfortable but tight padding; keep box model sane */
