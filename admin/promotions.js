@@ -562,15 +562,18 @@ couponsList.querySelectorAll(".jsEditCoupon").forEach(btn => {
       <div style="display:grid;grid-template-columns:120px 1fr;gap:8px;align-items:center">
         <label>Code</label>
         <input class="adm-input jsCode" value="${(p.code || "")}">
-        <label>Channels</label>
+                <label>Channels</label>
         <div>
           <label style="display:inline-flex;align-items:center;gap:6px;margin-right:10px">
-            <input type="checkbox" class="jsChDel" ${chDel ? "checked":""}> 
+            <input type="checkbox" class="jsChDel" ${chDel ? "checked":""}>
+            <span>Delivery</span>
           </label>
           <label style="display:inline-flex;align-items:center;gap:6px">
             <input type="checkbox" class="jsChDin" ${chDin ? "checked":""}>
+            <span>Dining</span>
           </label>
         </div>
+        
         <label>Type</label>
         <select class="adm-select jsType">
           <option value="percent" ${p.type==="percent"?"selected":""}>% off</option>
