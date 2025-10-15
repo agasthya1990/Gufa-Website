@@ -1721,21 +1721,7 @@ button {
   max-width: 100%;                    /* never overflow the bubble */
   box-sizing: border-box;
 }
-/* === Global popover frame (for body-mounted .adm-pop) — frame stays steady === */
-.adm-pop {
-  position: absolute;                 /* matches your JS placement */
-  box-sizing: border-box;
-  width: clamp(360px, 48vw, 720px);   /* roomy, zoom-safe; never too tiny/huge */
-  max-width: calc(100vw - 32px);      /* respect viewport on very small screens */
-  max-height: min(70vh, 560px);
-  overflow: auto;                     /* scroll inside; page behind won’t jump */
-  padding: 14px 16px;
-  border-radius: 12px;
-  background: #fff;
-  border: 1px solid #e5e7eb;
-  box-shadow: 0 12px 28px rgba(0,0,0,.12), 0 2px 8px rgba(0,0,0,.06);
-  z-index: 9999;
-}
+
 
 /* Safety: long words/IDs never blow up the popover width */
 .adm-pop,
@@ -1748,3 +1734,4 @@ button {
 .adm-pop[data-size="sm"] {
   width: clamp(280px, 40vw, 420px);
 }
+
