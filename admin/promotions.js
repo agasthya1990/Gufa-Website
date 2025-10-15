@@ -405,15 +405,14 @@ const btnChForm = document.querySelector(".jsCouponChannels");
 if (btnChForm) {
 btnChForm.onclick = (e) => {
   e.preventDefault();
-  const pop = document.createElement("div");
+const pop = document.createElement("div");
 pop.className = "adm-pop";
-pop.setAttribute("data-size", "sm");          // keep token (no behavior change)
-pop.setAttribute("data-kind", "channel");     // keep token (no behavior change)
-// Force compact sheet exactly like Publish (ignore wider defaults)
-pop.setAttribute(
-  "style",
-  "width:clamp(240px,32vw,360px);max-width:calc(100vw - 32px);padding:12px 14px;"
-);
+pop.setAttribute("data-size", "sm");
+pop.setAttribute("data-kind", "channel");
+// Force compact sheet like Publish, with !important so it beats global rules
+pop.style.setProperty("width", "clamp(240px, 32vw, 360px)", "important");
+pop.style.setProperty("max-width", "calc(100vw - 32px)", "important");
+pop.style.setProperty("padding", "12px 14px"); // optional: mirror Publish feel
 pop.innerHTML = `
       <div style="font-weight:600;margin-bottom:6px">Select Channel(s)</div>
       <label class="row" style="display:flex;align-items:center;gap:8px">
