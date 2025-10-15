@@ -1742,9 +1742,9 @@ body > .adm-pop[data-kind="channel"],
 .adm-pop[data-kind="channel"],
 #panel-promotions .adm-pop[data-kind="channel"] {
   /* Hard cap: pick one tiny width band */
-  min-width: 140px !important;
-  width: 140px !important;
-  max-width: 140px !important;
+  min-width: 170px !important;
+  width: 170px !important;
+  max-width: 170px !important;
 
   /* Comfortable but tight padding; keep box model sane */
   padding: 8px 10px !important;
