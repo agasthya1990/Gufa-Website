@@ -1735,3 +1735,18 @@ button {
   width: clamp(280px, 40vw, 420px);
 }
 
+/* === Promotions: Compact popover override (Channel picker only) ===
+   Uses the existing data-size="sm" set in JS, and overrides any wider defaults */
+.adm-pop[data-size="sm"],
+#panel-promotions .adm-pop[data-size="sm"] {
+  width: clamp(260px, 36vw, 420px) !important;   /* narrower than default popovers */
+  max-width: calc(100vw - 32px) !important;      /* guard on tiny viewports */
+  box-sizing: border-box;
+}
+
+/* Let actions wrap inside the compact popover instead of widening it */
+.adm-pop[data-size="sm"] .actions,
+#panel-promotions .adm-pop[data-size="sm"] .actions {
+  flex-wrap: wrap;
+  max-width: 100%;
+}
