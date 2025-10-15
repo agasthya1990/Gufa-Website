@@ -1767,3 +1767,19 @@ button {
   flex-wrap: wrap;
   max-width: 100%;
 }
+
+/* Channel popover — compact safety net */
+.adm-pop[data-kind="channel"],
+#panel-promotions .adm-pop[data-kind="channel"] {
+  width: clamp(240px, 32vw, 360px) !important;
+  max-width: calc(100vw - 32px) !important;
+  box-sizing: border-box;
+  padding: 12px 14px;
+}
+
+/* Prevent buttons from widening it */
+.adm-pop[data-kind="channel"] .actions,
+#panel-promotions .adm-pop[data-kind="channel"] .actions {
+  flex-wrap: wrap;
+  max-width: 100%;
+}
