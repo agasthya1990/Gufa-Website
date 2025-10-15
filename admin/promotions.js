@@ -352,8 +352,8 @@ if (btnChForm) {
         <span>Dining</span>
       </label>
       <div class="actions" style="margin-top:8px">
-        <button class="adm-btn jsCancel">Cancel</button>
         <button class="adm-btn adm-btn--primary jsSave">Save</button>
+        <button class="adm-btn jsCancel">Cancel</button>
       </div>
     `;
     const btnSave   = pop.querySelector(".jsSave");
@@ -514,8 +514,8 @@ couponsList.querySelectorAll(".jsEditCoupon").forEach(btn => {
         <input class="adm-input jsLimit" type="number" value="${p.usageLimit ?? ""}" placeholder="(optional)">
       </div>
       <div class="actions" style="margin-top:10px">
-        <button class="adm-btn jsCancel">Cancel</button>
         <button class="adm-btn adm-btn--primary jsSave">Save</button>
+        <button class="adm-btn jsCancel">Cancel</button>
       </div>
     `;
 
@@ -763,8 +763,8 @@ if (bannersList) {
               </div>
             </div>
             <div class="actions" style="margin-top:10px">
-              <button class="adm-btn jsCancel">Cancel</button>
               <button class="adm-btn adm-btn--primary jsSave">Save</button>
+              <button class="adm-btn jsCancel">Cancel</button>
             </div>
           `;
 
