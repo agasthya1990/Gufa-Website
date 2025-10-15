@@ -1800,3 +1800,20 @@ button {
 #panel-promotions .adm-pop[data-kind="channel"] .actions {
   flex-wrap: wrap;
   max-width: 100%;
+
+/* === FINAL OVERRIDE — Channel popover compact (Publish-style) === */
+/* Target only the Channel chooser via data-kind set in JS */
+.adm-pop[data-kind="channel"],
+#panel-promotions .adm-pop[data-kind="channel"]{
+  width: clamp(220px, 28vw, 320px) !important;  /* tighter than generic 'sm' */
+  max-width: calc(100vw - 32px) !important;
+  box-sizing: border-box;
+  padding: 12px 14px;                            /* same comfy feel as Publish */
+}
+
+/* Ensure action buttons never widen the compact sheet */
+.adm-pop[data-kind="channel"] .actions,
+#panel-promotions .adm-pop[data-kind="channel"] .actions{
+  flex-wrap: wrap;
+  max-width: 100%;
+}
