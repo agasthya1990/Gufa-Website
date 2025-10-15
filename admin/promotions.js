@@ -406,11 +406,15 @@ if (btnChForm) {
 btnChForm.onclick = (e) => {
   e.preventDefault();
   const pop = document.createElement("div");
-  pop.className = "adm-pop";
-  pop.setAttribute("data-size", "sm"); // <-- make Channel popover compact
-  pop.setAttribute("data-kind", "channel"); // <-- target this popover only
-  pop.innerHTML = `
-
+pop.className = "adm-pop";
+pop.setAttribute("data-size", "sm");          // keep token (no behavior change)
+pop.setAttribute("data-kind", "channel");     // keep token (no behavior change)
+// Force compact sheet exactly like Publish (ignore wider defaults)
+pop.setAttribute(
+  "style",
+  "width:clamp(240px,32vw,360px);max-width:calc(100vw - 32px);padding:12px 14px;"
+);
+pop.innerHTML = `
       <div style="font-weight:600;margin-bottom:6px">Select Channel(s)</div>
       <label class="row" style="display:flex;align-items:center;gap:8px">
         <input type="checkbox" class="jsCh" value="delivery" ${NEW_COUPON_CHANNELS.delivery ? "checked":""}>
