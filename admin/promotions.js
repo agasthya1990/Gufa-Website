@@ -408,6 +408,7 @@ btnChForm.onclick = (e) => {
   const pop = document.createElement("div");
   pop.className = "adm-pop";
   pop.setAttribute("data-size", "sm"); // <-- make Channel popover compact
+  pop.setAttribute("data-kind", "channel"); // <-- target this popover only
   pop.innerHTML = `
 
       <div style="font-weight:600;margin-bottom:6px">Select Channel(s)</div>
