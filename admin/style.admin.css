@@ -823,14 +823,22 @@ button {
   margin-bottom: 10px;
 }
 
-/* Generic two-column form inside Edit popovers:
-   override inline grid sizing to breathe */
+/* Popover form grid: fixed label column + fully flexible field column */
+
 #panel-promotions .adm-pop [style*="grid-template-columns:120px"] {
   display: grid !important;
-  grid-template-columns: 140px minmax(220px, 1fr) !important;
-  gap: 10px !important;
+  grid-template-columns: 120px minmax(0, 1fr) !important; /* field column can shrink */
+  column-gap: 12px !important;
+  row-gap: 10px !important;
   align-items: center !important;
+  max-width: 100%;
+  box-sizing: border-box;
 }
+/* Ensure children in the field column can actually shrink */
+#panel-promotions .adm-pop [style*="grid-template-columns:120px"] > * {
+  min-width: 0;
+}
+
 
 /* Inputs inside popovers */
 #panel-promotions .adm-pop input.adm-input,
@@ -1603,16 +1611,16 @@ button {
   min-width: 0;                 /* lets children shrink within the column */
 }
 
-/* Bars (inputs/selects) fit their column exactly */
+/* Bars (inputs/selects) must never overflow the popover */
 #panel-promotions .adm-pop input.adm-input,
 #panel-promotions .adm-pop select.adm-select {
   display: block;
-  inline-size: 80% !important; /* logical width to avoid rtl/ltr issues */
-  max-inline-size: 80% !important;
+  inline-size: 100% !important;      /* fill the grid column, no spill */
+  max-inline-size: 100% !important;
   height: 36px;
   line-height: 36px;
   padding: 0 10px;
-  margin: 0 !important;         /* kill any theme margins that push outside */
+  margin: 0 !important;
   box-sizing: border-box;
   overflow: hidden;
 }
