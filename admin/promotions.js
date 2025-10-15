@@ -409,10 +409,6 @@ const pop = document.createElement("div");
 pop.className = "adm-pop";
 pop.setAttribute("data-size", "sm");
 pop.setAttribute("data-kind", "channel");
-// Force compact sheet like Publish, with !important so it beats global rules
-pop.style.setProperty("width", "clamp(240px, 32vw, 360px)", "important");
-pop.style.setProperty("max-width", "calc(100vw - 32px)", "important");
-pop.style.setProperty("padding", "12px 14px"); // optional: mirror Publish feel
 pop.innerHTML = `
       <div style="font-weight:600;margin-bottom:6px">Select Channel(s)</div>
       <label class="row" style="display:flex;align-items:center;gap:8px">
