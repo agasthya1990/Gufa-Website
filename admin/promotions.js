@@ -580,7 +580,7 @@ couponsList.querySelectorAll(".jsEditCoupon").forEach(btn => {
           <option value="flat" ${p.type==="flat"?"selected":""}>₹ off</option>
         </select>
         <label>Value</label>
-        <input class="adm-input jsValue" type="number" style="width:3cm" value="${p.value ?? ""}">
+        <input class="adm-input jsValue" type="number" value="${p.value ?? ""}">
         <label>Usage Limit</label>
         <input class="adm-input jsLimit" type="number" value="${p.usageLimit ?? ""}" placeholder="(optional)">
       </div>
