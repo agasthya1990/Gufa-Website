@@ -1743,3 +1743,8 @@ button {
   overflow-wrap: anywhere;
   word-break: break-word;
 }
+
+/* Size tokens for simpler popovers (e.g., Channel picker) */
+.adm-pop[data-size="sm"] {
+  width: clamp(280px, 40vw, 420px);
+}
