@@ -561,8 +561,8 @@ couponsList.querySelectorAll(".jsEditCoupon").forEach(btn => {
       <div style="font-weight:600;margin-bottom:6px">Edit Coupon</div>
       <div style="display:grid;grid-template-columns:120px 1fr;gap:8px;align-items:center">
         <label>Code</label>
-        <input class="adm-input jsCode" value="${(p.code || "")}">
-                <label>Channels</label>
+         <input class="adm-input jsCode" style="width:6cm" value="${(p.code || "")}">
+        <label>Channels</label>
         <div>
           <label style="display:inline-flex;align-items:center;gap:6px;margin-right:10px">
             <input type="checkbox" class="jsChDel" ${chDel ? "checked":""}>
@@ -582,7 +582,7 @@ couponsList.querySelectorAll(".jsEditCoupon").forEach(btn => {
         <label>Value</label>
         <input class="adm-input jsValue" type="number" style="width:3cm" value="${p.value ?? ""}">
         <label>Usage Limit</label>
-        <input class="adm-input jsLimit" type="number" value="${p.usageLimit ?? ""}" placeholder="(optional)">
+        <input class="adm-input jsLimit" type="number" style="width:3cm" value="${p.usageLimit ?? ""}" placeholder="(optional)">
       </div>
       <div class="actions" style="margin-top:10px">
         <button class="adm-btn adm-btn--primary jsSave">Save</button>
@@ -820,7 +820,7 @@ if (bannersList) {
             <div style="font-weight:600;margin-bottom:6px">Edit Banner</div>
             <div style="display:grid;grid-template-columns:120px 1fr;gap:8px;align-items:center">
               <label>Title</label>
-              <input class="adm-input jsTitle" value="${p.title || ""}">
+              <input class="adm-input jsTitle" style="width:5cm" value="${p.title || ""}">
               <label>Linked Coupons</label>
               <div class="list" style="max-height:40vh;overflow:auto;min-width:260px">${rows}</div>
               <label>Publish To</label>
