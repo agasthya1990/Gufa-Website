@@ -1248,3 +1248,36 @@ html, body { overflow-x: hidden; }
   max-width: 320px;  /* match the column max above */
   margin-inline: auto;
 }
+
+/* Prevent any off-screen element from pulling the page left on mobile */
+html, body { overflow-x: hidden; }
+
+/* === Force centered list in PORTRAIT (wins over older mobile rules) === */
+@media (orientation: portrait){
+  body .results{
+    display: grid;
+    justify-items: center;              /* center any child blocks */
+  }
+  body .results .list-grid{
+    /* single centered column with a sane card width */
+    grid-template-columns: repeat(1, minmax(260px, 320px)) !important;
+
+    /* shrink to content and center the grid block, no matter container padding */
+    width: max-content !important;
+    margin-inline: auto !important;
+
+    /* center tracks and items inside the grid area */
+    justify-content: center !important;
+    justify-items: center !important;
+
+    /* keep gaps tidy */
+    gap: 12px !important;
+  }
+
+  /* ensure each card never stretches edge-to-edge */
+  body .results .list-grid .menu-item{
+    max-width: 320px !important;
+    width: 100%;
+    margin-inline: auto !important;
+  }
+}
