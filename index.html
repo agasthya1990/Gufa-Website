@@ -14,23 +14,24 @@
 <body>
   <!-- Header / Navbar -->
   <header class="site-header">
-    <div class="logo">GUFA</div>
+  <div class="logo">GUFA</div>
   <div class="service-mode" role="group" aria-label="Service Mode">
-    <button class="switch delivery on" role="switch" aria-checked="true" aria-label="Delivery">
+    <button id="deliverySwitch" class="switch delivery on" role="switch" aria-checked="true" aria-label="Delivery">
       <span class="track"></span><span class="knob"></span><span class="label">Delivery</span>
     </button>
-    <button class="switch dining" role="switch" aria-checked="false" aria-label="Dining">
+    <button id="diningSwitch" class="switch dining" role="switch" aria-checked="false" aria-label="Dining">
       <span class="track"></span><span class="knob"></span><span class="label">Dining</span>
     </button>
   </div>
-    <nav class="nav-links">
-      <a href="/">Home</a>
-      <a href="#menu">Menu</a>
-      <a href="customer/track.html">Track Order</a>
-      <a href="#contact">Contact</a>
-      <a href="customer/checkout.html" class="cart-link" id="cartLink">Cart (0)</a>
-    </nav>
-  </header>
+
+  <nav class="nav-links">
+    <a href="/">Home</a>
+    <a href="#menu">Menu</a>
+    <a href="customer/track.html">Track Order</a>
+    <a href="#contact">Contact</a>
+    <a href="customer/checkout.html" class="cart-link" id="cartLink">Cart (0)</a>
+  </nav>
+</header>
 
   <!-- Optional promo strip -->
   <section id="promos" aria-label="Promotions"></section>
