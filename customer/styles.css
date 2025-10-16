@@ -961,6 +961,12 @@ button.gold,
   transform-origin: center center;
 }
 
+@keyframes bannerPulse{
+  0%   { transform: scale(0.985); }
+  50%  { transform: scale(1.03); }
+  100% { transform: scale(0.985); }
+}
+
 /* Responsive */
 @media (max-width: 900px){
   .deals-body{
@@ -1023,4 +1029,14 @@ button.gold,
   transform: skewX(-20deg) translateX(-120%);
   animation: bannerShine 2.4s linear infinite;
   border-radius: inherit;
+}
+
+.deal-thumb{
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  border: 0;
+  border-radius: 12px;
+  /* background removed so the PNG shows as-is */
 }
