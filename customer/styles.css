@@ -728,8 +728,8 @@ button.gold,
 }
 
 /* NEW: Delivery (purple) / Dining (green) — exact same behavior as Veg/Non-Veg */
-.switch.delivery.on{ border-color: var(--delivery); }
-.switch.delivery.on .track{ background: #7F1D8D20; border-color: var(--delivery); }
+.switch.delivery.on{ border-color: var(--line); }
+.switch.delivery.on .track{ background: #7F1D8D20; border-color: var(--line); }
 .switch.delivery .label{ color:#4A0E52; }
 
 .switch.dining.on{ border-color: var(--dining); }
