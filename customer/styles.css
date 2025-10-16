@@ -935,7 +935,7 @@ button.gold,
 }
 
 /* ===========================
-   Today’s Deals — banner cards (D1)
+   Today’s Deals — banner cards (image-only, animated)
    =========================== */
 .deals-body{
   display: grid;
@@ -943,29 +943,67 @@ button.gold,
   gap: 12px;
 }
 
+/* Container is clickable, borderless, and clips the shine overlay */
 .deal-banner-card{
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
-  background: #fff;
-  border: 1px solid var(--line);
+  position: relative;
+  display: inline-block;
+  width: 100px;
+  height: 100px;
+  border: 0;
   border-radius: 12px;
-  box-shadow: var(--shadow);
-  text-decoration: none;
-  color: var(--ink);
-}
-.deal-banner-card:hover{ box-shadow: 0 10px 24px rgba(0,0,0,.12); transform: translateY(-1px); }
+  background: transparent;
+  overflow: hidden;
+  cursor: pointer;
+  outline: none;
 
+  /* gentle swell–shrink loop */
+  animation: bannerPulse 2.2s ease-in-out infinite;
+  transform-origin: center center;
+}
+
+/* Remove old hover effects: we rely on the pulse + shine */
+.deal-banner-card:hover{ transform: none; box-shadow: none; }
+
+/* The image itself — no border */
 .deal-thumb{
-  width: 56px; height: 56px; flex: 0 0 56px;
-  border-radius: 8px; border: 1px solid var(--line);
-  object-fit: cover; background:#fff;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  border: 0;
+  border-radius: 12px;
+  background: #fff; /* keeps PNGs crisp on dark UIs */
 }
 
-.deal-meta{ display:flex; flex-direction:column; min-width:0; }
-.deal-title{ font-weight:800; font-size:14px; line-height:1.2; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.deal-caption{ font-size:12px; color: var(--muted); }
+/* Continuous blade-shine overlay across the image */
+.deal-banner-card::after{
+  content:"";
+  position: absolute; inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(120deg,
+      transparent 0%,
+      rgba(255,255,255,.0) 30%,
+      rgba(255,255,255,.35) 50%,
+      rgba(255,255,255,.0) 70%,
+      transparent 100%);
+  transform: skewX(-20deg) translateX(-120%);
+  animation: bannerShine 2.4s linear infinite;
+  border-radius: inherit;
+}
+
+/* Pulse (swell–shrink) */
+@keyframes bannerPulse{
+  0%   { transform: scale(0.985); }
+  50%  { transform: scale(1.03); }
+  100% { transform: scale(0.985); }
+}
+
+/* Shine sweep */
+@keyframes bannerShine{
+  0%   { transform: skewX(-20deg) translateX(-120%); }
+  100% { transform: skewX(-20deg) translateX(120%); }
+}
 
 /* Responsive */
 @media (max-width: 900px){
