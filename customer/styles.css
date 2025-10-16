@@ -1281,15 +1281,12 @@ html, body { overflow-x: hidden; }
     margin-inline: auto !important;
   }
 }
-/* === FINAL OVERRIDE: center the menu list in all viewports === */
 .results .list-grid{
-  grid-template-columns: repeat(auto-fit, minmax(260px, 320px)) !important;
-  justify-content: center !important;
-  width: max-content !important;
-  margin-inline: auto !important;
-}
-/* Ensure the results section centers its child blocks */
-.results{
-  display: grid !important;
-  justify-items: center !important;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 320px));
+  gap: 12px;
+  justify-content: center;
+  width: max-content;
+  margin-inline: auto;
+  transition: opacity .25s ease, transform .25s ease;
 }
