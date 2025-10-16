@@ -405,7 +405,7 @@ footer p{ margin:6px 0; }
   content:"";
   position:absolute;
   top:-10px; left:18px;
-  width:20px; height:18px;
+  width:18px; height:18px;
   background:#fffef6;
   border-left:2px solid #f0d27a;
   border-top:2px solid #f0d27a;
@@ -1275,7 +1275,7 @@ html, body { overflow-x: hidden; }
   /* ensure each card never stretches edge-to-edge */
   body .results .list-grid .menu-item{
     max-width: 320px !important;
-    width: 80%;
+    width: 90%;
     margin-inline: auto !important;
   }
 }
