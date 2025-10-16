@@ -1626,7 +1626,7 @@ html, body { overflow-x: hidden; }
   /* center the toolbar row above the cards */
   .results .topbar{
     justify-content: center;            /* center chips + search row */
-    width: 100%;
+    width: 120%;
     max-width: 360px;                   /* same cap as cards below */
     margin: 0 auto 10px;
   }
