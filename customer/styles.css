@@ -28,8 +28,8 @@ header, main, footer { position: relative; z-index: 1; }
   --nonveg:#ef4444;
   --gold:#f59e0b;
   --shadow:0 6px 18px rgba(0,0,0,.08);
-  --delivery:#6C0E69;
-  --dining:#16959F;
+  --delivery:#7F1D8D;
+  --dining:#16A34A;
 }
 
 /* Header */
@@ -727,13 +727,78 @@ button.gold,
   .service-mode{ gap:8px; }
 }
 
-/* NEW: Delivery/Dining switch variants (static UI only for Slice 1) */
+/* NEW: Delivery (purple) / Dining (green) — exact same behavior as Veg/Non-Veg */
 .switch.delivery.on{ border-color: var(--delivery); }
-.switch.delivery.on .track{ background: color-mix(in srgb, var(--delivery) 20%, #fff); border-color: var(--delivery); }
-.switch.delivery .label{ color: #084e5c; } /* readable on white; adjust if needed */
+.switch.delivery.on .track{ background: #7F1D8D20; border-color: var(--delivery); }
+.switch.delivery .label{ color:#4A0E52; }
 
 .switch.dining.on{ border-color: var(--dining); }
-.switch.dining.on .track{ background: color-mix(in srgb, var(--dining) 20%, #fff); border-color: var(--dining); }
-.switch.dining .label{ color: #3a245f; } /* readable on white; adjust if needed */
+.switch.dining.on .track{ background: #16A34A20; border-color: var(--dining); }
+.switch.dining .label{ color:#065F46; }
 
+/* ===========================
+   Mobile responsive clean-up
+   =========================== */
 
+/* Tablet and down: give the header room to breathe */
+@media (max-width: 900px){
+  .site-header{ padding:10px 14px; }
+  .logo{ font-size:22px; }
+}
+
+/* Small phones: stack sensibly, reduce gaps, avoid crowding */
+@media (max-width: 640px){
+  .site-header{
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+
+  /* If you inserted the new service-mode group in the header */
+  .service-mode{
+    order: 2;               /* show after logo */
+    width: 100%;
+    justify-content: flex-start;
+    gap: 8px;
+  }
+
+  .nav-links{
+    order: 3;               /* nav goes to a new row */
+    width: 100%;
+    display: flex;
+    gap: 10px;
+    overflow-x: auto;       /* allow sideways scroll instead of wrapping into two lines */
+    white-space: nowrap;
+    padding-bottom: 4px;    /* space for the scroll bar on some devices */
+  }
+  .nav-links a{ margin-left: 0; } /* we’re using gap now */
+
+  /* Primary bar: make filters & search stack neatly */
+  .primary-bar{
+    justify-content: center;
+    gap: 10px;
+  }
+  .primary-filters{ justify-content:center; gap:10px; }
+  .searchbar, .searchbar.home, .searchbar.compact{
+    min-width: 0;
+    max-width: 100%;
+    flex: 1 1 100%;
+  }
+
+  /* Buckets and lists: larger touch targets, fewer columns */
+  .bucket-grid{
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .list-grid{
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+}
+
+/* Ultra-small phones (≤ 380px): single column tiles */
+@media (max-width: 380px){
+  .bucket-grid,
+  .list-grid{
+    grid-template-columns: 1fr;
+  }
+}
