@@ -1645,7 +1645,7 @@ html, body { overflow-x: hidden; }
 
   /* card honors the same width; no edge hugging */
   .results .list-grid .menu-item{
-    width: 60%;
+    width: 80%;
     max-width: 360px;
     margin-inline: auto;
   }
