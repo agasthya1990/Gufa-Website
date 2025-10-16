@@ -969,13 +969,55 @@ function initServiceMode(){
   del?.addEventListener("click", () => setServiceMode("delivery"));
   din?.addEventListener("click", () => setServiceMode("dining"));
 
-  // Keep multiple tabs in sync
+    // Keep multiple tabs in sync
+  
   window.addEventListener("storage", (e) => {
-    if (e.key === SERVICE_MODE_KEY) reflectServiceMode(getServiceMode());
+    if (e.key === SERVICE_MODE_KEY) {
+      const mode = getServiceMode();
+      reflectServiceMode(mode);
+      // NEW: also broadcast so onChange() subscribers in other tabs get notified
+      window.dispatchEvent(new CustomEvent("serviceMode:changed", { detail: { mode } }));
+    }
   });
 }
 
-  
+  /* ---------- Service Mode API (Slice 3) ---------- */
+/**
+ * Public, decoupled API:
+ *   - GUFA.serviceMode.get()        -> "delivery" | "dining"
+ *   - GUFA.serviceMode.set(mode)    -> sets + persists + broadcasts
+ *   - GUFA.serviceMode.onChange(fn) -> subscribe to changes, returns unsubscribe()
+ */
+(function setupServiceModeAPI(){
+  const w = window;
+  w.GUFA = w.GUFA || {};
+
+  // Reuse existing object if present; otherwise create.
+  const api = w.GUFA.serviceMode || {};
+
+  /** Return current mode immediately. */
+  api.get = function get(){ return getServiceMode(); };
+
+  /** Set mode using Slice-2 setter (handles storage, reflect, event). */
+  api.set = function set(mode){ setServiceMode(mode); };
+
+  /**
+   * Subscribe to mode changes. Handler receives {mode}.
+   * Returns an unsubscribe function.
+   */
+  api.onChange = function onChange(handler){
+    if (typeof handler !== "function") return () => {};
+    const fn = (e) => {
+      const mode = (e && e.detail && e.detail.mode) || getServiceMode();
+      try { handler({ mode }); } catch {}
+    };
+    w.addEventListener("serviceMode:changed", fn);
+    return () => w.removeEventListener("serviceMode:changed", fn);
+  };
+
+  w.GUFA.serviceMode = api;
+})();
+
  /* ---------- Boot ---------- */
 async function boot(){
   showHome(); // renders tiles on load if sections present
