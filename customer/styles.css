@@ -171,25 +171,33 @@ main { max-width:1200px; margin:18px auto 32px; padding:0 16px; }
 .results{
   margin-top: 6px;
   animation: fadeIn .22s ease both;
+  display: grid;
+  justify-items: center; /* ensures any inner content block sits centered */
 }
+
 @keyframes fadeIn { from{opacity:.01; transform: translateY(2px);} to{opacity:1; transform:none;} }
 
 .results .topbar{
   display:flex; gap:10px; align-items:center; justify-content:flex-start; flex-wrap:wrap;
   margin: 4px 0 12px;
 }
+
 .results .topbar .searchbar{ margin-left:auto; }
+
 .results .list-grid{
   display: grid;
-  /* cap each column so cards don’t stretch edge-to-edge on phones */
+  /* keep cards narrow; allow 1–n columns without stretching */
   grid-template-columns: repeat(auto-fit, minmax(260px, 320px));
   gap: 12px;
 
-  /* hard-center the tracks inside the container */
+  /* center the grid AND prevent “left lean” due to container padding */
   justify-content: center;
+  width: max-content;
+  margin-inline: auto;
 
   transition: opacity .25s ease, transform .25s ease;
 }
+
 
 .results .list-grid.fade-out{ opacity:.15; transform: scale(0.99); }
 .results .list-grid.fade-in{ opacity:1; transform: scale(1); }
@@ -272,8 +280,14 @@ footer p{ margin:6px 0; }
 
 /* Responsive */
 @media (max-width: 640px){
-  .results .list-grid { grid-template-columns: 1fr; }
+  .results .list-grid{
+    grid-template-columns: repeat(1, minmax(260px, 320px));
+    justify-content: center;
+    width: max-content;
+    margin-inline: auto;
+  }
 }
+
 
 /* Reduced motion */
 @media (prefers-reduced-motion: reduce){
@@ -799,10 +813,14 @@ button.gold,
   .bucket-grid{
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  .list-grid{
+   
+.list-grid{
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(1, minmax(260px, 320px));
     gap: 10px;
+    justify-content: center;
+    width: max-content;
+    margin-inline: auto;
   }
 }
 
