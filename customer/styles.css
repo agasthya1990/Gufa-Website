@@ -1295,66 +1295,62 @@ html, body { overflow-x: hidden; }
    Center "FOOD COURSES" cards
    =========================== */
 
-/* 1) Center the section’s content under the heading */
+/* Center "FOOD COURSES" cards */
 #coursesSection{
-  display: grid;
-  justify-items: center;          /* centers the grid block itself */
+  /* normal block flow; title already centered by your heading styles */
 }
 
-/* 2) Center the grid tracks + shrink grid to its content width */
 #coursesSection .bucket-grid{
-  justify-content: center;        /* center tracks inside the grid */
-  justify-items: center;          /* center each card in its cell */
-  width: max-content;             /* grid is only as wide as its columns */
-  margin-inline: auto;            /* center that grid block */
-  gap: 6px;                      /* keep your spacing tidy */
-}
-
-/* 3) Portrait phones: keep a single centered column (nice readable width) */
-@media (orientation: portrait){
-  #coursesSection .bucket-grid{
-    grid-template-columns: repeat(1, minmax(260px, 320px));
-    width: max-content;
-    margin-inline: auto;
-  }
-  /* ensure a card never stretches edge-to-edge */
-  #coursesSection .bucket-grid > *{
-    max-width: 300px;
-    width: 70%;
-    margin-inline: auto;
-  }
-}
-
-/* ===============================
-   Center "FOOD CATEGORIES" cards
-   =============================== */
-
-/* 1) Center the section’s content under the heading */
-#categoriesSection{
   display: grid;
-  justify-items: center;          /* centers the grid block itself */
+  gap: 12px;
+
+  /* DESKTOP/TABLET: centered container that can breathe */
+  width: 100%;
+  max-width: 1100px;          /* adjust if you want wider/narrower */
+  margin: 0 auto;             /* centers the container */
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  justify-content: center;    /* centers tracks if there’s extra space */
 }
 
-/* 2) Center the grid tracks + shrink grid to its content width */
-#categoriesSection .bucket-grid{
-  justify-content: center;        /* center tracks inside the grid */
-  justify-items: center;          /* center each card in its cell */
-  width: max-content;             /* grid is only as wide as its columns */
-  margin-inline: auto;            /* center that grid block */
-  gap: 6px;                       /* tidy spacing (same as courses) */
-}
-
-/* 3) Portrait phones: single centered column */
-@media (orientation: portrait){
-  #categoriesSection .bucket-grid{
-    grid-template-columns: repeat(1, minmax(260px, 320px));
-    width: max-content;
+/* PHONE (portrait): single centered column, readable width */
+@media (max-width: 640px){
+  #coursesSection .bucket-grid{
+    max-width: 320px;
+    grid-template-columns: 1fr;
+  }
+  #coursesSection .bucket-grid > *{
+    max-width: 320px;
+    width: 100%;
     margin-inline: auto;
   }
-  /* ensure a card never stretches edge-to-edge */
+}
+
+/* Center "FOOD CATEGORIES" cards */
+#categoriesSection{
+  /* normal block flow */
+}
+
+#categoriesSection .bucket-grid{
+  display: grid;
+  gap: 12px;
+
+  /* DESKTOP/TABLET: centered container */
+  width: 100%;
+  max-width: 1100px;          /* same cap as courses for symmetry */
+  margin: 0 auto;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  justify-content: center;
+}
+
+/* PHONE (portrait): single centered column */
+@media (max-width: 640px){
+  #categoriesSection .bucket-grid{
+    max-width: 320px;
+    grid-template-columns: 1fr;
+  }
   #categoriesSection .bucket-grid > *{
-    max-width: 300px;
-    width: 70%;
+    max-width: 320px;
+    width: 100%;
     margin-inline: auto;
   }
 }
