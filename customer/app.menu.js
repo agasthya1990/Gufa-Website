@@ -608,7 +608,8 @@ if (!host.dataset.bannerClicks){
   }, false);
   host.dataset.bannerClicks = "1";
 }
-
+}
+  
   /* ===== D2 — Banner → filtered items list (file-scope) ===== */
 let ACTIVE_BANNER = null;  // {id, title, linkedCouponIds, ...}
 
