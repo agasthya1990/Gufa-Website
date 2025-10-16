@@ -563,6 +563,41 @@ function searchHaystack(it){
     document.getElementById("menuTitle")?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
+  /* ---------- Promotions (D1) ---------- */
+let COUPONS = new Map();        // id -> { type: 'percent'|'flat', value, active }
+let BANNERS = [];               // [{ id, title, imageUrl, linkedCouponIds:[], targets:{delivery,dining}, active }]
+
+function bannerMatchesMode(b){
+  const m = (window.GUFA?.serviceMode?.get?.() || "delivery");
+  const t = b?.targets || {};
+  const legacy = (b?.channel || "").toLowerCase();
+  return m === "delivery"
+    ? (t.delivery === true || legacy === "delivery" || legacy === "both")
+    : (t.dining === true   || legacy === "dining"   || legacy === "both");
+}
+
+function renderDeals(){
+  const host = document.querySelector("#todays-deals .deals-body");
+  if (!host) return;
+
+  const list = (BANNERS || []).filter(b => b.active !== false && bannerMatchesMode(b));
+  if (!list.length){ host.innerHTML = ""; return; }
+
+  host.innerHTML = list.map(b => {
+    const title = (b.title || "Deal").trim();
+    const img   = b.imageUrl || "";
+    return `
+      <div class="deal-banner-card" data-banner-id="${b.id}" aria-label="${title}">
+        <img class="deal-thumb" src="${img}" alt="" width="56" height="56" loading="lazy"/>
+        <div class="deal-meta">
+          <div class="deal-title">${title}</div>
+          <div class="deal-caption">${(b.linkedCouponIds?.length||0)} coupon${(b.linkedCouponIds?.length||0)===1?"":"s"}</div>
+        </div>
+      </div>
+    `;
+  }).join("");
+}
+
   /* ---------- Live data (use window.db) ---------- */
   async function listenAll() {
     const { collection, onSnapshot, query, orderBy } =
@@ -642,6 +677,7 @@ function searchHaystack(it){
         if (view === "home") renderDeals();
       });
     } catch {}
+  }
 
   /* ---------- Events ---------- */
   // Tile clicks => list view
@@ -702,6 +738,7 @@ if (isOpen) {
   if (addBtn) addBtn.disabled = true;
 
   // Optional: show variant info
+  
   const vwrap = pop.querySelector(".addon-variants");
   if (vwrap) {
     vwrap.hidden = false;
@@ -718,6 +755,7 @@ if (isOpen) {
 });
 
 // Add-on stepper (+/−): STAGE only (no Cart writes yet)
+  
 document.addEventListener("click", (e) => {
   const inc = e.target.closest(".addon-inc");
   const dec = e.target.closest(".addon-dec");
@@ -758,6 +796,7 @@ document.addEventListener("click", (e) => {
   if (addBtn) addBtn.disabled = !hasChange;
 });
 
+  
 // Close add-ons popover when clicking outside
 document.addEventListener("click", (e) => {
   if (!e.target.closest(".addons-popover") && !e.target.closest(".addons-btn")) {
@@ -785,7 +824,6 @@ document.addEventListener("keydown", (e) => {
     });
   }
 });
-
 
   
 // [Add to Purchase]: commit staged add-ons to Cart (adds & removals), then close
@@ -1063,6 +1101,12 @@ async function boot(){
   await listenAll();
 }
 document.addEventListener("DOMContentLoaded", boot);
+
+// D1: re-filter banners when service mode changes
+window.addEventListener("serviceMode:changed", () => {
+  if (view === "home") renderDeals();
+});
+
 
   // Re-render deals when service mode switches (Delivery <-> Dining)
 window.addEventListener("serviceMode:changed", () => {
