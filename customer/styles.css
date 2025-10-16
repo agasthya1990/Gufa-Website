@@ -934,3 +934,43 @@ button.gold,
   .pow-text{ letter-spacing: .2px; }
 }
 
+/* ===========================
+   Today’s Deals — banner cards (D1)
+   =========================== */
+.deals-body{
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.deal-banner-card{
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  text-decoration: none;
+  color: var(--ink);
+}
+.deal-banner-card:hover{ box-shadow: 0 10px 24px rgba(0,0,0,.12); transform: translateY(-1px); }
+
+.deal-thumb{
+  width: 56px; height: 56px; flex: 0 0 56px;
+  border-radius: 8px; border: 1px solid var(--line);
+  object-fit: cover; background:#fff;
+}
+
+.deal-meta{ display:flex; flex-direction:column; min-width:0; }
+.deal-title{ font-weight:800; font-size:14px; line-height:1.2; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.deal-caption{ font-size:12px; color: var(--muted); }
+
+/* Responsive */
+@media (max-width: 900px){
+  .deals-body{ grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 480px){
+  .deals-body{ grid-template-columns: 1fr; }
+}
