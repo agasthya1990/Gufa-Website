@@ -1053,12 +1053,16 @@ button.gold,
 @media (max-width: 640px){
   .deals-body{ grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
-
 .deals-body{
   display: grid;
   grid-template-columns: repeat(6, 72px); /* six fixed squares */
   gap: 6px;
-  justify-content: center;                /* center the row */
+
+  /* hard-center the whole grid block */
+  width: max-content;          /* grid shrinks to its actual content width */
+  margin-inline: auto;         /* centers that block within the section */
+  justify-content: center;     /* centers tracks inside the grid area */
+  justify-items: center;       /* centers each banner inside its cell */
 }
 
 .deal-banner-card{
@@ -1103,3 +1107,4 @@ button.gold,
   .deals-body{ grid-template-columns: repeat(2, 60px); gap: 6px; }
   .deal-banner-card{ width: 60px; height: 60px; border-radius: 7px; }
 }
+
