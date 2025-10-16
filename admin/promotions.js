@@ -740,9 +740,9 @@ function buildAutoBannerBlob(title){
     canvas.width = W; canvas.height = H;
     const ctx = canvas.getContext("2d");
 
-    // background (white to help PNG on dark UIs)
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0,0,W,H);
+  // transparent background so the page shows through
+   ctx.clearRect(0,0,W,H);
+
 
     // robust red starburst (offer sticker style)
     const cx = W/2, cy = H/2;
@@ -763,12 +763,6 @@ function buildAutoBannerBlob(title){
       ctx.fillText(lines[0], cx, cy-8);
       ctx.fillText(lines[1], cx, cy+10);
     }
-
-    // blade shine overlay
-    ctx.save();
-    ctx.translate(W*0.05, H*0.15);
-    bladeShine(ctx, W, H);
-    ctx.restore();
 
     canvas.toBlob((blob)=>{
       if (!blob) return reject(new Error("Failed to generate banner image"));
