@@ -30,6 +30,10 @@ header, main, footer { position: relative; z-index: 1; }
   --shadow:0 6px 18px rgba(0,0,0,.08);
   --delivery:#7F1D8D;
   --dining:#16A34A;
+  --deals-brown: #8B4513;       /* sparkling brown */
+  --deals-brown-dark: #4E2608;  /* darker robust brown for POW fill */
+  --deals-gold:  #FFD700;       /* golden letters */
+
 }
 
 /* Header */
@@ -843,4 +847,81 @@ button.gold,
 /* Empty body placeholder—keeps rhythm without showing banners yet */
 .deals-body{
   min-height: 8px;     /* tiny spacer so the section breathes */
+}
+
+/* ===========================
+   Today’s Deals POW heading
+   =========================== */
+
+/* keep the same size as other section titles; no new font-size here */
+.deals-title{
+  margin: 8px 0 14px; /* same rhythm as your other titles */
+}
+
+/* The jagged "pow" burst container */
+.pow-burst{
+  display: inline-block;
+  position: relative;
+  padding: 8px 14px;
+  background: var(--deals-brown-dark);
+  color: var(--deals-gold);
+  /* 12-point starburst */
+  clip-path: polygon(
+    50% 0%, 60% 10%, 75% 3%, 82% 18%, 97% 12%, 92% 30%,
+    100% 40%, 88% 48%, 100% 60%, 86% 65%, 95% 82%, 78% 80%,
+    80% 97%, 62% 90%, 55% 100%, 45% 90%, 30% 97%, 28% 80%,
+    12% 82%, 18% 65%, 0% 60%, 12% 48%, 0% 40%, 10% 30%,
+    3% 12%, 18% 18%, 25% 3%, 40% 10%
+  );
+  border: 2px solid var(--deals-brown);
+  box-shadow:
+    0 3px 0 rgba(0,0,0,.08),
+    0 6px 18px rgba(0,0,0,.12);
+}
+
+/* A subtle outer stroke/glow for comic feel */
+.pow-burst::before{
+  content:"";
+  position:absolute; inset:-4px;
+  clip-path: inherit;
+  border: 2px solid #20140a66; /* soft outer outline */
+  pointer-events:none;
+}
+
+/* The text with a blade-shine sweep */
+.pow-text{
+  position: relative;
+  display: inline-block;
+  font-weight: 900;
+  letter-spacing: .3px;
+  text-transform: none; /* keep your casing */
+}
+
+/* Blade shine: diagonal sweep from left (T) to right (…s) in a loop */
+.pow-text::after{
+  content:"";
+  position:absolute; top:0; left:-60%;
+  height: 100%;
+  width: 40%;
+  background:
+    linear-gradient(120deg,
+      transparent 0%,
+      rgba(255,255,255,.25) 40%,
+      rgba(255,255,255,.85) 50%,
+      rgba(255,255,255,.25) 60%,
+      transparent 100%);
+  transform: skewX(-20deg);
+  mix-blend-mode: screen;
+  animation: bladeShine 2.4s linear infinite;
+}
+
+@keyframes bladeShine{
+  0%   { left:-60%; }
+  100% { left:120%; }
+}
+
+/* Responsive touch: keep the POW readable on small screens */
+@media (max-width: 480px){
+  .pow-burst{ padding: 6px 10px; }
+  .pow-text{ letter-spacing: .2px; }
 }
