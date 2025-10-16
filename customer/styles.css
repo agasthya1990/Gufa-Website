@@ -1626,7 +1626,7 @@ html, body { overflow-x: hidden; }
   /* center the toolbar row above the cards */
   .results .topbar{
     justify-content: center;            /* center chips + search row */
-    width: 120%;
+    width: 100%;
     max-width: 360px;                   /* same cap as cards below */
     margin: 0 auto 10px;
   }
@@ -1636,7 +1636,7 @@ html, body { overflow-x: hidden; }
     grid-template-columns: 1fr;         /* one column */
     gap: 14px;
 
-    width: 120%;
+    width: 100%;
     max-width: 360px;                   /* readable card width on phones */
     padding: 0 12px;                    /* equal gutters left/right */
     margin: 0 auto;                     /* center the whole block */
@@ -1645,7 +1645,7 @@ html, body { overflow-x: hidden; }
 
   /* card honors the same width; no edge hugging */
   .results .list-grid .menu-item{
-    width: 90%;
+    width: 60%;
     max-width: 360px;
     margin-inline: auto;
   }
