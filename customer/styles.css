@@ -824,3 +824,23 @@ button.gold,
   max-width: 5cm;
   flex: 0 0 5cm;  /* prevents stretching so the pills fit cleanly */
 }
+
+/* ===========================
+   Today’s Deals (UI only)
+   =========================== */
+.deals-section{
+  margin-top: 24px;
+}
+
+/* If you already style section titles elsewhere, skip this */
+.section-title{
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--ink);
+  margin: 8px 0 14px;
+}
+
+/* Empty body placeholder—keeps rhythm without showing banners yet */
+.deals-body{
+  min-height: 8px;     /* tiny spacer so the section breathes */
+}
