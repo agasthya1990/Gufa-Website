@@ -1290,3 +1290,52 @@ html, body { overflow-x: hidden; }
   margin-inline: auto;
   transition: opacity .25s ease, transform .25s ease;
 }
+
+/* =========================================================
+   FINAL OVERRIDE — Center all menu content under section titles
+   Works across: Today’s Deals, Food Courses, Food Categories.
+   ========================================================= */
+
+/* 1) Every section centers its immediate children (titles, grids, etc.) */
+.section{
+  display: grid !important;
+  justify-items: center !important;
+}
+
+/* 2) The three grids (deals, courses, categories, results list) shrink to content
+      and sit perfectly centered under the section titles */
+#todays-deals .deals-body,
+.section > .bucket-grid,
+.section > .list-grid{
+  /* make the grid block itself as wide as its tracks, then center it */
+  width: max-content !important;
+  margin-inline: auto !important;
+
+  /* center tracks and items inside the grid area */
+  justify-content: center !important;
+  justify-items: center !important;
+}
+
+/* 3) Portrait mode: stop "full-width 1fr" stretching that causes the left lean */
+@media (orientation: portrait){
+  .section > .list-grid{
+    /* single, centered column in portrait (adjust 260/320 if you like) */
+    grid-template-columns: repeat(1, minmax(260px, 320px)) !important;
+    gap: 12px !important;
+  }
+  .section > .bucket-grid{
+    /* for course/category tiles; keep them centered in portrait */
+    grid-auto-rows: auto;
+    /* use your existing column size; force centering without stretching */
+    justify-content: center !important;
+  }
+  /* keep each card from stretching edge-to-edge */
+  .section > .list-grid .menu-item{
+    max-width: 320px !important;
+    width: 100% !important;
+    margin-inline: auto !important;
+  }
+}
+
+/* 4) Guard against any horizontal overflow pulling the page left */
+html, body{ overflow-x: hidden !important; }
