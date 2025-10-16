@@ -1275,7 +1275,7 @@ html, body { overflow-x: hidden; }
   /* ensure each card never stretches edge-to-edge */
   body .results .list-grid .menu-item{
     max-width: 320px !important;
-    width: 95%;
+    width: 90%;
     margin-inline: auto !important;
   }
 }
