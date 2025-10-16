@@ -1574,3 +1574,87 @@ html, body { overflow-x: hidden; }
     margin: 8px 0 0 0;
   }
 }
+
+/* More air between Food Courses and Food Categories */
+#coursesSection{ 
+  margin-bottom: 36px !important;  /* was ~18px via .bucket-group */
+}
+#categoriesSection{
+  margin-top: 8px;                 /* keep a small top to balance the heading */
+}
+
+/* Keep *everything* in the results topbar vertically aligned */
+.results .topbar > *{
+  align-self: center;
+}
+
+/* Make pills/switch/back share the same control height */
+.results .topbar .pill-toggle,
+.results .topbar .back-btn,
+.results .topbar .switch{
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+}
+
+/* Keep the search in the same row, same height as chips, fixed 5 cm width */
+.results .topbar .searchbar.compact{
+  display: inline-flex;
+  align-items: center;
+  min-width: 5cm;
+  max-width: 5cm;
+  flex: 0 0 5cm;
+  margin-left: 10px;               /* small gap after “Food Categories” */
+}
+
+/* Make the input match the chip height */
+.results .topbar .searchbar.compact input{
+  height: 34px;
+  padding: 6px 36px 6px 12px;      /* leaves room for the magnifier button */
+  box-sizing: border-box;
+  line-height: 1;                  /* avoids extra vertical padding */
+}
+
+/* Ensure the magnifier stays centered against the shorter input */
+.results .topbar .searchbar.compact .searchbtn{
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+/* ==========================================
+   PHONE (portrait & small screens): center the whole list,
+   give cards a sane width, and equal gutters on both sides
+   ========================================== */
+@media (max-width: 640px){
+  /* Center the toolbar row above the cards too */
+  .results .topbar{
+    width: 100%;
+    max-width: 360px;                 /* readable row width on phones */
+    margin: 0 auto 10px;              /* center under section pills */
+  }
+
+  /* Center the grid container and prevent edge-to-edge stretch */
+  .results .list-grid{
+    grid-template-columns: 1fr;       /* one column */
+    gap: 12px;
+    width: calc(100% - 24px);         /* 12px gutter on both sides */
+    max-width: 360px;                 /* cap width so it doesn't look bulky */
+    margin: 0 auto;                   /* center the grid block */
+    justify-content: center;          /* belt-and-suspenders centering */
+  }
+
+  /* Make the card itself honor the same width and sit dead-center */
+  .results .list-grid .menu-item{
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 360px;
+    margin-inline: auto;              /* keeps it centered if any inner rule fights */
+  }
+
+  /* Optional: add a little breathing room between cards */
+  .results{ margin-top: 16px; }
+  .results .list-grid{ row-gap: 16px; }
+}
+
+/* Prevent any horizontal pull that can skew alignment visually */
+html, body { overflow-x: hidden; }
