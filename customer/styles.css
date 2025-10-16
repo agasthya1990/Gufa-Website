@@ -1650,3 +1650,50 @@ html, body { overflow-x: hidden; }
     margin-inline: auto;
   }
 }
+
+/* === Align search with chips in the same row (results top bar) === */
+.results .topbar{
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: center;             /* center the whole row on all screens */
+}
+
+/* remove the push-to-right and set explicit size to match chips */
+.results .topbar .searchbar{
+  margin-left: 0 !important;           /* cancel the earlier auto push */
+  display: inline-flex;
+  align-items: center;
+  height: 34px;                        /* same as pill height */
+  min-width: 5cm;                      /* your spec */
+  max-width: 5cm;
+  flex: 0 0 5cm;
+}
+
+/* input sits on the same baseline as the chips */
+.results .topbar .searchbar input{
+  height: 34px;
+  line-height: 1;
+  padding: 6px 36px 6px 12px;
+  box-sizing: border-box;
+}
+
+/* ensure the magnifier stays vertically centered on shorter input */
+.results .topbar .searchbar .searchbtn{
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+/* very small phones: if it must wrap, keep it neat */
+@media (max-width: 480px){
+  .results .topbar{
+    max-width: 360px;
+    margin-inline: auto;
+  }
+  .results .topbar .searchbar{
+    flex: 1 1 100%;
+    min-width: 100%;
+    max-width: 100%;
+  }
+}
