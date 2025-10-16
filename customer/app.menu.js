@@ -587,16 +587,13 @@ function renderDeals(){
     const title = (b.title || "Deal").trim();
     const img   = b.imageUrl || "";
     return `
-      <div class="deal-banner-card" data-banner-id="${b.id}" aria-label="${title}">
-        <img class="deal-thumb" src="${img}" alt="" width="56" height="56" loading="lazy"/>
-        <div class="deal-meta">
-          <div class="deal-title">${title}</div>
-          <div class="deal-caption">${(b.linkedCouponIds?.length||0)} coupon${(b.linkedCouponIds?.length||0)===1?"":"s"}</div>
-        </div>
-      </div>
+      <button class="deal-banner-card" data-banner-id="${b.id}" aria-label="${title}" title="${title}">
+        <img class="deal-thumb" src="${img}" alt="" loading="lazy"/>
+      </button>
     `;
   }).join("");
 }
+
 
   /* ---------- Live data (use window.db) ---------- */
   async function listenAll() {
