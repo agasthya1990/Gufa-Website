@@ -925,13 +925,65 @@ document.addEventListener("click", (e) => {
   e.preventDefault(); window.location.href = "checkout.html";
 });
 
-  /* ---------- Boot ---------- */
-  async function boot(){
-    showHome(); // renders tiles on load if sections present
-    updateCartLink();
-    await listenAll();
-  }
-  document.addEventListener("DOMContentLoaded", boot);
+/* ---------- Service Mode (Slice 2) ---------- */
+const SERVICE_MODE_KEY = "gufa:serviceMode";
+
+/** Read current mode (default 'delivery'). */
+function getServiceMode(){
+  try {
+    const v = localStorage.getItem(SERVICE_MODE_KEY);
+    return (v === "dining" || v === "delivery") ? v : "delivery";
+  } catch { return "delivery"; }
+}
+
+/** Reflect mode to UI switches (class + aria). Safe if elements are missing. */
+function reflectServiceMode(mode){
+  const del = document.getElementById("deliverySwitch");
+  const din = document.getElementById("diningSwitch");
+  if (!del || !din) return;
+
+  const isDelivery = (mode === "delivery");
+  del.classList.toggle("on",  isDelivery);
+  din.classList.toggle("on", !isDelivery);
+  del.setAttribute("aria-checked", String(isDelivery));
+  din.setAttribute("aria-checked", String(!isDelivery));
+}
+
+/** Persist + reflect + broadcast (decoupled for downstream listeners). */
+function setServiceMode(mode){
+  const next = (mode === "dining") ? "dining" : "delivery";
+  try { localStorage.setItem(SERVICE_MODE_KEY, next); } catch {}
+  reflectServiceMode(next);
+  // Notify any feature that cares (promos, checkout, badges… later slices)
+  window.dispatchEvent(new CustomEvent("serviceMode:changed", { detail:{ mode: next } }));
+}
+
+/** Wire up click handlers + storage sync across tabs. */
+function initServiceMode(){
+  // Initial reflect from storage (or default).
+  reflectServiceMode(getServiceMode());
+
+  const del = document.getElementById("deliverySwitch");
+  const din = document.getElementById("diningSwitch");
+
+  del?.addEventListener("click", () => setServiceMode("delivery"));
+  din?.addEventListener("click", () => setServiceMode("dining"));
+
+  // Keep multiple tabs in sync
+  window.addEventListener("storage", (e) => {
+    if (e.key === SERVICE_MODE_KEY) reflectServiceMode(getServiceMode());
+  });
+}
+
+  
+ /* ---------- Boot ---------- */
+async function boot(){
+  showHome(); // renders tiles on load if sections present
+  updateCartLink();
+  initServiceMode();
+  await listenAll();
+}
+document.addEventListener("DOMContentLoaded", boot);
 
  // Keep header & badges in sync whenever the cart store updates
 window.addEventListener("cart:update", () => {
