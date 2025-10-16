@@ -1053,3 +1053,52 @@ button.gold,
 @media (max-width: 640px){
   .deals-body{ grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+.deals-body{
+  display: grid;
+  grid-template-columns: repeat(6, 72px); /* six fixed squares */
+  gap: 6px;                                 /* tighter spacing */
+  justify-content: start;                   /* left-align the row */
+}
+.deal-banner-card{
+  position: relative;
+  display: inline-block;
+  width: 72px;
+  height: 72px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  overflow: hidden;
+  cursor: pointer;
+  outline: none;
+
+  /* gentle swell–shrink loop */
+  animation: bannerPulse 2.2s ease-in-out infinite;
+  transform-origin: center center;
+}
+.deal-thumb{
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  border: 0;
+  border-radius: 9px;
+}
+@media (max-width: 1200px){
+  .deals-body{ grid-template-columns: repeat(5, 68px); gap: 6px; }
+  .deal-banner-card{ width: 68px; height: 68px; border-radius: 8px; }
+}
+@media (max-width: 1024px){
+  .deals-body{ grid-template-columns: repeat(4, 68px); gap: 6px; }
+}
+@media (max-width: 768px){
+  .deals-body{ grid-template-columns: repeat(3, 64px); gap: 6px; }
+  .deal-banner-card{ width: 64px; height: 64px; }
+}
+@media (max-width: 640px){
+  .deals-body{ grid-template-columns: repeat(2, 64px); gap: 6px; }
+}
+@media (max-width: 380px){
+  .deals-body{ grid-template-columns: repeat(2, 60px); gap: 6px; }
+  .deal-banner-card{ width: 60px; height: 60px; border-radius: 7px; }
+}
