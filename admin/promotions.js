@@ -14,10 +14,11 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js";
 
 // ===== Config (unchanged) =====
-const BANNER_W = 200;
-const BANNER_H = 50;
-const BANNER_MIME = "image/jpeg";
-const BANNER_QUALITY = 0.85;
+/* Auto-built badge config */
+const BANNER_W = 100;
+const BANNER_H = 100;
+const BANNER_MIME = "image/png";   // sharper text/edges
+const BANNER_QUALITY = 0.92;       // used if MIME supported
 const MAX_UPLOAD_MB = 10;
 const BANNERS_DIR = "promoBanners";
 
@@ -237,8 +238,7 @@ export function initPromotions() {
 <div id="couponsList" style="margin-bottom:12px"></div>
 <h3>Banners</h3>
 <form id="newBannerForm" class="adm-grid adm-grid-banners" style="margin-bottom:8px">
-  <div><input id="bannerFile" class="adm-file" type="file" accept="image/*" /></div>
-  <div><input id="bannerTitle" class="adm-input" placeholder="Title" /></div>
+  <div><input id="bannerTitle" class="adm-input" placeholder="Banner Title (auto image)" /></div>
   <div id="newBannerLinkedCell">
     <div class="inline-tools">
       <button type="button" class="adm-btn chip-btn jsNewLinkCoupons">Link Coupons</button>
@@ -252,7 +252,7 @@ export function initPromotions() {
     </div>
   </div>
   <div class="adm-actions">
-  <button type="submit" class="adm-btn adm-btn--primary chip-btn">Upload</button>
+    <button type="submit" class="adm-btn adm-btn--primary chip-btn">Create</button>
   </div>
 </form>
 <div id="bannersList" style="margin-bottom:12px"></div>
@@ -679,6 +679,104 @@ NEW_COUPON_CHANNELS = { delivery: true, dining: false };
     };
   }
 
+  /* ===== Auto Banner Builder (100x100) ===== */
+function drawStarburst(ctx, cx, cy, rOuter, rInner, points, fill, stroke){
+  ctx.save();
+  ctx.beginPath();
+  const step = Math.PI / points;
+  for (let i = 0; i < 2 * points; i++){
+    const r = (i % 2 === 0) ? rOuter : rInner;
+    const a = i * step - Math.PI / 2; // start at top
+    const x = cx + r * Math.cos(a);
+    const y = cy + r * Math.sin(a);
+    (i === 0) ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+  }
+  ctx.closePath();
+  ctx.fillStyle = fill;
+  ctx.fill();
+  if (stroke){
+    ctx.lineWidth = 2.5;
+    ctx.strokeStyle = stroke;
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function bladeShine(ctx, w, h){
+  // diagonal soft sweep
+  const grad = ctx.createLinearGradient(-w*0.5, 0, w*1.2, h);
+  grad.addColorStop(0.00, "rgba(255,255,255,0)");
+  grad.addColorStop(0.45, "rgba(255,255,255,0.18)");
+  grad.addColorStop(0.50, "rgba(255,255,255,0.80)");
+  grad.addColorStop(0.55, "rgba(255,255,255,0.18)");
+  grad.addColorStop(1.00, "rgba(255,255,255,0)");
+  ctx.save();
+  ctx.globalCompositeOperation = "screen";
+  ctx.fillStyle = grad;
+  ctx.translate(0,0);
+  ctx.rotate(-12 * Math.PI/180);
+  ctx.fillRect(-w, -h*0.3, w*2.2, h*0.8);
+  ctx.restore();
+}
+
+function fitTitleOnTwoLines(ctx, text, maxWidth){
+  // try single line, else split near middle
+  if (ctx.measureText(text).width <= maxWidth) return [text];
+  const parts = text.split(" ");
+  if (parts.length === 1){
+    // hard split
+    const mid = Math.ceil(text.length/2);
+    return [text.slice(0,mid), text.slice(mid)];
+  }
+  // split by words roughly in half
+  const half = Math.ceil(parts.length/2);
+  return [parts.slice(0,half).join(" "), parts.slice(half).join(" ")];
+}
+
+function buildAutoBannerBlob(title){
+  return new Promise((resolve, reject) => {
+    const W = BANNER_W, H = BANNER_H;
+    const canvas = document.createElement("canvas");
+    canvas.width = W; canvas.height = H;
+    const ctx = canvas.getContext("2d");
+
+    // background (white to help PNG on dark UIs)
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0,0,W,H);
+
+    // robust red starburst (offer sticker style)
+    const cx = W/2, cy = H/2;
+    drawStarburst(ctx, cx, cy, Math.min(W,H)*0.48, Math.min(W,H)*0.36, 24, "#B30021", "#6E0014");
+
+    // gold title (same vibe as Today’s Deals)
+    ctx.fillStyle = "#FFD700";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    // choose font sizes for 1 or 2 lines
+    ctx.font = "900 15px system-ui, -apple-system, Segoe UI, Roboto, sans-serif";
+    let lines = fitTitleOnTwoLines(ctx, (title || "Deal").toUpperCase(), W*0.72);
+    if (lines.length === 1){
+      ctx.font = "900 18px system-ui, -apple-system, Segoe UI, Roboto, sans-serif";
+      ctx.fillText(lines[0], cx, cy+1);
+    } else {
+      ctx.font = "900 13px system-ui, -apple-system, Segoe UI, Roboto, sans-serif";
+      ctx.fillText(lines[0], cx, cy-8);
+      ctx.fillText(lines[1], cx, cy+10);
+    }
+
+    // blade shine overlay
+    ctx.save();
+    ctx.translate(W*0.05, H*0.15);
+    bladeShine(ctx, W, H);
+    ctx.restore();
+
+    canvas.toBlob((blob)=>{
+      if (!blob) return reject(new Error("Failed to generate banner image"));
+      resolve(blob);
+    }, BANNER_MIME, BANNER_QUALITY);
+  });
+}
+
 
 // ---------- Banners (add link/publish/status; keep delete) ----------
 if (bannersList) {
@@ -742,7 +840,7 @@ if (bannersList) {
 
         rows.push(`
           <div class="adm-grid adm-grid-banners" data-id="${d.id}">
-            <div><img src="${p.imageUrl}" alt="" width="80" height="20" style="object-fit:cover;border-radius:6px;border:1px solid #eee"/></div>
+            <div><img src="${p.imageUrl}" alt="" width="80" height="80" style="object-fit:cover;border-radius:8px;border:1px solid #eee"/></div>
             <div>${p.title || "(untitled)"}</div>
             <div>${linkedHTML}</div>
             <div class="adm-muted">${publishedTo}</div>
@@ -866,40 +964,45 @@ if (bannersList) {
   
   // Create banner (add defaults for new features; keep your uploader flow)
 
-  if (newBannerForm) {
-    newBannerForm.onsubmit = async (e) => {
-      e.preventDefault();
-      const file = bannerFile?.files?.[0];
-      if (!file) return alert("Pick an image");
-      if (!isImageType(file)) return alert("Pick a PNG/JPEG/WEBP image");
-      if (fileTooLarge(file)) return alert(`Max ${MAX_UPLOAD_MB}MB image`);
+if (newBannerForm) {
+  newBannerForm.onsubmit = async (e) => {
+    e.preventDefault();
+    const title = (bannerTitle?.value || "").trim();
+    if (!title) return alert("Enter a banner title");
 
-      const blob = await resizeToBannerBlob(file);
-      const path = `${BANNERS_DIR}/${Date.now()}_${file.name}`;
-      const ref = storageRef(storage, path);
+    // Build 100x100 robust red badge with gold title + blade shine
+    const blob = await buildAutoBannerBlob(title);
 
-      const imageUrl = await withTimeout(
-        uploadBytesResumable(ref, blob).then(() => getDownloadURL(ref)),
-        60000,
-        "upload"
-      );
+    const safe = title.replace(/[^\w-]+/g, "_").slice(0,40) || "banner";
+    const path = `${BANNERS_DIR}/${Date.now()}_${safe}.png`;
+    const ref = storageRef(storage, path);
 
-      const id = crypto.randomUUID();
-      await setDoc(doc(db, "promotions", id), {
-  kind: "banner",
-  title: (bannerTitle?.value || "").trim(),
-  imageUrl,
-  linkedCouponIds: Array.isArray(NEW_BANNER_LINKED) ? NEW_BANNER_LINKED : [],
-  targets: {
-    delivery: !!NEW_BANNER_TARGETS?.delivery,
-    dining:  !!NEW_BANNER_TARGETS?.dining
-  },
-  createdAt: serverTimestamp(),
-  active: true
-});
- newBannerForm.reset();
-    };
-  }
+    const imageUrl = await withTimeout(
+      uploadBytesResumable(ref, blob).then(() => getDownloadURL(ref)),
+      60000,
+      "upload"
+    );
+
+    const id = crypto.randomUUID();
+    await setDoc(doc(db, "promotions", id), {
+      kind: "banner",
+      title,
+      imageUrl,
+      linkedCouponIds: Array.isArray(NEW_BANNER_LINKED) ? NEW_BANNER_LINKED : [],
+      targets: {
+        delivery: !!NEW_BANNER_TARGETS?.delivery,
+        dining:  !!NEW_BANNER_TARGETS?.dining
+      },
+      createdAt: serverTimestamp(),
+      active: true
+    });
+
+    newBannerForm.reset();
+    // keep link/targets state visible in previews
+    renderNewBannerLinked();
+    renderNewBannerTargets();
+  };
+}
 }
 
 // Boot once (same pattern)
