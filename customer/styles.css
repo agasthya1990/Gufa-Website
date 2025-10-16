@@ -1697,3 +1697,48 @@ html, body { overflow-x: hidden; }
     max-width: 100%;
   }
 }
+
+/* ==========================================
+   Phone-only horizontal nudge to center the list
+   Negative = move left, positive = move right
+   ========================================== */
+
+/* 1) A single knob to turn */
+:root{
+  --phone-list-nudge: -8px;     /* try -8px first; tweak to -6px / -10px if needed */
+}
+
+/* 2) No nudge on tablet/desktop */
+@media (min-width: 641px){
+  :root{ --phone-list-nudge: 0px; }
+}
+
+/* 3) Apply nudge & safe-area padding to the results row + cards grid on phones */
+@media (max-width: 640px){
+  /* keep the toolbar (chips + search) centered and nudge as needed */
+  .results .topbar{
+    max-width: 360px;
+    margin: 0 auto 10px;
+    padding-inline: max(12px, env(safe-area-inset-left)) max(12px, env(safe-area-inset-right));
+    transform: translateX(var(--phone-list-nudge));
+  }
+
+  /* list grid block: one column, centered, then nudged left slightly */
+  .results .list-grid{
+    grid-template-columns: 1fr;
+    gap: 14px;
+
+    width: 100%;
+    max-width: 360px;
+    margin: 0 auto;
+    padding-inline: max(12px, env(safe-area-inset-left)) max(12px, env(safe-area-inset-right));
+    transform: translateX(var(--phone-list-nudge));
+  }
+
+  /* each card respects the same readable width */
+  .results .list-grid .menu-item{
+    width: 100%;
+    max-width: 360px;
+    margin-inline: auto;
+  }
+}
