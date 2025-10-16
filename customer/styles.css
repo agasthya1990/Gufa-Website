@@ -28,6 +28,8 @@ header, main, footer { position: relative; z-index: 1; }
   --nonveg:#ef4444;
   --gold:#f59e0b;
   --shadow:0 6px 18px rgba(0,0,0,.08);
+  --delivery:#6C0E69;
+  --dining:#16959F;
 }
 
 /* Header */
@@ -712,3 +714,33 @@ button.gold,
   padding: 6px 12px;         /* slim pill */
   border-radius: 9999px;     /* pill shape */
 }
+
+/* NEW: Service mode group in header (Slice 1 UI only) */
+.service-mode{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  margin-left:8px;  /* gentle spacing from logo */
+}
+
+@media (max-width:640px){
+  .service-mode{ gap:8px; }
+}
+
+/* NEW: Delivery/Dining switch variants (static UI only for Slice 1) */
+.switch.delivery.on{ border-color: var(--delivery); }
+.switch.delivery.on .track{
+  /* prefer color-mix for clean tint; fallbacks below if needed */
+  background: color-mix(in srgb, var(--delivery) 20%, #fff);
+  border-color: var(--delivery);
+}
+.switch.delivery .label{ color: #0c4a52; } /* readable on white; tweak if desired */
+
+.switch.dining.on{ border-color: var(--dining); }
+.switch.dining.on .track{
+  background: color-mix(in srgb, var(--dining) 20%, #fff);
+  border-color: var(--dining);
+}
+.switch.dining .label{ color: #3f0c3c; } /* readable on white; tweak if desired */
+
+
