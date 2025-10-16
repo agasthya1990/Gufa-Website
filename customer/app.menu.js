@@ -584,14 +584,88 @@ function renderDeals(){
   if (!list.length){ host.innerHTML = ""; return; }
 
   host.innerHTML = list.map(b => {
-    const title = (b.title || "Deal").trim();
-    const img   = b.imageUrl || "";
-    return `
-      <button class="deal-banner-card" data-banner-id="${b.id}" aria-label="${title}" title="${title}">
-        <img class="deal-thumb" src="${img}" alt="" loading="lazy"/>
-      </button>
-    `;
-  }).join("");
+  const title = (b.title || "Deal").trim();
+  const img   = b.imageUrl || "";
+  return `
+    <button class="deal-banner-card" data-banner-id="${b.id}" aria-label="${title}" title="${title}">
+      <img class="deal-thumb" src="${img}" alt="" loading="lazy"/>
+    </button>
+  `;
+}).join("");
+
+// ONE-TIME: delegate clicks to open filtered list
+if (!host.dataset.bannerClicks){
+  host.addEventListener("click", (ev) => {
+    const card = ev.target.closest(".deal-banner-card");
+    if (!card) return;
+    const id = card.getAttribute("data-banner-id");
+    const b = (BANNERS || []).find(x => x.id === id);
+    if (b) openBannerList(b);
+  }, false);
+  host.dataset.bannerClicks = "1";
+}
+
+
+  /* ===== Banner → filtered items list ===== */
+  
+let ACTIVE_BANNER = null;  // {id, title, linkedCouponIds, ...}
+
+/* return true if an item has at least one coupon matching this banner */
+function itemMatchesBanner(item, banner){
+  if (!banner || !Array.isArray(banner.linkedCouponIds) || !banner.linkedCouponIds.length) return false;
+  const ids = Array.isArray(item.couponIds) ? item.couponIds
+           : Array.isArray(item.coupons)    ? item.coupons
+           : Array.isArray(item.promotions) ? item.promotions
+           : [];
+  return ids.some(cid => banner.linkedCouponIds.includes(cid));
+}
+
+/* convert plain items -> pseudo Firestore docs so we can reuse your renderer */
+function toDocs(items){
+  return items.map(x => ({ id: x.id, data: () => x }));
+}
+
+/* Open the list view and render only items that match the banner */
+function openBannerList(banner){
+  ACTIVE_BANNER = banner;
+
+  // Use your existing list view shell
+  const globalResults = document.getElementById("globalResults");
+  const coursesSection = document.getElementById("coursesSection");
+  const categoriesSection = document.getElementById("categoriesSection");
+  const primaryBar = document.getElementById("primaryBar");
+
+  // switch to list view
+  window.view = "list";
+  window.listKind = "banner";
+  window.listId = banner.id;
+  window.listLabel = banner.title || "Today’s Deals";
+
+  if (globalResults) globalResults.classList.remove("hidden");
+  if (coursesSection) coursesSection.classList.add("hidden");
+  if (categoriesSection) categoriesSection.classList.add("hidden");
+  if (primaryBar) primaryBar.classList.add("hidden");
+
+  // Filter from the in-memory ITEMS (populated in listenAll)
+  const all = Array.isArray(window.ITEMS) ? window.ITEMS : [];
+  const filtered = all.filter(it => itemMatchesBanner(it, banner));
+
+  // Reuse your existing renderer that accepts snapshot-like docs
+  if (typeof window.renderFrom === "function"){
+    window.renderFrom(toDocs(filtered));
+  } else if (typeof window.renderItems === "function"){
+    window.renderItems(filtered);
+  } else {
+    // minimal fallback: show a simple placeholder if no known renderer exists
+    const host = globalResults?.querySelector(".list-grid");
+    if (host){
+      host.innerHTML = filtered.map(it => `<div class="menu-item">${(it.name||it.title||it.id)}</div>`).join("");
+    }
+  }
+
+  // Update the visible title/subtitle for the list view if present
+  const listTitle = document.getElementById("resultsTitle");
+  if (listTitle) listTitle.textContent = banner.title || "Today’s Deals";
 }
 
 
