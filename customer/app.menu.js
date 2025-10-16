@@ -606,9 +606,7 @@ function searchHaystack(it){
     } catch {
       onSnapshot(baseCol, snap => renderFrom(snap.docs));
     }
-  }
-
-      // Coupons (for later D2 label text; stored now)
+       // Coupons (for later D2 label text; stored now)
     try {
       onSnapshot(collection(db, "promotions"), (snap) => {
         const m = new Map();
@@ -644,8 +642,8 @@ function searchHaystack(it){
         if (view === "home") renderDeals();
       });
     } catch {}
+  }
 
-  
   /* ---------- Events ---------- */
   // Tile clicks => list view
   document.addEventListener("click", (e) => {
