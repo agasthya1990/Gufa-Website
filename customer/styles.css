@@ -833,7 +833,10 @@ button.gold,
    =========================== */
 .deals-section{
   margin-top: 24px;
+  display: grid;            /* NEW: let the section center its children */
+  justify-items: center;    /* centers the grid block perfectly */
 }
+
 
 /* If you already style section titles elsewhere, skip this */
 .section-title{
@@ -1108,3 +1111,44 @@ button.gold,
   .deal-banner-card{ width: 60px; height: 60px; border-radius: 7px; }
 }
 
+/* Hard-center Today's Deals grid and lock exact sizing */
+#todays-deals .deals-body{
+  display: grid;
+  grid-template-columns: repeat(6, 72px);  /* six fixed squares */
+  gap: 6px;
+
+  /* center the grid block itself (works even with parent padding) */
+  width: max-content;
+  margin-inline: auto;
+
+  /* center tracks and items inside the grid area */
+  justify-content: center;
+  justify-items: center;
+}
+
+/* Keep the banner cards small squares */
+#todays-deals .deal-banner-card{
+  width: 72px;
+  height: 72px;
+  border-radius: 9px;
+}
+
+/* Responsive steps (centered at all sizes) */
+@media (max-width: 1200px){
+  #todays-deals .deals-body{ grid-template-columns: repeat(5, 68px); }
+  #todays-deals .deal-banner-card{ width: 68px; height: 68px; border-radius: 8px; }
+}
+@media (max-width: 1024px){
+  #todays-deals .deals-body{ grid-template-columns: repeat(4, 68px); }
+}
+@media (max-width: 768px){
+  #todays-deals .deals-body{ grid-template-columns: repeat(3, 64px); }
+  #todays-deals .deal-banner-card{ width: 64px; height: 64px; }
+}
+@media (max-width: 640px){
+  #todays-deals .deals-body{ grid-template-columns: repeat(2, 64px); }
+}
+@media (max-width: 380px){
+  #todays-deals .deals-body{ grid-template-columns: repeat(2, 60px); }
+  #todays-deals .deal-banner-card{ width: 60px; height: 60px; border-radius: 7px; }
+}
