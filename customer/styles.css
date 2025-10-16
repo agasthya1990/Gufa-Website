@@ -180,9 +180,17 @@ main { max-width:1200px; margin:18px auto 32px; padding:0 16px; }
 }
 .results .topbar .searchbar{ margin-left:auto; }
 .results .list-grid{
-  display:grid; grid-template-columns: repeat(auto-fill, minmax(260px,1fr)); gap: 12px;
+  display: grid;
+  /* cap each column so cards don’t stretch edge-to-edge on phones */
+  grid-template-columns: repeat(auto-fit, minmax(260px, 320px));
+  gap: 12px;
+
+  /* hard-center the tracks inside the container */
+  justify-content: center;
+
   transition: opacity .25s ease, transform .25s ease;
 }
+
 .results .list-grid.fade-out{ opacity:.15; transform: scale(0.99); }
 .results .list-grid.fade-in{ opacity:1; transform: scale(1); }
 
@@ -1215,4 +1223,10 @@ html, body { overflow-x: hidden; }
     width: calc(2 * 60px + 1 * 6px);
   }
   #todays-deals .deal-banner-card{ width: 60px; height: 60px; border-radius: 7px; }
+}
+/* Center the card and keep a clean max width inside list view */
+.results .list-grid .menu-item{
+  width: 100%;
+  max-width: 320px;  /* match the column max above */
+  margin-inline: auto;
 }
