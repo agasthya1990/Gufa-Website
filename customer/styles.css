@@ -1621,40 +1621,32 @@ html, body { overflow-x: hidden; }
   transform: translateY(-50%);
 }
 
-/* ==========================================
-   PHONE (portrait & small screens): center the whole list,
-   give cards a sane width, and equal gutters on both sides
-   ========================================== */
-@media (max-width: 640px){
-  /* Center the toolbar row above the cards too */
+/* === PHONE PORTRAIT: center the menu list & cards, fixed readable width === */
+@media (max-width: 640px) and (orientation: portrait){
+  /* center the toolbar row above the cards */
   .results .topbar{
+    justify-content: center;            /* center chips + search row */
     width: 100%;
-    max-width: 360px;                 /* readable row width on phones */
-    margin: 0 auto 10px;              /* center under section pills */
+    max-width: 360px;                   /* same cap as cards below */
+    margin: 0 auto 10px;
   }
 
-  /* Center the grid container and prevent edge-to-edge stretch */
+  /* center the grid block; avoid odd 'max-content' shifts */
   .results .list-grid{
-    grid-template-columns: 1fr;       /* one column */
-    gap: 12px;
-    width: calc(100% - 24px);         /* 12px gutter on both sides */
-    max-width: 360px;                 /* cap width so it doesn't look bulky */
-    margin: 0 auto;                   /* center the grid block */
-    justify-content: center;          /* belt-and-suspenders centering */
+    grid-template-columns: 1fr;         /* one column */
+    gap: 14px;
+
+    width: 100%;
+    max-width: 360px;                   /* readable card width on phones */
+    padding: 0 12px;                    /* equal gutters left/right */
+    margin: 0 auto;                     /* center the whole block */
+    justify-content: center;
   }
 
-  /* Make the card itself honor the same width and sit dead-center */
+  /* card honors the same width; no edge hugging */
   .results .list-grid .menu-item{
-    box-sizing: border-box;
     width: 100%;
     max-width: 360px;
-    margin-inline: auto;              /* keeps it centered if any inner rule fights */
+    margin-inline: auto;
   }
-
-  /* Optional: add a little breathing room between cards */
-  .results{ margin-top: 16px; }
-  .results .list-grid{ row-gap: 16px; }
 }
-
-/* Prevent any horizontal pull that can skew alignment visually */
-html, body { overflow-x: hidden; }
