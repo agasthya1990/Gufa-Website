@@ -802,3 +802,25 @@ button.gold,
     grid-template-columns: 1fr;
   }
 }
+
+  /* NEW: Today’s Deals theme */
+  --deals-brown: #8B4513; /* sparkling brown */
+  --deals-gold:  #FFD700; /* robust golden font */
+
+/* NEW: Today’s Deals pill */
+.pill-toggle.deals{
+  background: #8B451320;            /* light brown tint (same technique as others) */
+  border-color: var(--deals-brown);
+  color: var(--deals-gold);
+  text-shadow: 0 1px 0 rgba(0,0,0,.15); /* subtle pop for gold text */
+}
+.pill-toggle.deals:hover{
+  background: #8B451333;            /* a touch stronger on hover */
+}
+
+/* NEW: primary bar search at a fixed 5 cm width */
+.searchbar.home{
+  min-width: 5cm;
+  max-width: 5cm;
+  flex: 0 0 5cm;  /* prevents stretching so the pills fit cleanly */
+}
