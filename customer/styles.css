@@ -1152,3 +1152,67 @@ button.gold,
   #todays-deals .deals-body{ grid-template-columns: repeat(2, 60px); }
   #todays-deals .deal-banner-card{ width: 60px; height: 60px; border-radius: 7px; }
 }
+/* Mobile overflow guard: prevents left "lean" caused by off-screen elements */
+html, body { overflow-x: hidden; }
+
+/* ===== Center the Today's Deals row exactly (fixed columns) ===== */
+#todays-deals .deals-body{
+  display: grid;
+  grid-template-columns: repeat(6, 72px);  /* six fixed squares */
+  gap: 6px;
+
+  /* exact content width for 6 items + 5 gaps, then center */
+  width: calc(6 * 72px + 5 * 6px);
+  margin-inline: auto;
+
+  /* keep items centered within cells just in case */
+  justify-items: center;
+}
+
+/* keep cards the same tiny squares + radius */
+#todays-deals .deal-banner-card{
+  width: 72px;
+  height: 72px;
+  border-radius: 9px;
+}
+
+/* ----- Responsive: step down columns AND container width together ----- */
+@media (max-width: 1200px){
+  #todays-deals .deals-body{
+    grid-template-columns: repeat(5, 68px);
+    gap: 6px;
+    width: calc(5 * 68px + 4 * 6px); /* 5 items + 4 gaps */
+  }
+  #todays-deals .deal-banner-card{ width: 68px; height: 68px; border-radius: 8px; }
+}
+
+@media (max-width: 1024px){
+  #todays-deals .deals-body{
+    grid-template-columns: repeat(4, 68px);
+    width: calc(4 * 68px + 3 * 6px);
+  }
+}
+
+@media (max-width: 768px){
+  #todays-deals .deals-body{
+    grid-template-columns: repeat(3, 64px);
+    width: calc(3 * 64px + 2 * 6px);
+  }
+  #todays-deals .deal-banner-card{ width: 64px; height: 64px; }
+}
+
+@media (max-width: 640px){
+  #todays-deals .deals-body{
+    grid-template-columns: repeat(2, 64px);
+    width: calc(2 * 64px + 1 * 6px);
+  }
+}
+
+@media (max-width: 380px){
+  #todays-deals .deals-body{
+    grid-template-columns: repeat(2, 60px);
+    gap: 6px;
+    width: calc(2 * 60px + 1 * 6px);
+  }
+  #todays-deals .deal-banner-card{ width: 60px; height: 60px; border-radius: 7px; }
+}
