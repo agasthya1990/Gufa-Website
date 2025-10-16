@@ -1307,7 +1307,7 @@ html, body { overflow-x: hidden; }
   justify-items: center;          /* center each card in its cell */
   width: max-content;             /* grid is only as wide as its columns */
   margin-inline: auto;            /* center that grid block */
-  gap: 12px;                      /* keep your spacing tidy */
+  gap: 8px;                      /* keep your spacing tidy */
 }
 
 /* 3) Portrait phones: keep a single centered column (nice readable width) */
@@ -1320,7 +1320,7 @@ html, body { overflow-x: hidden; }
   /* ensure a card never stretches edge-to-edge */
   #coursesSection .bucket-grid > *{
     max-width: 320px;
-    width: 100%;
+    width: 80%;
     margin-inline: auto;
   }
 }
