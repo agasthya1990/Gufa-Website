@@ -533,14 +533,16 @@ function searchHaystack(it){
 
 
   function showHome(){
-    view = "home"; listKind=""; listId=""; listLabel="";
-    globalResults.classList.add("hidden");
-    coursesSection.classList.remove("hidden");
-    categoriesSection.classList.remove("hidden");
-    primaryBar?.classList.remove("hidden");
-    document.getElementById("menuTitle")?.scrollIntoView({ behavior: "smooth", block: "start" });
-    renderCourseBuckets(); renderCategoryBuckets();
-  }
+  view = "home"; listKind=""; listId=""; listLabel="";
+  globalResults.classList.add("hidden");
+  coursesSection.classList.remove("hidden");
+  categoriesSection.classList.remove("hidden");
+  primaryBar?.classList.remove("hidden");
+  document.getElementById("menuTitle")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  renderCourseBuckets(); renderCategoryBuckets();
+  renderDeals(); // NEW: D1 banners
+}
+
   function enterList(kind, id, label){
     view = "list"; listKind=kind; listId=id; listLabel=label||id;
     coursesSection.classList.add("hidden");
@@ -606,6 +608,44 @@ function searchHaystack(it){
     }
   }
 
+      // Coupons (for later D2 label text; stored now)
+    try {
+      onSnapshot(collection(db, "promotions"), (snap) => {
+        const m = new Map();
+        snap.forEach(d => {
+          const x = d.data();
+          if (x?.kind === "coupon") {
+            m.set(d.id, { id:d.id, type: (x.type||"").toLowerCase(), value: x.value, active: x.active !== false });
+          }
+        });
+        COUPONS = m;
+      });
+    } catch {}
+
+    // Banners (D1)
+    try {
+      onSnapshot(collection(db, "promotions"), (snap) => {
+        const list = [];
+        snap.forEach(d => {
+          const x = d.data();
+          if (x?.kind === "banner") {
+            list.push({
+              id: d.id,
+              title: x.title || d.id,
+              imageUrl: x.imageUrl || "",
+              linkedCouponIds: Array.isArray(x.linkedCouponIds) ? x.linkedCouponIds : [],
+              targets: x.targets || {},
+              channel: x.channel || "",   // legacy
+              active: x.active !== false
+            });
+          }
+        });
+        BANNERS = list;
+        if (view === "home") renderDeals();
+      });
+    } catch {}
+
+  
   /* ---------- Events ---------- */
   // Tile clicks => list view
   document.addEventListener("click", (e) => {
@@ -1026,6 +1066,11 @@ async function boot(){
   await listenAll();
 }
 document.addEventListener("DOMContentLoaded", boot);
+
+  // Re-render deals when service mode switches (Delivery <-> Dining)
+window.addEventListener("serviceMode:changed", () => {
+  if (view === "home") renderDeals();
+});
 
  // Keep header & badges in sync whenever the cart store updates
 window.addEventListener("cart:update", () => {
