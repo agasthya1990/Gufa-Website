@@ -1057,9 +1057,10 @@ button.gold,
 .deals-body{
   display: grid;
   grid-template-columns: repeat(6, 72px); /* six fixed squares */
-  gap: 6px;                                 /* tighter spacing */
-  justify-content: start;                   /* left-align the row */
+  gap: 6px;
+  justify-content: center;                /* center the row */
 }
+
 .deal-banner-card{
   position: relative;
   display: inline-block;
