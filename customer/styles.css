@@ -986,14 +986,12 @@ button.gold,
   outline: none;
 
   /* gentle swell–shrink loop */
-  animation: bannerPulse 2.2s ease-in-out infinite;
-  transform-origin: center center;
+ animation: bannerPulse 1.6s ease-in-out infinite;
 }
-
 @keyframes bannerPulse{
-  0%   { transform: scale(0.985); }
-  50%  { transform: scale(1.03); }
-  100% { transform: scale(0.985); }
+  0%   { transform: scale(0.97); }
+  50%  { transform: scale(1.06); }
+  100% { transform: scale(0.97); }
 }
 
 /* Responsive */
@@ -1354,3 +1352,124 @@ html, body { overflow-x: hidden; }
     margin-inline: auto;
   }
 }
+
+/* ==========================================
+   Center "TODAY’S DEALS" banners (desktop + phone)
+   ========================================== */
+
+/* Centered container like Courses/Categories */
+#todays-deals .deals-body{
+  display: grid;
+  gap: 10px;
+
+  /* DESKTOP/TABLET: centered container that can breathe */
+  width: 100%;
+  max-width: 1100px;                          /* same cap as other sections */
+  margin: 0 auto;                             /* centers the container */
+
+  /* Responsive, even grid of small squares (doesn’t stretch huge) */
+  grid-template-columns: repeat(auto-fit, minmax(90px, 100px));
+  justify-content: center;                    /* center tracks if extra space */
+  justify-items: center;                      /* center each banner in its cell */
+}
+
+/* Keep each banner a compact square; animations stay intact */
+#todays-deals .deal-banner-card{
+  width: 100%;
+  max-width: 100px;                           /* caps card size so they stay small */
+  aspect-ratio: 1 / 1;                        /* perfect square */
+  border-radius: 10px;
+  overflow: hidden;
+
+  /* your existing pulse animation line should already be present;
+     keep it here to be safe */
+  animation: bannerPulse 2.2s ease-in-out infinite;
+}
+
+#todays-deals .deal-thumb{
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  border: 0;
+  border-radius: 10px;
+}
+
+/* PHONE (portrait): compact, centered rows */
+@media (max-width: 640px){
+  #todays-deals .deals-body{
+    max-width: 320px;                          /* neat 3-up on most phones */
+    grid-template-columns: repeat(3, minmax(90px, 100px));
+  }
+}
+
+@media (max-width: 380px){
+  #todays-deals .deals-body{
+    max-width: 220px;                          /* neat 2-up on very small screens */
+    grid-template-columns: repeat(2, minmax(90px, 100px));
+    gap: 8px;
+  }
+}
+
+/* ==========================================
+   Center "MENU ITEMS" list view (desktop + phone)
+   ========================================== */
+
+/* Desktop/Tablet: centered container that breathes */
+.results .list-grid{
+  display: grid;
+  gap: 12px;
+
+  width: 100% !important;
+  max-width: 1100px !important;         /* same cap as other sections */
+  margin: 0 auto !important;            /* centers the container */
+
+  /* flow 2–4 columns nicely without hugging edges */
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)) !important;
+  justify-content: center !important;   /* centers tracks if extra space */
+  justify-items: stretch;               /* cards fill their track */
+}
+
+/* The individual card: keep a sane max width and center when single-col */
+.results .list-grid .menu-item{
+  max-width: 320px;
+  width: 100%;
+  margin-inline: auto;                   /* centers the card in single-col */
+}
+
+/* Phone (portrait): single, centered column at readable width */
+@media (max-width: 640px){
+  .results .list-grid{
+    max-width: 320px !important;        /* container shrinks to card width */
+    grid-template-columns: 1fr !important;
+    justify-content: center !important;
+  }
+  .results .list-grid .menu-item{
+    max-width: 320px;
+    width: 100%;
+    margin-inline: auto;
+  }
+}
+
+/* Section spacing rhythm */
+.section{
+  margin-top: 28px;                /* space above each section */
+}
+.section + .section{
+  margin-top: 36px;                /* extra space between sections */
+}
+
+/* Title breathing room */
+.section .section-title{
+  margin: 6px 0 16px !important;   /* small top, healthy bottom gap */
+}
+
+/* Grid gaps per section */
+#coursesSection .bucket-grid{ gap: 14px; }
+#categoriesSection .bucket-grid{ gap: 14px; }
+#todays-deals .deals-body{ gap: 12px; }
+
+/* Results list (menu items) spacing */
+.results{ margin-top: 16px; }
+.results .list-grid{ gap: 14px !important; }
+
