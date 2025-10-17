@@ -769,7 +769,8 @@ function pickCouponForItem(item, banner){
 
 /** Attach a small red badge to each eligible card in banner list view.
  * Idempotent: removes old badges before decorating again.
- 
+ */
+  
 function decorateBannerDealBadges(){
   if (!(view === "list" && listKind === "banner" && ACTIVE_BANNER)) return;
 
@@ -883,7 +884,12 @@ try {
       }
     });
     COUPONS = m;
-  });
+    
+// If currently viewing a banner list, (re)decorate badges now that coupons are hydrated
+if (typeof decorateBannerDealBadges === "function" && view === "list" && listKind === "banner" && ACTIVE_BANNER) {
+  try { decorateBannerDealBadges(); } catch {}
+}
+});
 } catch {}
 
     
@@ -1346,6 +1352,14 @@ window.addEventListener("serviceMode:changed", () => {
   if (view === "home") renderDeals();
 });
 
+// Also refresh banner badges when service mode changes
+window.addEventListener("serviceMode:changed", () => {
+  if (view === "list" && listKind === "banner" && typeof decorateBannerDealBadges === "function") {
+    try { decorateBannerDealBadges(); } catch {}
+  }
+});
+
+  
  // Keep header & badges in sync whenever the cart store updates
 window.addEventListener("cart:update", () => {
   updateAllMiniCartBadges();
