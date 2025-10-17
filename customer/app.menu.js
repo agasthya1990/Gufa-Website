@@ -622,23 +622,36 @@ let ACTIVE_BANNER = null;  // {id, title, linkedCouponIds, ...}
 function itemMatchesBanner(item, banner){
   if (!banner || !Array.isArray(banner.linkedCouponIds) || !banner.linkedCouponIds.length) return false;
 
-  // normalize item coupon ids
+  // Current service mode: "delivery" | "dining"
+  const mode = (window.GUFA?.serviceMode?.get?.() || "delivery");
+
+  // Normalize item coupon ids
   const rawIds = Array.isArray(item.couponIds) ? item.couponIds
                : Array.isArray(item.coupons)    ? item.coupons
                : Array.isArray(item.promotions) ? item.promotions
                : [];
   const itemIds = rawIds.map(String).map(s => s.trim()).filter(Boolean);
 
-  // normalize + keep only active coupons from COUPONS map when known
-  
+  // Normalize banner-linked ids
   const bannerIds = banner.linkedCouponIds.map(String).map(s => s.trim()).filter(Boolean);
-  const activeBannerIds = bannerIds.filter(id => {
-    const meta = COUPONS?.get?.(id);
-    return !meta || meta.active !== false; // if missing meta, be permissive; if present, require active
-  });
 
-  if (!activeBannerIds.length || !itemIds.length) return false;
-  return itemIds.some(cid => activeBannerIds.includes(cid));
+  if (!itemIds.length || !bannerIds.length) return false;
+
+  // Accept iff there exists at least one coupon id that:
+  //  - is in BOTH (itemIds ∩ bannerIds)
+  //  - is active (if meta present)
+  //  - has targets allowing the current mode (delivery/dining)
+  return itemIds.some(cid => {
+    if (!bannerIds.includes(cid)) return false;
+    const meta = COUPONS?.get?.(cid);
+
+    // Before coupons map hydrates, allow temporarily to avoid flashing empty lists.
+    if (!meta) return !(COUPONS instanceof Map) || COUPONS.size === 0;
+
+    if (meta.active === false) return false;
+    const t = meta.targets || {};
+    return mode === "delivery" ? !!t.delivery : !!t.dining;
+  });
 }
 
 
@@ -709,21 +722,40 @@ function openBannerList(banner){
     } catch {
       onSnapshot(baseCol, snap => renderFrom(snap.docs));
     }
-         // Coupons (for later D2 label text; stored now)
-    try {
-      onSnapshot(collection(db, "promotions"), (snap) => {
-        const m = new Map();
-        snap.forEach(d => {
-          const x = d.data();
-          if (x?.kind === "coupon") {
-            m.set(d.id, { id:d.id, type: (x.type||"").toLowerCase(), value: x.value, active: x.active !== false });
-          }
+ // Coupons (for later D2 label text; stored now)
+    
+try {
+  onSnapshot(collection(db, "promotions"), (snap) => {
+    const m = new Map();
+    snap.forEach(d => {
+      const x = d.data();
+      if (x?.kind === "coupon") {
+        const chStr = (x.channel || "").toLowerCase();           // legacy: "delivery" | "dining" | "both" | ""
+        const chObj = x.channels || null;                         // new: { delivery:bool, dining:bool } if present
+        const targets = chObj
+          ? { delivery: !!chObj.delivery, dining: !!chObj.dining }
+          : {
+              delivery: (chStr === "delivery" || chStr === "both"),
+              dining:   (chStr === "dining"   || chStr === "both")
+            };
+        m.set(d.id, {
+          id: d.id,
+          type: (x.type || "").toLowerCase(),
+          value: x.value,
+          active: x.active !== false,
+          channel: chStr || null,
+          channels: chObj,
+          targets
         });
-        COUPONS = m;
-      });
-    } catch {}
+      }
+    });
+    COUPONS = m;
+  });
+} catch {}
 
-    // Banners (D1)
+    
+// Banners (D1)
+    
     try {
       onSnapshot(collection(db, "promotions"), (snap) => {
         const list = [];
