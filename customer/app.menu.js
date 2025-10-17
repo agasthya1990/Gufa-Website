@@ -515,7 +515,37 @@ function searchHaystack(it){
 </div>`;
 }
 
-      
+ function autoFitBannerTitle(){
+  const wrap = document.querySelector(".banner-heading .banner-title");
+  if (!wrap) return;
+
+  const text = wrap.querySelector(".banner-text");
+  if (!text) return;
+
+  // reset to natural size
+  wrap.style.setProperty("--banner-scale", "1");
+
+  // measure available width for the text (subtract hats + tildes + gaps)
+  const wrapRect = wrap.getBoundingClientRect();
+  let sideWidth = 0;
+  wrap.querySelectorAll(".chef-hat, .tilde").forEach(el => {
+    const r = el.getBoundingClientRect();
+    sideWidth += r.width;
+  });
+  const countGaps = wrap.querySelectorAll(".banner-title > *").length - 1;
+  sideWidth += Math.max(0, countGaps) * 6; // matches CSS gap
+
+  const available = Math.max(0, wrapRect.width - sideWidth);
+  const needed    = text.scrollWidth;
+
+  // compute scale, clamped
+  let scale = 1;
+  if (needed > 0 && available > 0) {
+    scale = Math.min(1, Math.max(0.72, available / needed)); // never smaller than ~72%
+  }
+  wrap.style.setProperty("--banner-scale", String(scale));
+}
+     
   
   
 function itemsForList(){
@@ -545,13 +575,26 @@ function itemsForList(){
     globalResults.innerHTML = `${topbarHTML()}<div id="${listIdDom}" class="list-grid"></div>`;
     globalList = document.getElementById(listIdDom);
 
-    const base = view==="search" ? applySearch(baseFilter(ITEMS), searchQuery) : itemsForList();
-      globalList.innerHTML = base.length
-    ? base.map(itemCardHTML).join("")
-    : `<div class="menu-item placeholder">No items match your selection.</div>`;
+const base = view==="search" ? applySearch(baseFilter(ITEMS), searchQuery) : itemsForList();
+globalList.innerHTML = base.length
+  ? base.map(itemCardHTML).join("")
+  : `<div class="menu-item placeholder">No items match your selection.</div>`;
 
-  updateAllMiniCartBadges();
-  updateCartLink();
+// ⬇️ Fit the banner title after DOM is ready (no-op if not in banner list)
+queueMicrotask(autoFitBannerTitle);
+
+// ⬇️ One-time resize/orientation listeners (guarded)
+if (!window.__bannerFitListener){
+  let t;
+  const onResize = () => { clearTimeout(t); t = setTimeout(autoFitBannerTitle, 120); };
+  window.addEventListener("resize", onResize, { passive: true });
+  window.addEventListener("orientationchange", onResize, { passive: true });
+  window.__bannerFitListener = 1;
+}
+
+updateAllMiniCartBadges();
+updateCartLink();
+
 
   // NEW: initialize Add-ons button enabled/disabled state per card
   document.querySelectorAll(".menu-item[data-id]").forEach(el => {
