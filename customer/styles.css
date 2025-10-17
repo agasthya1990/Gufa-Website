@@ -1814,8 +1814,8 @@ html, body { overflow-x: hidden; }
 .banner-title .chef-hat.left{  margin-right:-2px; }
 .banner-title .chef-hat.right{ margin-left:-2px; }
 
-/* ===== Tiny deal badge ===== */
-.list-grid > * { position: relative; } /* ensure overlay context */
+/* ===== Tiny deal badge (overlay) ===== */
+.list-grid > * { position: relative; } /* positioning context for absolute badge */
 
 .deal-badge{
   position: absolute;
@@ -1826,14 +1826,14 @@ html, body { overflow-x: hidden; }
   font-weight: 800;
   letter-spacing: .4px;
   text-transform: uppercase;
-  color: #ffd76a;                  /* gold text */
-  background: var(--deals-red);   /* your robust red token */
+  color: #ffd76a;                /* gold text */
+  background: var(--deals-red);  /* robust red already defined */
   border-radius: 14px;
   line-height: 1.2;
   box-shadow: 0 2px 8px rgba(0,0,0,.15);
 }
 
-/* optional "burst" look if supported */
+/* Optional “mini pow” burst edges (fallbacks to pill if unsupported) */
 @supports (clip-path: polygon(0 0)){
   .deal-badge{
     clip-path: polygon(8% 0, 12% 20%, 20% 8%, 26% 24%, 34% 10%, 42% 26%, 50% 10%,
