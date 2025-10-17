@@ -1742,3 +1742,43 @@ html, body { overflow-x: hidden; }
     margin-inline: auto;
   }
 }
+
+/* === Banner heading under chips (list view when a banner is active) === */
+.banner-heading{
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-top: 2px;           /* sits snugly under the chip row */
+}
+
+.banner-title{
+  color: var(--deals-red);   /* robust red, matches Today’s Deals theme */
+  font-weight: 800;          /* same weight mood as pill toggles */
+  letter-spacing: .6px;
+  text-transform: uppercase; /* show in capitals as requested */
+  line-height: 1.2;
+  font-size: 18px;           /* visually balanced under chips */
+  position: relative;
+  padding: 2px 6px;          /* a touch of breathing room */
+}
+
+/* Blade shine — a slim diagonal highlight sweeping left→right */
+.blade-shine{
+  overflow: hidden;          /* contain the blade */
+}
+.blade-shine::after{
+  content:"";
+  position:absolute;
+  top:0; left:-150%;
+  width:50%; height:100%;
+  pointer-events:none;
+  background: linear-gradient(120deg, rgba(255,255,255,0) 30%, rgba(255,255,255,.55) 50%, rgba(255,255,255,0) 70%);
+  transform: skewX(-20deg);
+  animation: bannerBlade 2.4s linear infinite;
+  mix-blend-mode: screen;    /* subtle, on light backgrounds */
+}
+@keyframes bannerBlade{
+  0%   { left:-150%; }
+  100% { left:200%; }
+}
