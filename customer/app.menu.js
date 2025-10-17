@@ -584,26 +584,9 @@ function itemsForList(){
     ? base.map(itemCardHTML).join("")
     : `<div class="menu-item placeholder">No items match your selection.</div>`;
 
-  // Fit the banner title (no-op if not a banner list)
-  queueMicrotask(autoFitBannerTitle);
-
-  // ADD BADGES exactly here (after cards mount)
-  queueMicrotask(decorateBannerDealBadges);
-
-  // One-time resize/orientation listeners (guarded)
-  if (!window.__bannerFitListener){
-    let t;
-    const onResize = () => {
-      clearTimeout(t);
-      t = setTimeout(() => {
-        autoFitBannerTitle();
-        decorateBannerDealBadges();
-      }, 120);
-    };
-    window.addEventListener("resize", onResize, { passive: true });
-    window.addEventListener("orientationchange", onResize, { passive: true });
-    window.__bannerFitListener = 1;
-  }
+  // — post-render UI decorators —
+  queueMicrotask(autoFitBannerTitle);       // no-op unless banner list
+  queueMicrotask(decorateBannerDealBadges); // attaches badges in banner lists
 
   updateAllMiniCartBadges();
   updateCartLink();
@@ -614,8 +597,6 @@ function itemsForList(){
     updateAddonsButtonState(itemId);
   });
 }
-
-
 
   function showHome(){
   view = "home"; listKind=""; listId=""; listLabel="";
@@ -788,7 +769,7 @@ function pickCouponForItem(item, banner){
 
 /** Attach a small red badge to each eligible card in banner list view.
  * Idempotent: removes old badges before decorating again.
- */
+ 
 function decorateBannerDealBadges(){
   if (!(view === "list" && listKind === "banner" && ACTIVE_BANNER)) return;
 
@@ -805,7 +786,7 @@ function decorateBannerDealBadges(){
     const item = (ITEMS || []).find(x => String(x.id) === String(id));
     if (!item) return;
 
-    const chosen = pickCouponForItem(item, window.ACTIVE_BANNER);
+    const chosen = pickCouponForItem(item, ACTIVE_BANNER);
     if (!chosen) return;
 
     // Label text
