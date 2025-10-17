@@ -495,8 +495,15 @@ function searchHaystack(it){
           <input type="text" class="tile-search" placeholder="Search dishes…" aria-label="Search dishes" value="${view==="search" ? (searchQuery||"").replace(/"/g,'&quot;') : ""}"/>
           <button class="searchbtn" data-action="search" aria-label="Search"></button>
         </div>
+
+          ${showBannerTitle ? `
+          <div class="banner-heading" aria-live="polite">
+            <span class="banner-title blade-shine" title="${titleText}">${titleText}</span>
+          </div>
+        ` : ``}
       </div>`;
-  }
+      
+  
   
 function itemsForList(){
   let arr = baseFilter(ITEMS);
