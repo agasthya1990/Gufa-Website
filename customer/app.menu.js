@@ -1348,29 +1348,18 @@ window.addEventListener("serviceMode:changed", () => {
 
 
 // Refresh UI when service mode switches (Delivery <-> Dining)
+// Auto-refresh the page when service mode switches (Delivery <-> Dining)
+// Customer UI only; avoid reloading /admin.
 window.addEventListener("serviceMode:changed", () => {
-  if (view === "home") {
-    // Update which banners appear on Home for the selected mode
-    renderDeals();
-    return;
-  }
+  // Don’t reload the Admin Panel.
+  if (location.pathname.startsWith("/admin")) return;
 
-  // If we’re inside a Banner list, re-filter its items for the new mode.
-  if (view === "list" && listKind === "banner") {
-    // If the active banner no longer applies to this mode, go back Home.
-    if (!(typeof bannerMatchesMode === "function" && ACTIVE_BANNER && bannerMatchesMode(ACTIVE_BANNER))) {
-      showHome();
-      return;
-    }
+  // Prevent duplicate reloads if multiple handlers fire.
+  if (window.__modeReloadPending) return;
+  window.__modeReloadPending = true;
 
-    // Banner still valid: re-render the list so items filter by the new mode.
-    renderContentView();
-
-    // Re-attach badges for the new mode (ids stay the same; eligibility changes).
-    if (typeof decorateBannerDealBadges === "function") {
-      try { decorateBannerDealBadges(); } catch {}
-    }
-  }
+  // Small delay to allow any in-flight UI actions to settle.
+  setTimeout(() => { try { location.reload(); } catch {} }, 120);
 });
 
 
