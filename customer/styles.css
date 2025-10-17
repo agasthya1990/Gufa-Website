@@ -1813,3 +1813,33 @@ html, body { overflow-x: hidden; }
 .banner-title .tilde{ font-weight:800; transform: translateY(-1px); opacity:.95; }
 .banner-title .chef-hat.left{  margin-right:-2px; }
 .banner-title .chef-hat.right{ margin-left:-2px; }
+
+/* ===== Tiny deal badge ===== */
+.list-grid > * { position: relative; } /* ensure overlay context */
+
+.deal-badge{
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  padding: 2px 8px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: .4px;
+  text-transform: uppercase;
+  color: #ffd76a;                  /* gold text */
+  background: var(--deals-red);   /* your robust red token */
+  border-radius: 14px;
+  line-height: 1.2;
+  box-shadow: 0 2px 8px rgba(0,0,0,.15);
+}
+
+/* optional "burst" look if supported */
+@supports (clip-path: polygon(0 0)){
+  .deal-badge{
+    clip-path: polygon(8% 0, 12% 20%, 20% 8%, 26% 24%, 34% 10%, 42% 26%, 50% 10%,
+                       58% 26%, 66% 10%, 74% 24%, 80% 8%, 88% 20%, 92% 0,
+                       92% 100%, 88% 80%, 80% 92%, 74% 76%, 66% 90%, 58% 74%,
+                       50% 90%, 42% 74%, 34% 90%, 26% 76%, 20% 92%, 12% 80%, 8% 100%);
+    padding: 4px 10px;
+  }
+}
