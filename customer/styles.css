@@ -1743,42 +1743,74 @@ html, body { overflow-x: hidden; }
   }
 }
 
-/* === Banner heading under chips (list view when a banner is active) === */
+/* === Banner heading with hats and tildes === */
 .banner-heading{
   width: 100%;
   display: flex;
   justify-content: center;
   align-items: center;
-  margin-top: 2px;           /* sits snugly under the chip row */
+  margin-top: 2px;
 }
-
 .banner-title{
-  color: var(--deals-red);   /* robust red, matches Today’s Deals theme */
-  font-weight: 800;          /* same weight mood as pill toggles */
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--deals-red);
+  font-weight: 800;
   letter-spacing: .6px;
-  text-transform: uppercase; /* show in capitals as requested */
+  text-transform: uppercase;   /* all caps */
   line-height: 1.2;
-  font-size: 18px;           /* visually balanced under chips */
+  font-size: 18px;
   position: relative;
-  padding: 2px 6px;          /* a touch of breathing room */
+}
+.banner-title .tilde{
+  font-weight: 800;
+  transform: translateY(-1px); /* optically centers the ~ with caps */
+  color: var(--deals-red);
+  opacity: .95;
+}
+.banner-title .banner-text{
+  position: relative;
+  padding: 2px 4px;
 }
 
-/* Blade shine — a slim diagonal highlight sweeping left→right */
-.blade-shine{
-  overflow: hidden;          /* contain the blade */
+/* Blade shine across the text only */
+.banner-title .blade-shine{
+  overflow: hidden;
 }
-.blade-shine::after{
+.banner-title .blade-shine::after{
   content:"";
   position:absolute;
   top:0; left:-150%;
   width:50%; height:100%;
   pointer-events:none;
-  background: linear-gradient(120deg, rgba(255,255,255,0) 30%, rgba(255,255,255,.55) 50%, rgba(255,255,255,0) 70%);
+  background: linear-gradient(120deg,
+               rgba(255,255,255,0) 30%,
+               rgba(255,255,255,.55) 50%,
+               rgba(255,255,255,0) 70%);
   transform: skewX(-20deg);
   animation: bannerBlade 2.4s linear infinite;
-  mix-blend-mode: screen;    /* subtle, on light backgrounds */
+  mix-blend-mode: screen;
 }
 @keyframes bannerBlade{
   0%   { left:-150%; }
   100% { left:200%; }
 }
+
+/* Tiny chef hats (SVG data URI), one on each side */
+.banner-title .chef-hat{
+  width: 18px;
+  height: 18px;
+  display: inline-block;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
+  /* simple cute hat: white fill with robust-red outline */
+  background-image: url("data:image/svg+xml;utf8,\
+<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'>\
+  <path d='M10 26c0-8 8-14 16-14c4 0 7 1 8 2c1-1 4-2 8-2c8 0 16 6 16 14c0 4-2 7-5 9v9c0 2-2 4-4 4H19c-2 0-4-2-4-4v-9c-3-2-5-5-5-9z' fill='%23ffffff' stroke='%23b22222' stroke-width='3'/>\
+  <rect x='18' y='44' width='28' height='6' rx='3' fill='%23ffffff' stroke='%23b22222' stroke-width='3'/>\
+</svg>");
+}
+.banner-title .chef-hat.left  { margin-right: -2px; }
+.banner-title .chef-hat.right { margin-left:  -2px; }
