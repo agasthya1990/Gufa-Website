@@ -576,6 +576,10 @@ function itemsForList(){
     globalList = document.getElementById(listIdDom);
 
 const base = view==="search" ? applySearch(baseFilter(ITEMS), searchQuery) : itemsForList();
+globalResults.innerHTML = `${topbarHTML()}<div id="${listIdDom}" class="list-grid"></div>`;
+globalList = document.getElementById(listIdDom);
+
+const base = view==="search" ? applySearch(baseFilter(ITEMS), searchQuery) : itemsForList();
 globalList.innerHTML = base.length
   ? base.map(itemCardHTML).join("")
   : `<div class="menu-item placeholder">No items match your selection.</div>`;
@@ -583,10 +587,16 @@ globalList.innerHTML = base.length
 // ⬇️ Fit the banner title after DOM is ready (no-op if not in banner list)
 queueMicrotask(autoFitBannerTitle);
 
+// ⬇️ Add deal badges (banner lists only; no-op otherwise)
+queueMicrotask(decorateBannerDealBadges);
+
 // ⬇️ One-time resize/orientation listeners (guarded)
 if (!window.__bannerFitListener){
   let t;
-  const onResize = () => { clearTimeout(t); t = setTimeout(autoFitBannerTitle, 120); };
+  const onResize = () => { clearTimeout(t); t = setTimeout(() => {
+    autoFitBannerTitle();
+    decorateBannerDealBadges();
+  }, 120); };
   window.addEventListener("resize", onResize, { passive: true });
   window.addEventListener("orientationchange", onResize, { passive: true });
   window.__bannerFitListener = 1;
@@ -596,11 +606,11 @@ updateAllMiniCartBadges();
 updateCartLink();
 
 
-  // NEW: initialize Add-ons button enabled/disabled state per card
-  document.querySelectorAll(".menu-item[data-id]").forEach(el => {
-    const itemId = el.getAttribute("data-id");
-    updateAddonsButtonState(itemId);
-  });
+// NEW: initialize Add-ons button enabled/disabled state per card
+document.querySelectorAll(".menu-item[data-id]").forEach(el => {
+  const itemId = el.getAttribute("data-id");
+  updateAddonsButtonState(itemId);
+});
 }
 
 
@@ -737,9 +747,85 @@ function openBannerList(banner){
   document.getElementById("menuTitle")?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
+/* ===== D3 — Deal badges on item cards (banner list only) ===== */
+
+/** Decide which coupon to badge for an item under a banner.
+ * Policy: first intersecting, active coupon in the banner's linkedCouponIds order
+ * that is valid for the current service mode (delivery/dining).
+ */
+function pickCouponForItem(item, banner){
+  if (!item || !banner) return null;
+
+  const mode = (window.GUFA?.serviceMode?.get?.() || "delivery");
+
+  // normalize ids
+  const rawItemIds = Array.isArray(item.couponIds) ? item.couponIds
+                    : Array.isArray(item.coupons)    ? item.coupons
+                    : Array.isArray(item.promotions) ? item.promotions
+                    : [];
+  const itemIds   = rawItemIds.map(String).map(s => s.trim()).filter(Boolean);
+  const bannerIds = (banner.linkedCouponIds || []).map(String).map(s => s.trim()).filter(Boolean);
+  if (!itemIds.length || !bannerIds.length) return null;
+
+  // preserve banner order (admin controls priority)
+  for (const cid of bannerIds){
+    if (!itemIds.includes(cid)) continue;
+    const meta = COUPONS?.get?.(cid);
+    if (!meta) continue;                   // wait until coupons map hydrates
+    if (meta.active === false) continue;
+
+    const t = meta.targets || {};
+    const ok = (mode === "delivery") ? !!t.delivery : !!t.dining;
+    if (!ok) continue;
+
+    return { id: cid, ...meta };
+  }
+  return null;
+}
+
+/** Attach a small red badge to each eligible card in banner list view.
+ * Idempotent: removes old badges before decorating again.
+ */
+function decorateBannerDealBadges(){
+  if (!(view === "list" && listKind === "banner" && window.ACTIVE_BANNER)) return;
+
+  const root = (typeof globalList !== "undefined" && globalList) ? globalList
+             : document.querySelector(".list-grid");
+  if (!root) return;
+
+  // Clean previous badges (re-render safe)
+  root.querySelectorAll(".deal-badge").forEach(el => el.remove());
+
+  // Each card is an .menu-item with data-id set in your current template
+  root.querySelectorAll(".menu-item[data-id]").forEach(card => {
+    const id = card.getAttribute("data-id");
+    const item = (window.ITEMS || []).find(x => String(x.id) === String(id));
+    if (!item) return;
+
+    const chosen = pickCouponForItem(item, window.ACTIVE_BANNER);
+    if (!chosen) return;
+
+    // Label text
+    const label = (chosen.type === "percent")
+      ? `${chosen.value}% OFF`
+      : (chosen.type === "flat")
+        ? `₹${chosen.value} OFF`
+        : `DEAL`;
+
+    // Create badge
+    const badge = document.createElement("span");
+    badge.className = "deal-badge";
+    badge.setAttribute("aria-label", `Promotion: ${label}`);
+    badge.textContent = label;
+
+    // Attach to the card; your cards already have position context in CSS
+    card.appendChild(badge);
+  });
+}
+
+
+
   
-
-
 
   /* ---------- Live data (use window.db) ---------- */
   async function listenAll() {
