@@ -790,7 +790,7 @@ function pickCouponForItem(item, banner){
  * Idempotent: removes old badges before decorating again.
  */
 function decorateBannerDealBadges(){
-  if (!(view === "list" && listKind === "banner" && window.ACTIVE_BANNER)) return;
+  if (!(view === "list" && listKind === "banner" && ACTIVE_BANNER)) return;
 
   const root = (typeof globalList !== "undefined" && globalList) ? globalList
              : document.querySelector(".list-grid");
@@ -802,7 +802,7 @@ function decorateBannerDealBadges(){
   // Each card is an .menu-item with data-id set in your current template
   root.querySelectorAll(".menu-item[data-id]").forEach(card => {
     const id = card.getAttribute("data-id");
-    const item = (window.ITEMS || []).find(x => String(x.id) === String(id));
+    const item = (ITEMS || []).find(x => String(x.id) === String(id));
     if (!item) return;
 
     const chosen = pickCouponForItem(item, window.ACTIVE_BANNER);
