@@ -500,12 +500,19 @@ function searchHaystack(it){
           <button class="searchbtn" data-action="search" aria-label="Search"></button>
         </div>
 
-        ${showBannerTitle ? `
-          <div class="banner-heading" aria-live="polite">
-            <span class="banner-title blade-shine" title="${titleText}">${titleText}</span>
-          </div>
-        ` : ``}
-      </div>`;
+ ${showBannerTitle ? `
+  <div class="banner-heading" aria-live="polite">
+    <span class="banner-title" title="${titleText}">
+      <span class="chef-hat left" aria-hidden="true"></span>
+      <span class="tilde" aria-hidden="true">~</span>
+      <span class="banner-text blade-shine">${titleText}</span>
+      <span class="tilde" aria-hidden="true">~</span>
+      <span class="chef-hat right" aria-hidden="true"></span>
+    </span>
+  </div>
+` : ``}
+
+</div>`;
 }
 
       
