@@ -480,7 +480,10 @@ function searchHaystack(it){
   }
 
   function topbarHTML(){
-    return `
+  const showBannerTitle = (view === "list" && listKind === "banner" && (listLabel || "").trim().length > 0);
+  const titleText = (listLabel || "").trim();
+
+  return `
       <div class="topbar">
         <button class="back-btn" data-action="back">← Back</button>
         <button class="switch veg ${vegOn ? "on": ""}" role="switch" aria-checked="${vegOn}" data-action="veg">
@@ -492,16 +495,19 @@ function searchHaystack(it){
         <button class="pill-toggle course nav" data-action="nav-course">Food Course</button>
         <button class="pill-toggle category nav" data-action="nav-category">Food Categories</button>
         <div class="searchbar compact">
-          <input type="text" class="tile-search" placeholder="Search dishes…" aria-label="Search dishes" value="${view==="search" ? (searchQuery||"").replace(/"/g,'&quot;') : ""}"/>
+          <input type="text" class="tile-search" placeholder="Search dishes…" aria-label="Search dishes"
+                 value="${view==="search" ? (searchQuery||"").replace(/"/g,'&quot;') : ""}"/>
           <button class="searchbtn" data-action="search" aria-label="Search"></button>
         </div>
 
-          ${showBannerTitle ? `
+        ${showBannerTitle ? `
           <div class="banner-heading" aria-live="polite">
             <span class="banner-title blade-shine" title="${titleText}">${titleText}</span>
           </div>
         ` : ``}
       </div>`;
+}
+
       
   
   
