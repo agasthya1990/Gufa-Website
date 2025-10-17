@@ -569,49 +569,52 @@ function itemsForList(){
   return arr;
 }
   
-  function renderContentView(){
-    if (!globalResults) return;
-    const listIdDom = "globalResultsList";
-    globalResults.innerHTML = `${topbarHTML()}<div id="${listIdDom}" class="list-grid"></div>`;
-    globalList = document.getElementById(listIdDom);
+ function renderContentView(){
+  if (!globalResults) return;
 
-const base = view==="search" ? applySearch(baseFilter(ITEMS), searchQuery) : itemsForList();
-globalResults.innerHTML = `${topbarHTML()}<div id="${listIdDom}" class="list-grid"></div>`;
-globalList = document.getElementById(listIdDom);
+  const listIdDom = "globalResultsList";
+  globalResults.innerHTML = `${topbarHTML()}<div id="${listIdDom}" class="list-grid"></div>`;
+  globalList = document.getElementById(listIdDom);
 
-const base = view==="search" ? applySearch(baseFilter(ITEMS), searchQuery) : itemsForList();
-globalList.innerHTML = base.length
-  ? base.map(itemCardHTML).join("")
-  : `<div class="menu-item placeholder">No items match your selection.</div>`;
+  const base = (view === "search")
+    ? applySearch(baseFilter(ITEMS), searchQuery)
+    : itemsForList();
 
-// ⬇️ Fit the banner title after DOM is ready (no-op if not in banner list)
-queueMicrotask(autoFitBannerTitle);
+  globalList.innerHTML = base.length
+    ? base.map(itemCardHTML).join("")
+    : `<div class="menu-item placeholder">No items match your selection.</div>`;
 
-// ⬇️ Add deal badges (banner lists only; no-op otherwise)
-queueMicrotask(decorateBannerDealBadges);
+  // Fit the banner title (no-op if not a banner list)
+  queueMicrotask(autoFitBannerTitle);
 
-// ⬇️ One-time resize/orientation listeners (guarded)
-if (!window.__bannerFitListener){
-  let t;
-  const onResize = () => { clearTimeout(t); t = setTimeout(() => {
-    autoFitBannerTitle();
-    decorateBannerDealBadges();
-  }, 120); };
-  window.addEventListener("resize", onResize, { passive: true });
-  window.addEventListener("orientationchange", onResize, { passive: true });
-  window.__bannerFitListener = 1;
+  // ADD BADGES exactly here (after cards mount)
+  queueMicrotask(decorateBannerDealBadges);
+
+  // One-time resize/orientation listeners (guarded)
+  if (!window.__bannerFitListener){
+    let t;
+    const onResize = () => {
+      clearTimeout(t);
+      t = setTimeout(() => {
+        autoFitBannerTitle();
+        decorateBannerDealBadges();
+      }, 120);
+    };
+    window.addEventListener("resize", onResize, { passive: true });
+    window.addEventListener("orientationchange", onResize, { passive: true });
+    window.__bannerFitListener = 1;
+  }
+
+  updateAllMiniCartBadges();
+  updateCartLink();
+
+  // Initialize Add-ons button enabled/disabled state per card
+  document.querySelectorAll(".menu-item[data-id]").forEach(el => {
+    const itemId = el.getAttribute("data-id");
+    updateAddonsButtonState(itemId);
+  });
 }
 
-updateAllMiniCartBadges();
-updateCartLink();
-
-
-// NEW: initialize Add-ons button enabled/disabled state per card
-document.querySelectorAll(".menu-item[data-id]").forEach(el => {
-  const itemId = el.getAttribute("data-id");
-  updateAddonsButtonState(itemId);
-});
-}
 
 
   function showHome(){
