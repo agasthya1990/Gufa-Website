@@ -1347,10 +1347,32 @@ window.addEventListener("serviceMode:changed", () => {
 });
 
 
-  // Re-render deals when service mode switches (Delivery <-> Dining)
+// Refresh UI when service mode switches (Delivery <-> Dining)
 window.addEventListener("serviceMode:changed", () => {
-  if (view === "home") renderDeals();
+  if (view === "home") {
+    // Update which banners appear on Home for the selected mode
+    renderDeals();
+    return;
+  }
+
+  // If we’re inside a Banner list, re-filter its items for the new mode.
+  if (view === "list" && listKind === "banner") {
+    // If the active banner no longer applies to this mode, go back Home.
+    if (!(typeof bannerMatchesMode === "function" && ACTIVE_BANNER && bannerMatchesMode(ACTIVE_BANNER))) {
+      showHome();
+      return;
+    }
+
+    // Banner still valid: re-render the list so items filter by the new mode.
+    renderContentView();
+
+    // Re-attach badges for the new mode (ids stay the same; eligibility changes).
+    if (typeof decorateBannerDealBadges === "function") {
+      try { decorateBannerDealBadges(); } catch {}
+    }
+  }
 });
+
 
 // Also refresh banner badges when service mode changes
 window.addEventListener("serviceMode:changed", () => {
