@@ -507,9 +507,14 @@ function itemsForList(){
     } else if (listKind === "category") {
       const c = CATEGORIES.find(x=>x.id===listId) || {id:listId, label:listId};
       arr = arr.filter(it=>categoryMatch(it, c));
-    } else if (listKind === "banner") {
-      arr = arr.filter(it => itemMatchesBanner(it, ACTIVE_BANNER));
-    }
+      
+} else if (listKind === "banner") {
+  if (typeof itemMatchesBanner === "function" && ACTIVE_BANNER) {
+    arr = arr.filter(it => itemMatchesBanner(it, ACTIVE_BANNER));
+  } else {
+    arr = []; // safe fallback if helpers not ready for any reason
+  }
+}
   }
   return arr;
 }
@@ -616,20 +621,34 @@ let ACTIVE_BANNER = null;  // {id, title, linkedCouponIds, ...}
 /** true if an item has at least one coupon linked to this banner */
 function itemMatchesBanner(item, banner){
   if (!banner || !Array.isArray(banner.linkedCouponIds) || !banner.linkedCouponIds.length) return false;
-  const ids = Array.isArray(item.couponIds) ? item.couponIds
-           : Array.isArray(item.coupons)    ? item.coupons
-           : Array.isArray(item.promotions) ? item.promotions
-           : [];
-  return ids.some(cid => banner.linkedCouponIds.includes(cid));
+
+  // normalize item coupon ids
+  const rawIds = Array.isArray(item.couponIds) ? item.couponIds
+               : Array.isArray(item.coupons)    ? item.coupons
+               : Array.isArray(item.promotions) ? item.promotions
+               : [];
+  const itemIds = rawIds.map(String).map(s => s.trim()).filter(Boolean);
+
+  // normalize + keep only active coupons from COUPONS map when known
+  
+  const bannerIds = banner.linkedCouponIds.map(String).map(s => s.trim()).filter(Boolean);
+  const activeBannerIds = bannerIds.filter(id => {
+    const meta = COUPONS?.get?.(id);
+    return !meta || meta.active !== false; // if missing meta, be permissive; if present, require active
+  });
+
+  if (!activeBannerIds.length || !itemIds.length) return false;
+  return itemIds.some(cid => activeBannerIds.includes(cid));
 }
+
 
 /** Switch to list view showing only items matching the clicked banner */
 function openBannerList(banner){
   ACTIVE_BANNER = banner;
-  window.view = "list";
-  window.listKind = "banner";
-  window.listId = banner.id;
-  window.listLabel = banner.title || "Today’s Deals";
+  view = "list";
+  listKind = "banner";
+  listId = banner.id;
+  listLabel = banner.title || "Today’s Deals";
 
   // hide tiles, show list
   document.getElementById("coursesSection")?.classList.add("hidden");
