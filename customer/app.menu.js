@@ -728,6 +728,9 @@ function openBannerList(banner){
 
   // use the standard renderer so cards look exactly the same
   renderContentView();
+
+  // Smooth-scroll to the banner heading (or first menu card) after render,
+  // and briefly highlight the destination for better visual navigation.
   queueMicrotask(() => {
     const target =
       document.querySelector(".banner-heading") ||
@@ -735,15 +738,25 @@ function openBannerList(banner){
       document.querySelector(".menu-list, .items-grid");
 
     if (!target) return;
-    const offset = 64;
-    const y = target.getBoundingClientRect().top + window.scrollY - offset;
+
+    // Add a temporary focus-beacon class for visual orientation
+    target.classList.add("slide-focus");
+
+    // Respect reduced-motion users by avoiding animation if requested
+    const prefersReduced = window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches;
+
+    // Rely on CSS scroll-margin-top to stop cleanly below the fixed header
     try {
-      window.scrollTo({ top: y, behavior: "smooth" });
+      target.scrollIntoView({ behavior: prefersReduced ? "auto" : "smooth", block: "start" });
     } catch {
-      window.scrollTo(0, y);
+      target.scrollIntoView(true);
     }
+
+    // Remove the beacon after it has served its purpose
+    setTimeout(() => target.classList.remove("slide-focus"), prefersReduced ? 100 : 1200);
   });
 }
+
 
 
 /* ===== D3 — Deal badges on item cards (banner list only) ===== */
