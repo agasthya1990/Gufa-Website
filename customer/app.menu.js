@@ -728,8 +728,23 @@ function openBannerList(banner){
 
   // use the standard renderer so cards look exactly the same
   renderContentView();
-  document.getElementById("menuTitle")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  queueMicrotask(() => {
+    const target =
+      document.querySelector(".banner-heading") ||
+      document.querySelector(".menu-item[data-id]") ||
+      document.querySelector(".menu-list, .items-grid");
+
+    if (!target) return;
+    const offset = 64;
+    const y = target.getBoundingClientRect().top + window.scrollY - offset;
+    try {
+      window.scrollTo({ top: y, behavior: "smooth" });
+    } catch {
+      window.scrollTo(0, y);
+    }
+  });
 }
+
 
 /* ===== D3 — Deal badges on item cards (banner list only) ===== */
 
