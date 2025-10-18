@@ -1850,12 +1850,6 @@ html, body { overflow-x: hidden; }
   scroll-margin-top: 72px; /* adjust if your header height differs */
 }
 
-/* Brief visual beacon on scroll target (robust red ring + soft gold glow) */
-.slide-focus {
-  position: relative;
-  isolation: isolate; /* keeps the ring above local content without z-index wars */
-}
-
 /* Pulse ring */
 .slide-focus::after {
   content: "";
