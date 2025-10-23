@@ -71,6 +71,82 @@
   }
 
   // ----- renderers -----
+
+  function buildGroups() {
+  const bag = entries(); // [key,it][]
+  const groups = new Map();
+  for (const [key, it] of bag) {
+    const parts = String(key).split(":");
+    const baseKey = parts.slice(0, 2).join(":");   // itemId:variant
+    const addonName = parts[2];                    // undefined for base
+
+    if (!groups.has(baseKey)) groups.set(baseKey, { base: null, addons: [] });
+
+    if (addonName) {
+      const name = (it?.addons?.[0]?.name) || addonName;
+      groups.get(baseKey).addons.push({ key, it, name });
+    } else {
+      groups.get(baseKey).base = { key, it };
+    }
+  }
+  return groups;
+}
+
+function addonRow(baseKey, addon) {
+  const { key, it, name } = addon;
+  const row = document.createElement("div");
+  row.className = "addon-row";
+
+  const label = document.createElement("div");
+  label.className = "addon-label muted";
+  label.textContent = `+ ${name}`;
+
+  const stepper = document.createElement("div");
+  stepper.className = "stepper sm";
+  const minus = document.createElement("button"); minus.textContent = "–";
+  const out   = document.createElement("output");  out.textContent = String(it.qty || 0);
+  const plus  = document.createElement("button");  plus.textContent = "+";
+  stepper.append(minus, out, plus);
+
+  const lineSub = document.createElement("div");
+  lineSub.className = "line-subtotal";
+  lineSub.textContent = "₹" + Math.round((Number(it.price)||0) * (Number(it.qty)||0)).toLocaleString("en-IN");
+
+  plus.addEventListener("click", () => {
+    const next = (Number(window.Cart.get()?.[key]?.qty) || 0) + 1;
+    window.Cart.setQty(key, next, it);
+  });
+  minus.addEventListener("click", () => {
+    const prev = Number(window.Cart.get()?.[key]?.qty) || 0;
+    const next = Math.max(0, prev - 1);
+    window.Cart.setQty(key, next, it);
+  });
+
+  row.append(label, stepper, lineSub);
+  return row;
+}
+
+  function renderGroup(g) {
+  const wrap = document.createElement("li");
+  wrap.className = "cart-row grouped";
+
+  // Base row (reuse existing lineItem output but inline here to append children)
+  const { key: bKey, it: bIt } = g.base || {};
+  const base = lineItem(bKey, bIt); // existing function
+  wrap.appendChild(base);
+
+  // Add-on list
+  if (g.addons.length) {
+    const list = document.createElement("div");
+    list.className = "addon-list";
+    // stable order: by name
+    g.addons.sort((a,b) => a.name.localeCompare(b.name));
+    g.addons.forEach(a => list.appendChild(addonRow(bKey, a)));
+    wrap.appendChild(list);
+  }
+  return wrap;
+}
+
   function renderList() {
     const es = entries();
     const n = count();
@@ -82,11 +158,24 @@
     if (R.proceed) R.proceed.disabled = n === 0;
     if (R.addonsNote) R.addonsNote.style.display = n > 0 ? "block" : "none";
 
-    // list items
-    if (R.items) {
-      R.items.innerHTML = "";
-      for (const [key, it] of es) R.items.appendChild(lineItem(key, it));
+
+// list items (group by base itemId:variant)
+    
+if (R.items) {
+  R.items.innerHTML = "";
+  const groups = buildGroups();
+  for (const [, g] of groups) {
+    // If user somehow added only add-ons (no base), still show them nicely
+    const hasBase = !!g.base;
+    if (!hasBase && g.addons.length) {
+      // synthesize a "base" shell using the first addon’s meta (just for title/thumb)
+      const first = g.addons[0];
+      g.base = { key: first.key.split(":").slice(0,2).join(":"), it: { ...first.it } };
     }
+    R.items.appendChild(renderGroup(g));
+  }
+}
+
 
     // totals
     const sub = subtotal();
