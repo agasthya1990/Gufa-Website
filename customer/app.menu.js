@@ -1282,7 +1282,7 @@ document.addEventListener("click", (e) => {
 
   if (qty > 0) {
     // proceed to checkout (keep your current path)
-    window.location.href = "/checkout.html";
+    window.location.href = "/customer/checkout.html";
   } else {
     // empty -> do a quick rock/wobble and do nothing
     btn.classList.remove("rock");
