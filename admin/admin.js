@@ -638,7 +638,11 @@ function attachPromotionsSnapshot() {
 }
 
 function attachBannersSnapshot() {
-  onSnapshot(collection(db, "banners"), (snap) => {
+  import { query, where } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+   onSnapshot(
+   query(collection(db, "promotions"), where("kind", "==", "banner")),
+   (snap) => {
+
     const map = {};
     snap.forEach(d => {
       const b = d.data() || {};
@@ -970,10 +974,10 @@ try {
         p.type === 'percent' ? `${p.value}% off`
         : (p.value !== undefined ? `₹${p.value} off` : 'promo');
       const chan = p.channel || '';
-      const bannerTitle = (BANNER_TITLES_BY_COUPON[id] && BANNER_TITLES_BY_COUPON[id][0]) || null;
-      const label = [p.code || '(no code)', chan === 'dining' ? 'Dining' : 'Delivery', typeTxt]
-                     .filter(Boolean).join(' • ');
-      rows.push({ id, label, channel: chan });
+      const bannerTitle = (BANNER_TITLES_BY_COUPON?.[id]?.[0]) || null;
+      const label = [p.code || '(no code)', bannerTitle, (chan === 'dining' ? 'Dining' : 'Delivery'), typeTxt]
+     .filter(Boolean).join(' • ');
+     rows.push({ id, label, channel: chan });
     }
   } else {
      
@@ -991,10 +995,10 @@ try {
         p.type === 'percent' ? `${p.value}% off`
         : (p.value !== undefined ? `₹${p.value} off` : 'promo');
       const chan = p.channel || '';
-      const bannerTitle = (BANNER_TITLES_BY_COUPON[id] && BANNER_TITLES_BY_COUPON[id][0]) || null;
-      const label = [p.code || '(no code)', chan === 'dining' ? 'Dining' : 'Delivery', typeTxt]
-                     .filter(Boolean).join(' • ');
-      rows.push({ id: d.id, label, channel: chan });
+      const bannerTitle = (BANNER_TITLES_BY_COUPON?.[id]?.[0]) || null;
+      const label = [p.code || '(no code)', bannerTitle, (chan === 'dining' ? 'Dining' : 'Delivery'), typeTxt]
+      .filter(Boolean).join(' • ');
+      rows.push({ id, label, channel: chan });
     });
   }
 } catch (e) {
