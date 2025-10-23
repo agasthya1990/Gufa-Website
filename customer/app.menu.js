@@ -960,6 +960,22 @@ try {
       }
     });
     COUPONS = m;
+
+// If a promo is already locked but missing meta, backfill type/value from COUPONS now.
+try {
+  const locked = JSON.parse(localStorage.getItem("gufa_coupon") || "null");
+  if (locked && (!locked.type || !locked.value) && locked.scope?.couponId) {
+    const meta = COUPONS?.get?.(locked.scope.couponId);
+    if (meta && meta.active !== false) {
+      locked.type  = String(meta.type || "");
+      locked.value = Number(meta.value || 0);
+      localStorage.setItem("gufa_coupon", JSON.stringify(locked));
+      console.info(`[promo] Backfilled meta for ${locked.code}: ${locked.type} ${locked.value}`);
+      // trigger a cart recompute if user is on checkout
+      window.dispatchEvent(new Event("cart:update"));
+    }
+  }
+} catch {}
     
 // If currently viewing a banner list, (re)decorate badges now that coupons are hydrated
 if (typeof decorateBannerDealBadges === "function" && view === "list" && listKind === "banner" && ACTIVE_BANNER) {
