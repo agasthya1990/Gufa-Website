@@ -638,9 +638,8 @@ function attachPromotionsSnapshot() {
 }
 
 function attachBannersSnapshot() {
-  import { query, where } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
-   onSnapshot(
-   query(collection(db, "promotions"), where("kind", "==", "banner")), (snap) => {
+  onSnapshot(
+    query(collection(db, "promotions"), where("kind", "==", "banner")), (snap) => {
     const map = {};
     snap.forEach(d => {
       const b = d.data() || {};
@@ -980,24 +979,23 @@ try {
   } else {
      
     const snap = await getDocs(collection(db, 'promotions'));
-    snap.forEach(d => {
-      const p = d.data() || {};
-      if (p?.kind !== 'coupon') return;
-      const inactive  = p.active === false;
-      const limit     = p.usageLimit ?? null;
-      const used      = p.usedCount ?? 0;
-      const exhausted = limit !== null && used >= limit;
-      if (inactive || exhausted) return;
+     snap.forEach(d => {
+     const p = d.data() || {};
+  if (p?.kind !== 'coupon') return;
+  const inactive  = p.active === false;
+  const limit     = p.usageLimit ?? null;
+  const used      = p.usedCount ?? 0;
+  const exhausted = limit !== null && used >= limit;
+  if (inactive || exhausted) return;
 
-      const typeTxt =
-        p.type === 'percent' ? `${p.value}% off`
-        : (p.value !== undefined ? `₹${p.value} off` : 'promo');
-      const chan = p.channel || '';
-      const bannerTitle = (BANNER_TITLES_BY_COUPON?.[id]?.[0]) || null;
-      const label = [p.code || '(no code)', bannerTitle, (chan === 'dining' ? 'Dining' : 'Delivery'), typeTxt]
-      .filter(Boolean).join(' • ');
-      rows.push({ id, label, channel: chan });
-     });  
+  const typeTxt =
+    p.type === 'percent' ? `${p.value}% off`
+    : (p.value !== undefined ? `₹${p.value} off` : 'promo');
+  const chan = p.channel || '';
+  const label = [p.code || '(no code)', chan === 'dining' ? 'Dining' : 'Delivery', typeTxt]
+                 .filter(Boolean).join(' • ');
+  rows.push({ id: d.id, label, channel: chan });
+});
   }
 } catch (e) {
   console.error('[BulkPromos] fetch failed:', e);
