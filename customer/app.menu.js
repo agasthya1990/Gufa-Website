@@ -1135,10 +1135,10 @@ document.addEventListener("click", (e) => {
       } catch {}
 
       window.Cart?.setQty?.(key, next, next > 0 ? {
-        id: itemId,
-        name: (ITEMS.find(x=>x.id===itemId)?.name) || itemId,
-        variant: variantKey,
-        price: basePrice + addonPrice,
+       id: itemId,
+       name: (ITEMS.find(x=>x.id===itemId)?.name) || itemId,
+       variant: variantKey,
+        price: addonPrice,
         addons: [{ name, price: addonPrice }]
       } : undefined);
     }
