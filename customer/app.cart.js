@@ -3,8 +3,10 @@
 
 (function () {
   const INR = (v) => "₹" + Math.round(Number(v) || 0).toLocaleString("en-IN");
-  const GST_PERCENT = 5;
-  const DELIVERY_TEXT = "Shown at payment";
+  const SERVICE_TAX_RATE = 0.05;                      // changeable without rewrites
+  const SERVICE_TAX_LABEL = "Service Tax";            // label shown in UI
+  const taxOn = (amount) => Math.max(0, amount * SERVICE_TAX_RATE);
+
 
   // helpers
   const entries = () => {
@@ -177,14 +179,64 @@ if (R.items) {
 }
 
 
-    // totals
-    const sub = subtotal();
-    const g   = gst(sub);
-    if (R.subtotal) R.subtotal.textContent = INR(sub);
-    if (R.gst)      R.gst.textContent      = INR(g);
-    if (R.delivery) R.delivery.textContent = DELIVERY_TEXT;
-    if (R.total)    R.total.textContent    = INR(sub + g);
+// ---- PROMOTION & TAX (Base-only discount; add-ons excluded) ----
+
+// 1) split base vs add-ons from current cart entries
+let baseSubtotal = 0, addonSubtotal = 0;
+for (const [key, it] of entries()) {
+  const isAddon = String(key).split(":").length >= 3; // itemId:variant:addon
+  const lineTotal = (Number(it.price)||0) * (Number(it.qty)||0);
+  if (isAddon) addonSubtotal += lineTotal; else baseSubtotal += lineTotal;
+}
+
+// 2) read locked coupon (if any)
+let discount = 0, couponCode = "";
+let locked = null;
+try { locked = JSON.parse(localStorage.getItem("gufa_coupon") || "null"); } catch {}
+if (locked && Array.isArray(locked?.scope?.eligibleItemIds) && locked.scope.eligibleItemIds.length) {
+  // eligible base-only sum
+  let eligibleBase = 0;
+  for (const [key, it] of entries()) {
+    const isAddon = String(key).split(":").length >= 3;
+    if (isAddon) continue;          // exclude add-ons
+    if (!locked.scope.eligibleItemIds.includes(it.id)) continue;
+    eligibleBase += (Number(it.price)||0) * (Number(it.qty)||0);
   }
+  if (eligibleBase > 0) {
+    const t = String(locked.type || "").toLowerCase();
+    const v = Number(locked.value || 0);
+    if (t === "percent") discount = Math.round(eligibleBase * (v/100));
+    else if (t === "flat") discount = Math.min(v, eligibleBase);
+    couponCode = String(locked.code || "").toUpperCase();
+  }
+}
+
+// 3) compute totals
+const preTax = Math.max(0, baseSubtotal + addonSubtotal - discount);
+const tax = taxOn(preTax);
+const grand = preTax + tax;
+
+// 4) paint existing fields
+// NOTE: Your existing right-column IDs are: subtotal, gst, delivery, total
+// We'll map them to: Subtotal (base+addons), Service Tax, Delivery, Total
+if (R.subtotal) R.subtotal.textContent = INR(baseSubtotal + addonSubtotal);
+if (R.gst)      R.gst.textContent      = INR(tax);
+if (R.delivery) R.delivery.textContent = DELIVERY_TEXT;
+if (R.total)    R.total.textContent    = INR(grand);
+
+// 5) optional mini invoice text in the "addons note" region (if present)
+if (R.addonsNote) {
+  // create a compact invoice breakdown with Promotion line
+  R.addonsNote.innerHTML = `
+    <div class="muted" style="display:grid;row-gap:4px;">
+      <div><span>Base Items:</span> <strong>${INR(baseSubtotal)}</strong></div>
+      <div><span>Add-ons:</span> <strong>${INR(addonSubtotal)}</strong></div>
+      ${discount > 0 ? `<div><span>Promotion (${couponCode}):</span> <strong style="color:#b00020;">−${INR(discount)}</strong></div>` : ""}
+      <div><span>${SERVICE_TAX_LABEL} (${(SERVICE_TAX_RATE*100).toFixed(0)}%):</span> <strong>${INR(tax)}</strong></div>
+    </div>
+  `;
+}
+
 
   function lineItem(key, it) {
     const li = document.createElement("li");
