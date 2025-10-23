@@ -76,35 +76,11 @@ function nudgeBaseSteppers(itemId){
 
 // ===== Header Cart =====
 function updateCartLink(){
-  // Compute latest total safely from the Cart store
-  let total = 0;
-  try {
-    const bag = (window.Cart?.get?.() || {});
-    total = Object.values(bag).reduce((n, it) => n + (Number(it?.qty) || 0), 0);
-  } catch {}
-
-  const el = document.getElementById('cartLink');
-  if (!el) return;
-
-  // Always show the count
-  el.textContent = `Cart (${total})`;
-
-  // Toggle navigability + a11y + subtle state classes
-  if (total > 0) {
-    if (!el.getAttribute('href')) el.setAttribute('href', 'customer/checkout.html');
-    el.removeAttribute('aria-disabled');
-    el.removeAttribute('tabindex');
-    el.classList.remove('is-empty');
-    el.classList.add('is-active');
-  } else {
-    // Disable link when empty; we rely on the click guard to add the wobble
-    el.removeAttribute('href');
-    el.setAttribute('aria-disabled', 'true');
-    el.setAttribute('tabindex', '-1');
-    el.classList.add('is-empty');
-    el.classList.remove('is-active');
-  }
+  const total = getCartEntries().reduce((n, [, it]) => n + (Number(it.qty)||0), 0);
+  const el = document.getElementById("cartLink");
+  if (el) el.textContent = `Cart (${total})`;
 }
+
 
 
 // ===== Mini-cart Badge =====
@@ -155,30 +131,6 @@ window.addEventListener("cart:update", () => {
 
   /* ---------- Header cart link (already on your page) ---------- */
   const cartLink = $("#cartLink"); // e.g., "Cart (0)"
-
-// Guard: when empty cart, rock instead of navigating (capture-phase)
-if (cartLink) {
-  cartLink.addEventListener('click', function(e){
-    // Latest count at click-time (no stale state)
-    let total = 0;
-    try {
-      const bag = (window.Cart?.get?.() || {});
-      total = Object.values(bag).reduce((n, it) => n + (Number(it?.qty) || 0), 0);
-    } catch {}
-
-    if (total <= 0) {
-      // Block navigation hard
-      e.preventDefault();
-      e.stopPropagation();
-      e.stopImmediatePropagation?.();
-
-      // Feedback: quick wobble using your existing .pulse hook
-      cartLink.classList.add('pulse');
-      setTimeout(() => cartLink.classList.remove('pulse'), 300);
-    }
-    // else: allow normal navigation
-  }, true); // capture = true
-}
 
 
   /* ---------- State ---------- */
@@ -296,31 +248,15 @@ if (cartLink) {
 
 
 function updateCartLink(){
-  let total = 0;
   try {
-    const bag = (window.Cart?.get?.() || {});
-    total = Object.values(bag).reduce((n, it) => n + (Number(it?.qty) || 0), 0);
-  } catch {}
-
-  const el = document.getElementById('cartLink');
-  if (!el) return;
-
-  el.textContent = `Cart (${total})`;
-
-  if (total > 0) {
-    if (!el.getAttribute('href')) el.setAttribute('href', 'customer/checkout.html');
-    el.removeAttribute('aria-disabled');
-    el.removeAttribute('tabindex');
-    el.classList.remove('is-empty');
-    el.classList.add('is-active');
-  } else {
-    el.removeAttribute('href');
-    el.setAttribute('aria-disabled', 'true');
-    el.setAttribute('tabindex', '-1');
-    el.classList.add('is-empty');
-    el.classList.remove('is-active');
+    const bag = window.Cart?.get?.() || {};
+    const total = Object.values(bag).reduce((a,entry)=> a + (Number(entry?.qty||0)||0), 0);
+    if (cartLink) cartLink.textContent = `Cart (${total})`;
+  } catch {
+    if (cartLink) cartLink.textContent = `Cart (0)`;
   }
 }
+
 
  
 
@@ -1328,13 +1264,35 @@ document.addEventListener("click", (e) => {
   updateAddonsButtonState(id);
 });
 
-
-
- // Mini cart button click: go to checkout
+// Mini cart button click: only go to checkout if this item has qty > 0
 document.addEventListener("click", (e) => {
-  const btn = e.target.closest(".mini-cart-btn"); if (!btn) return;
-  e.preventDefault(); window.location.href = "checkout.html";
+  const btn = e.target.closest(".mini-cart-btn");
+  if (!btn) return;
+
+  e.preventDefault();
+
+  const card = btn.closest(".menu-item");
+  const itemId = card?.getAttribute("data-id") || "";
+
+  // Compute latest qty for this item (base + any add-ons)
+  let qty = 0;
+  try {
+    qty = sumQtyByPrefix(itemId + ":");  // uses Cart.get() under the hood
+  } catch {}
+
+  if (qty > 0) {
+    // proceed to checkout (keep your current path)
+    window.location.href = "checkout.html";
+  } else {
+    // empty -> do a quick rock/wobble and do nothing
+    btn.classList.remove("rock");
+    // reflow to retrigger the animation even on repeated clicks
+    void btn.offsetWidth;
+    btn.classList.add("rock");
+    setTimeout(() => btn.classList.remove("rock"), 350);
+  }
 });
+
 
 /* ---------- Service Mode (Slice 2) ---------- */
 const SERVICE_MODE_KEY = "gufa:serviceMode";
@@ -1433,24 +1391,6 @@ function initServiceMode(){
 async function boot(){
   showHome(); // renders tiles on load if sections present
   updateCartLink();
-
-  // --- Cart badge behavior ---
-  const cartEl = document.getElementById('cartLink');
-  if (cartEl) {
-    cartEl.addEventListener('click', (e) => {
-      // Compute the latest total from the store at click-time
-      const total = getCartEntries().reduce((n, [, it]) => n + (Number(it.qty) || 0), 0);
-      if (total <= 0) {
-        // Block navigation and give quick feedback
-        e.preventDefault();
-        cartEl.classList.add('pulse');
-        setTimeout(() => cartEl.classList.remove('pulse'), 300);
-      }
-      // else: allow default navigation to checkout
-    });
-  }
-  // --- end: cart badge behavior ---
-
   initServiceMode();
   await listenAll();
 }
