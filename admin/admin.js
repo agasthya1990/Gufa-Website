@@ -970,9 +970,7 @@ try {
         p.type === 'percent' ? `${p.value}% off`
         : (p.value !== undefined ? `₹${p.value} off` : 'promo');
       const chan = p.channel || '';
-      const bannerTitle =
-        (window.BANNERS?.find(b => Array.isArray(b.linkedCouponIds) && b.linkedCouponIds.includes(id))?.title) ||
-        null;
+      const bannerTitle = (BANNER_TITLES_BY_COUPON[id] && BANNER_TITLES_BY_COUPON[id][0]) || null;
       const label = [p.code || '(no code)', chan === 'dining' ? 'Dining' : 'Delivery', typeTxt]
                      .filter(Boolean).join(' • ');
       rows.push({ id, label, channel: chan });
@@ -993,9 +991,7 @@ try {
         p.type === 'percent' ? `${p.value}% off`
         : (p.value !== undefined ? `₹${p.value} off` : 'promo');
       const chan = p.channel || '';
-       const bannerTitle =
-       (window.BANNERS?.find(b => Array.isArray(b.linkedCouponIds) && b.linkedCouponIds.includes(id))?.title) ||
-        null;
+      const bannerTitle = (BANNER_TITLES_BY_COUPON[id] && BANNER_TITLES_BY_COUPON[id][0]) || null;
       const label = [p.code || '(no code)', chan === 'dining' ? 'Dining' : 'Delivery', typeTxt]
                      .filter(Boolean).join(' • ');
       rows.push({ id: d.id, label, channel: chan });
