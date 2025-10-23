@@ -92,6 +92,7 @@ const D = {
    ========================= */
 // State
 let PROMOS_BY_ID = {};                // { promoId: {...promo} }
+let BANNER_TITLES_BY_COUPON = {};
 let allItems = [];                    // [{ id, data }]
 let selectedIds = new Set();          // Set<string>
 let editingId = null;                 // currently editing single item
@@ -945,11 +946,15 @@ try {
         p.type === 'percent' ? `${p.value}% off`
         : (p.value !== undefined ? `₹${p.value} off` : 'promo');
       const chan = p.channel || '';
+      const bannerTitle =
+        (window.BANNERS?.find(b => Array.isArray(b.linkedCouponIds) && b.linkedCouponIds.includes(id))?.title) ||
+        null;
       const label = [p.code || '(no code)', chan === 'dining' ? 'Dining' : 'Delivery', typeTxt]
                      .filter(Boolean).join(' • ');
       rows.push({ id, label, channel: chan });
     }
   } else {
+     
     const snap = await getDocs(collection(db, 'promotions'));
     snap.forEach(d => {
       const p = d.data() || {};
@@ -964,6 +969,9 @@ try {
         p.type === 'percent' ? `${p.value}% off`
         : (p.value !== undefined ? `₹${p.value} off` : 'promo');
       const chan = p.channel || '';
+       const bannerTitle =
+       (window.BANNERS?.find(b => Array.isArray(b.linkedCouponIds) && b.linkedCouponIds.includes(id))?.title) ||
+        null;
       const label = [p.code || '(no code)', chan === 'dining' ? 'Dining' : 'Delivery', typeTxt]
                      .filter(Boolean).join(' • ');
       rows.push({ id: d.id, label, channel: chan });
