@@ -1356,16 +1356,18 @@ if (Object.keys(PROMOS_BY_ID).length) {
     const exhausted = limit !== null && used >= limit; // hide exhausted
     if (inactive || exhausted) continue;
 
-    const typeTxt = p.type === 'percent' ? `${p.value}% off` : `₹${p.value} off`;
-    rows.push({
-      id,
-      code: p.code || '(no code)',
-      channel: p.channel || '',
-      label: [p.code || '(no code)', p.channel === 'dining' ? 'Dining' : 'Delivery', typeTxt]
+   const typeTxt = p.type === 'percent' ? `${p.value}% off` : `₹${p.value} off`;
+   const bannerTitle = (BANNER_TITLES_BY_COUPON?.[id]?.[0]) || null;
+   rows.push({
+               id,
+               code: p.code || '(no code)',
+               channel: p.channel || '',
+               label: [p.code || '(no code)', bannerTitle, (p.channel === 'dining' ? 'Dining' : 'Delivery'), typeTxt]
               .filter(Boolean).join(' • ')
-    });
+     });
   }
 } else {
+   
   // Fallback to Firestore — again **COUPONS ONLY**
   const snap = await getDocs(collection(db, 'promotions'));
   snap.forEach(d => {
@@ -1377,14 +1379,15 @@ if (Object.keys(PROMOS_BY_ID).length) {
     const exhausted = limit !== null && used >= limit;
     if (inactive || exhausted) return;
 
-    const typeTxt = p.type === 'percent' ? `${p.value}% off` : (p.value !== undefined ? `₹${p.value} off` : 'promo');
-    rows.push({
-      id: d.id,
-      code: p.code || '(no code)',
-      channel: p.channel || '',
-      label: [p.code || '(no code)', p.channel === 'dining' ? 'Dining' : 'Delivery', typeTxt]
-              .filter(Boolean).join(' • ')
-    });
+const typeTxt = p.type === 'percent' ? `${p.value}% off` : (p.value !== undefined ? `₹${p.value} off` : 'promo');
+const bannerTitle = (BANNER_TITLES_BY_COUPON?.[d.id]?.[0]) || null;
+rows.push({
+  id: d.id,
+  code: p.code || '(no code)',
+  channel: p.channel || '',
+  label: [p.code || '(no code)', bannerTitle, (p.channel === 'dining' ? 'Dining' : 'Delivery'), typeTxt]
+          .filter(Boolean).join(' • ')
+   });
   });
 }
 
