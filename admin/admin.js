@@ -453,6 +453,7 @@ addAddonBtn && (addAddonBtn.onclick = async () => {
     // Start snapshots (menuItems + promotions)
     attachMenuSnapshot();
     attachPromotionsSnapshot();
+    attachBannersSnapshot();
 
   } else {
     if (loginBox) loginBox.style.display = "block";
@@ -634,6 +635,29 @@ function attachPromotionsSnapshot() {
   PROMOS_BY_ID = map; renderTable();
 }, (err) => { console.error("promotions snapshot", err?.code, err?.message); PROMOS_BY_ID = {}; renderTable(); });
 
+}
+
+function attachBannersSnapshot() {
+  onSnapshot(collection(db, "banners"), (snap) => {
+    const map = {};
+    snap.forEach(d => {
+      const b = d.data() || {};
+      const title = b.title || d.id;
+      const linked = Array.isArray(b.linkedCouponIds) ? b.linkedCouponIds : [];
+      linked.forEach(cid => {
+        const k = String(cid);
+        if (!map[k]) map[k] = [];
+        // Keep unique titles, prefer earlier order
+        if (!map[k].includes(title)) map[k].push(title);
+      });
+    });
+    BANNER_TITLES_BY_COUPON = map;
+    // Re-render any open lists that depend on labels
+    try { renderTable(); } catch(_) {}
+  }, (err) => {
+    console.error("banners snapshot", err?.code, err?.message);
+    BANNER_TITLES_BY_COUPON = {};
+  });
 }
 
 /* =========================
