@@ -640,9 +640,7 @@ function attachPromotionsSnapshot() {
 function attachBannersSnapshot() {
   import { query, where } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
    onSnapshot(
-   query(collection(db, "promotions"), where("kind", "==", "banner")),
-   (snap) => {
-
+   query(collection(db, "promotions"), where("kind", "==", "banner")), (snap) => {
     const map = {};
     snap.forEach(d => {
       const b = d.data() || {};
@@ -999,7 +997,6 @@ try {
       const label = [p.code || '(no code)', bannerTitle, (chan === 'dining' ? 'Dining' : 'Delivery'), typeTxt]
       .filter(Boolean).join(' • ');
       rows.push({ id, label, channel: chan });
-    });
   }
 } catch (e) {
   console.error('[BulkPromos] fetch failed:', e);
