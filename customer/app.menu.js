@@ -308,6 +308,7 @@ if (q>0){
 
     try {
       window.Cart?.setQty?.(key, next, { id: found.id, name: found.name, variant: variantKey, price });
+      if (next > 0) lockCouponForActiveBannerIfNeeded(found.id);
     } catch {}
 
     updateItemMiniCartBadge(found.id, /*rock:*/ true);
@@ -762,6 +763,43 @@ function openBannerList(banner){
   });
 }
 
+// --- PROMO LOCK: persist coupon to localStorage on first eligible add ---
+function lockCouponForActiveBannerIfNeeded(addedItemId) {
+  // Must be in a banner list with a live banner
+  if (!(view === "list" && listKind === "banner" && ACTIVE_BANNER)) return;
+
+  // Already locked? do nothing
+  if (localStorage.getItem("gufa_coupon")) return;
+
+  // Is the item actually eligible for the active banner?
+  const item = (window.ITEMS || []).find(x => String(x.id) === String(addedItemId));
+  if (!item || !itemMatchesBanner(item, ACTIVE_BANNER)) return;
+
+  // Decide the coupon meta the banner is advertising (percent/flat + value)
+  const chosen = pickCouponForItem(item, ACTIVE_BANNER);
+  if (!chosen) return;
+
+  // Eligible items for this banner (only those that match the banner)
+  const eligibleItemIds = (window.ITEMS || [])
+    .filter(it => itemMatchesBanner(it, ACTIVE_BANNER))
+    .map(it => String(it.id));
+
+  const payload = {
+    code: String(chosen.code || chosen.id || ACTIVE_BANNER.id).toUpperCase(),
+    type: String(chosen.type || "").toLowerCase(),  // "percent" | "flat"
+    value: Number(chosen.value || 0),
+    mode: "any",  // (mode validation comes later)
+    scope: {
+      bannerId: ACTIVE_BANNER.id,
+      couponId: chosen.id || ACTIVE_BANNER.linkedCouponIds?.[0] || "",
+      eligibleItemIds
+    },
+    lockedAt: Date.now(),
+    source: "banner:" + ACTIVE_BANNER.id
+  };
+  try { localStorage.setItem("gufa_coupon", JSON.stringify(payload)); } catch {}
+  console.info(`[promo] Locked: ${payload.code} (${payload.type} ${payload.value}) from banner ${payload.source}`);
+}
 
 
 /* ===== D3 — Deal badges on item cards (banner list only) ===== */
