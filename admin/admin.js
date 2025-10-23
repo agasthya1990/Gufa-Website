@@ -997,6 +997,7 @@ try {
       const label = [p.code || '(no code)', bannerTitle, (chan === 'dining' ? 'Dining' : 'Delivery'), typeTxt]
       .filter(Boolean).join(' • ');
       rows.push({ id, label, channel: chan });
+     });  
   }
 } catch (e) {
   console.error('[BulkPromos] fetch failed:', e);
