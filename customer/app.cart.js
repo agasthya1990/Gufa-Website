@@ -236,7 +236,7 @@ if (R.addonsNote) {
     </div>
   `;
 }
-
+  }
 
   function lineItem(key, it) {
     const li = document.createElement("li");
