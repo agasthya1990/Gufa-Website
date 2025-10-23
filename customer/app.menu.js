@@ -1364,10 +1364,29 @@ function initServiceMode(){
 async function boot(){
   showHome(); // renders tiles on load if sections present
   updateCartLink();
+
+  // --- Cart badge behavior: when empty, rock instead of navigating ---
+  const cartEl = document.getElementById('cartLink');
+  if (cartEl) {
+    cartEl.addEventListener('click', (e) => {
+      // Compute the latest total from the store at click-time
+      const total = getCartEntries().reduce((n, [, it]) => n + (Number(it.qty) || 0), 0);
+      if (total <= 0) {
+        // Block navigation and give quick feedback
+        e.preventDefault();
+        cartEl.classList.add('pulse');
+        setTimeout(() => cartEl.classList.remove('pulse'), 300);
+      }
+      // else: allow default navigation to checkout
+    });
+  }
+  // --- end: cart badge behavior ---
+
   initServiceMode();
   await listenAll();
 }
 document.addEventListener("DOMContentLoaded", boot);
+
 
 // D1: re-filter banners when service mode changes
 window.addEventListener("serviceMode:changed", () => {
