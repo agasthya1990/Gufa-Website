@@ -76,10 +76,36 @@ function nudgeBaseSteppers(itemId){
 
 // ===== Header Cart =====
 function updateCartLink(){
-  const total = getCartEntries().reduce((n, [, it]) => n + (Number(it.qty)||0), 0);
-  const el = document.getElementById("cartLink");
-  if (el) el.textContent = `Cart (${total})`;
+  // Compute latest total safely from the Cart store
+  let total = 0;
+  try {
+    const bag = (window.Cart?.get?.() || {});
+    total = Object.values(bag).reduce((n, it) => n + (Number(it?.qty) || 0), 0);
+  } catch {}
+
+  const el = document.getElementById('cartLink');
+  if (!el) return;
+
+  // Always show the count
+  el.textContent = `Cart (${total})`;
+
+  // Toggle navigability + a11y + subtle state classes
+  if (total > 0) {
+    if (!el.getAttribute('href')) el.setAttribute('href', 'customer/checkout.html');
+    el.removeAttribute('aria-disabled');
+    el.removeAttribute('tabindex');
+    el.classList.remove('is-empty');
+    el.classList.add('is-active');
+  } else {
+    // Disable link when empty; we rely on the click guard to add the wobble
+    el.removeAttribute('href');
+    el.setAttribute('aria-disabled', 'true');
+    el.setAttribute('tabindex', '-1');
+    el.classList.add('is-empty');
+    el.classList.remove('is-active');
+  }
 }
+
 
 // ===== Mini-cart Badge =====
 function updateItemMiniCartBadge(itemId, rock=false){
@@ -129,6 +155,31 @@ window.addEventListener("cart:update", () => {
 
   /* ---------- Header cart link (already on your page) ---------- */
   const cartLink = $("#cartLink"); // e.g., "Cart (0)"
+
+// Guard: when empty cart, rock instead of navigating (capture-phase)
+if (cartLink) {
+  cartLink.addEventListener('click', function(e){
+    // Latest count at click-time (no stale state)
+    let total = 0;
+    try {
+      const bag = (window.Cart?.get?.() || {});
+      total = Object.values(bag).reduce((n, it) => n + (Number(it?.qty) || 0), 0);
+    } catch {}
+
+    if (total <= 0) {
+      // Block navigation hard
+      e.preventDefault();
+      e.stopPropagation();
+      e.stopImmediatePropagation?.();
+
+      // Feedback: quick wobble using your existing .pulse hook
+      cartLink.classList.add('pulse');
+      setTimeout(() => cartLink.classList.remove('pulse'), 300);
+    }
+    // else: allow normal navigation
+  }, true); // capture = true
+}
+
 
   /* ---------- State ---------- */
   let ITEMS = [];
@@ -244,15 +295,33 @@ window.addEventListener("cart:update", () => {
 }
 
 
-  function updateCartLink(){
+function updateCartLink(){
+  let total = 0;
   try {
-    const bag = window?.Cart?.get?.() || {};
-    const total = Object.values(bag).reduce((a,entry)=> a + (Number(entry?.qty||0)||0), 0);
-    if (cartLink) cartLink.textContent = `Cart (${total})`;
-  } catch {
-    if (cartLink) cartLink.textContent = `Cart (0)`;
+    const bag = (window.Cart?.get?.() || {});
+    total = Object.values(bag).reduce((n, it) => n + (Number(it?.qty) || 0), 0);
+  } catch {}
+
+  const el = document.getElementById('cartLink');
+  if (!el) return;
+
+  el.textContent = `Cart (${total})`;
+
+  if (total > 0) {
+    if (!el.getAttribute('href')) el.setAttribute('href', 'customer/checkout.html');
+    el.removeAttribute('aria-disabled');
+    el.removeAttribute('tabindex');
+    el.classList.remove('is-empty');
+    el.classList.add('is-active');
+  } else {
+    el.removeAttribute('href');
+    el.setAttribute('aria-disabled', 'true');
+    el.setAttribute('tabindex', '-1');
+    el.classList.add('is-empty');
+    el.classList.remove('is-active');
   }
 }
+
  
 
   function updateItemMiniCartBadge(itemId, rock=false){
@@ -1365,7 +1434,7 @@ async function boot(){
   showHome(); // renders tiles on load if sections present
   updateCartLink();
 
-  // --- Cart badge behavior: when empty, rock instead of navigating ---
+  // --- Cart badge behavior ---
   const cartEl = document.getElementById('cartLink');
   if (cartEl) {
     cartEl.addEventListener('click', (e) => {
