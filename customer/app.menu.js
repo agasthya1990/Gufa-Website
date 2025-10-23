@@ -765,40 +765,45 @@ function openBannerList(banner){
 
 // --- PROMO LOCK: persist coupon to localStorage on first eligible add ---
 function lockCouponForActiveBannerIfNeeded(addedItemId) {
-  // Must be in a banner list with a live banner
   if (!(view === "list" && listKind === "banner" && ACTIVE_BANNER)) return;
-
-  // Already locked? do nothing
   if (localStorage.getItem("gufa_coupon")) return;
 
-  // Is the item actually eligible for the active banner?
   const item = (window.ITEMS || []).find(x => String(x.id) === String(addedItemId));
   if (!item || !itemMatchesBanner(item, ACTIVE_BANNER)) return;
 
-  // Decide the coupon meta the banner is advertising (percent/flat + value)
-  const chosen = pickCouponForItem(item, ACTIVE_BANNER);
-  if (!chosen) return;
+  // 1) Try to pick a fully-hydrated coupon (has type/value). If not ready, fall back.
+  let chosen = null;
+  try { chosen = pickCouponForItem(item, ACTIVE_BANNER); } catch {}
+  // Compute first intersecting coupon id as fallback (no meta yet)
+  const rawItemIds = Array.isArray(item.couponIds) ? item.couponIds
+                    : Array.isArray(item.coupons)    ? item.coupons
+                    : Array.isArray(item.promotions) ? item.promotions
+                    : [];
+  const itemIds   = rawItemIds.map(String).map(s => s.trim()).filter(Boolean);
+  const bannerIds = (ACTIVE_BANNER.linkedCouponIds || []).map(String).map(s => s.trim()).filter(Boolean);
+  const firstIntersectId = bannerIds.find(cid => itemIds.includes(cid)) || "";
 
-  // Eligible items for this banner (only those that match the banner)
+  // 2) Eligible items list (so we can restrict the discount scope)
   const eligibleItemIds = (window.ITEMS || [])
     .filter(it => itemMatchesBanner(it, ACTIVE_BANNER))
     .map(it => String(it.id));
 
+  // 3) Persist lock now (even if we don’t have meta yet)
   const payload = {
-    code: String(chosen.code || chosen.id || ACTIVE_BANNER.id).toUpperCase(),
-    type: String(chosen.type || "").toLowerCase(),  // "percent" | "flat"
-    value: Number(chosen.value || 0),
-    mode: "any",  // (mode validation comes later)
+    code: String((chosen?.code || chosen?.id || firstIntersectId || ACTIVE_BANNER.id)).toUpperCase(),
+    type: String(chosen?.type || ""),   // may be empty for now
+    value: Number(chosen?.value || 0),  // may be 0 for now
+    mode: "any",                        // mode handling later
     scope: {
       bannerId: ACTIVE_BANNER.id,
-      couponId: chosen.id || ACTIVE_BANNER.linkedCouponIds?.[0] || "",
+      couponId: chosen?.id || firstIntersectId,
       eligibleItemIds
     },
     lockedAt: Date.now(),
     source: "banner:" + ACTIVE_BANNER.id
   };
   try { localStorage.setItem("gufa_coupon", JSON.stringify(payload)); } catch {}
-  console.info(`[promo] Locked: ${payload.code} (${payload.type} ${payload.value}) from banner ${payload.source}`);
+  console.info(`[promo] Locked: ${payload.code} (type=${payload.type||"pending"} value=${payload.value||"pending"})`);
 }
 
 
