@@ -2,19 +2,24 @@
 // Works with window.CART_UI (list or table). Uses global window.Cart.
 
 (function () {
-  const INR = (v) => "₹" + Math.round(Number(v) || 0).toLocaleString("en-IN");
-  const SERVICE_TAX_RATE = 0.05;                      // changeable without rewrites
-  const SERVICE_TAX_LABEL = "Service Tax";            // label shown in UI
-  const taxOn = (amount) => Math.max(0, amount * SERVICE_TAX_RATE);
+const INR = (v) => "₹" + Math.round(Number(v) || 0).toLocaleString("en-IN");
 
+// --- Tax & delivery labels (cart-visible, configurable) ---
+const SERVICE_TAX_RATE  = 0.05;           // changeable without rewrites
+const SERVICE_TAX_LABEL = "Service Tax";  // label shown in UI
+const DELIVERY_TEXT     = "Shown at payment";
 
-  // helpers
-  const entries = () => {
-    try { return Object.entries(window.Cart?.get?.() || {}); } catch { return []; }
-  };
-  const count = () => entries().reduce((n, [, it]) => n + (Number(it.qty) || 0), 0);
-  const subtotal = () => entries().reduce((s, [, it]) => s + (Number(it.price)||0)*(Number(it.qty)||0), 0);
-  const gst = (s) => Math.max(0, (s * GST_PERCENT) / 100);
+// math helpers
+const taxOn = (amount) => Math.max(0, amount * SERVICE_TAX_RATE);
+
+// helpers
+const entries = () => {
+  try { return Object.entries(window.Cart?.get?.() || {}); } catch { return []; }
+};
+const count = () => entries().reduce((n, [, it]) => n + (Number(it.qty) || 0), 0);
+const subtotal = () => entries().reduce((s, [, it]) => s + (Number(it.price)||0)*(Number(it.qty)||0), 0);
+// (removed legacy gst() tied to GST_PERCENT)
+
 
   // runtime refs (filled after DOMContentLoaded)
   let mode = null; // 'list' | 'table'
@@ -216,17 +221,39 @@ const preTax = Math.max(0, baseSubtotal + addonSubtotal - discount);
 const tax = taxOn(preTax);
 const grand = preTax + tax;
 
-// 4) paint existing fields
-// NOTE: Your existing right-column IDs are: subtotal, gst, delivery, total
-// We'll map them to: Subtotal (base+addons), Service Tax, Delivery, Total
+// 4) paint existing fields (right column)
 if (R.subtotal) R.subtotal.textContent = INR(baseSubtotal + addonSubtotal);
 if (R.gst)      R.gst.textContent      = INR(tax);
 if (R.delivery) R.delivery.textContent = DELIVERY_TEXT;
 if (R.total)    R.total.textContent    = INR(grand);
 
-// 5) optional mini invoice text in the "addons note" region (if present)
+// 4b) ensure a visible Promotion row right under Subtotal (if DOM allows)
+const totalsWrap = R.subtotal?.closest?.(".totals") || null;
+if (totalsWrap) {
+  // create row once; just update text later
+  let promoRow = totalsWrap.querySelector(".total-row.promo-row");
+  if (!promoRow) {
+    promoRow = document.createElement("div");
+    promoRow.className = "total-row promo-row";
+    promoRow.innerHTML = `<span id="promo-label" class="muted">Promotion</span><span id="promo-amt"></span>`;
+    // insert after Subtotal row
+    const first = totalsWrap.firstElementChild;
+    if (first) first.insertAdjacentElement("afterend", promoRow);
+    else totalsWrap.prepend(promoRow);
+  }
+  const labelEl = promoRow.querySelector("#promo-label");
+  const amtEl   = promoRow.querySelector("#promo-amt");
+  if (discount > 0) {
+    labelEl.textContent = couponCode ? `Promotion (${couponCode})` : "Promotion";
+    amtEl.textContent = "− " + INR(discount);
+    promoRow.style.display = "";
+  } else {
+    promoRow.style.display = "none";
+  }
+}
+
+// 5) optional mini invoice text in the "addons note" region (left column cue)
 if (R.addonsNote) {
-  // create a compact invoice breakdown with Promotion line
   R.addonsNote.innerHTML = `
     <div class="muted" style="display:grid;row-gap:4px;">
       <div><span>Base Items:</span> <strong>${INR(baseSubtotal)}</strong></div>
