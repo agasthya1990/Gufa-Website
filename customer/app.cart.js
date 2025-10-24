@@ -59,9 +59,11 @@ const taxOn = (amount) => Math.max(0, (Number(amount) || 0) * SERVICE_TAX_RATE);
   
 // --- Mode + coupon validity helpers ---
 function activeMode() {
-  const m = String(localStorage.getItem("gufa_mode") || "delivery").toLowerCase();
+  const raw = localStorage.getItem("gufa:serviceMode") ?? localStorage.getItem("gufa_mode") ?? "delivery";
+  const m = String(raw).toLowerCase();
   return (m === "dining" ? "dining" : "delivery");
 }
+
 
 function couponValidForCurrentMode(locked) {
   try {
@@ -548,16 +550,11 @@ window.addEventListener("cart:update", () => {
 });
 
  // also re-render when Delivery/Dining mode changes
- window.addEventListener("mode:change", () => {
-   if (!mode) {
-     if (!resolveLayout()) return;
-   }
-   render();
- });
- 
-}
- 
- })();
-
-
+window.addEventListener("serviceMode:changed", () => {
+  if (!mode) {
+    if (!resolveLayout()) return;
+  }
+  render();
+});
+} 
 })();
