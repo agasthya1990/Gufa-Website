@@ -48,10 +48,7 @@ async function fetchCouponCodeAndBackfill(cid, locked) {
   } catch {}
 }
 
-
-
-
-(function () {    
+;(function () {   
 const INR = (v) => "₹" + Math.round(Number(v) || 0).toLocaleString("en-IN");
 const SERVICE_TAX_RATE  = 0.05;           // changeable without rewrites
 const SERVICE_TAX_LABEL = "Service Tax";  // label shown in UI
