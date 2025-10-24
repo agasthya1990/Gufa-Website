@@ -83,18 +83,31 @@ function couponValidForCurrentMode(locked) {
 const entries = () => {
   try {
     // 1) Prefer the live store
-    const store = window.Cart?.get?.();
-    if (store && typeof store === "object") return Object.entries(store);
+    const store = window?.Cart?.get?.();
+    if (store) {
+      if (store instanceof Map) return Array.from(store.entries());      // [[key, it], ...]
+      if (typeof store === "object") return Object.entries(store);       // plain object
+    }
 
-    // 2) Fallback: read directly from localStorage (so cart still paints)
-    const raw = localStorage.getItem("gufa_cart_v1");
-    const parsed = raw ? JSON.parse(raw) : null;
-    const items = (parsed && typeof parsed === "object" && parsed.items) ? parsed.items : {};
-    return Object.entries(items);
+    // 2) Fallbacks: try known storage keys (newest → legacy)
+    const keys = ["gufa_cart_v1", "gufa_cart", "GUFA:CART"];
+    for (const k of keys) {
+      const raw = localStorage.getItem(k);
+      if (!raw) continue;
+      const parsed = JSON.parse(raw);
+      const items = (parsed && typeof parsed === "object")
+        ? (parsed.items && typeof parsed.items === "object" ? parsed.items : parsed)
+        : {};
+      const list = Object.entries(items);
+      if (list.length) return list;
+    }
+
+    return [];
   } catch {
     return [];
   }
 };
+
 
 const count = () => entries().reduce((n, [, it]) => n + (Number(it.qty) || 0), 0);
 const subtotal = () => entries().reduce((s, [, it]) => s + (Number(it.price)||0)*(Number(it.qty)||0), 0);
@@ -361,7 +374,7 @@ if (totalsWrap) {
     
 // 5) optional mini invoice text in the "addons note" region (left column cue)
 if (R.addonsNote) {
-  const _mode = (String(localStorage.getItem("gufa_mode") || "delivery").toLowerCase() === "dining") ? "dining" : "delivery";
+  const _mode = activeMode();
   const hasLock = !!(locked && locked.code);
 
   // compute validity for current mode
@@ -552,11 +565,13 @@ window.addEventListener("cart:update", () => {
 });
 
 // also re-render when Delivery/Dining mode changes
-window.addEventListener("serviceMode:changed", () => {
+const onModeChange = () => {
   if (!mode) {
     if (!resolveLayout()) return;
   }
   render();
-});
+};
+window.addEventListener("serviceMode:changed", onModeChange);
+window.addEventListener("mode:change", onModeChange);
 
 })();
