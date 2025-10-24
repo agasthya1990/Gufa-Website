@@ -118,6 +118,50 @@ function updateAllMiniCartBadges(){
   });
 }
 
+// --- Coupon lock (first touch wins) ---
+// Requires these vars already exist in your file: view, listKind, listId, listLabel, ITEMS
+function lockCouponForActiveBannerIfNeeded(addedItemId){
+  try {
+    if (!(view === "list" && listKind === "banner")) return; // only from a banner list
+    // if a coupon is already locked, do nothing (no stacking rule)
+    const existing = JSON.parse(localStorage.getItem("gufa_coupon") || "null");
+    if (existing && existing.code) return;
+
+    // Derive ACTIVE banner + coupon from current list context
+    const ACTIVE_BANNER_ID = listId || "";
+    const ACTIVE_BANNER = (window.BANNERS || []).find(b => String(b.id) === String(ACTIVE_BANNER_ID));
+    if (!ACTIVE_BANNER) return;
+
+    // Choose the first linked coupon id; real systems can be smarter
+    const [couponId] = Array.isArray(ACTIVE_BANNER.linkedCouponIds) ? ACTIVE_BANNER.linkedCouponIds : [];
+    if (!couponId) return;
+
+    // Eligible = all items currently visible for this banner (Admin wrote item.promotions[])
+    const eligibleItemIds = (ITEMS || [])
+      .filter(it => Array.isArray(it.promotions) && it.promotions.map(String).includes(String(couponId)))
+      .map(it => String(it.id));
+
+    if (!eligibleItemIds.includes(String(addedItemId))) return; // safety
+
+    // Optional coupon meta if you hydrated coupons earlier
+    const c = (window.COUPONS && window.COUPONS[couponId]) || null;
+    const code  = (c?.code || String(couponId)).toUpperCase();
+    const type  = (c?.type || "").toLowerCase(); // 'percent'|'flat'
+    const value = Number(c?.value || 0);
+
+    const lock = {
+      code,
+      type,
+      value,
+      scope: { bannerId: String(ACTIVE_BANNER_ID), couponId: String(couponId), eligibleItemIds },
+      lockedAt: Date.now()
+    };
+    localStorage.setItem("gufa_coupon", JSON.stringify(lock));
+    // let cart/checkout repaint
+    window.dispatchEvent(new CustomEvent("cart:update"));
+  } catch {}
+}
+
 // ===== Global Sync =====
 window.addEventListener("cart:update", () => {
   updateAllMiniCartBadges();
