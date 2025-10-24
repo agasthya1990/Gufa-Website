@@ -303,10 +303,8 @@ if (R.gst)      R.gst.textContent      = INR(tax);
 if (R.delivery) R.delivery.textContent = DELIVERY_TEXT;
 if (R.total)    R.total.textContent    = INR(grand);
 
-// 4b) ensure a visible Promotion row right under Subtotal (if DOM allows)
 const totalsWrap = R.subtotal?.closest?.(".totals") || R.subtotal?.parentElement || null;
 if (totalsWrap) {
-  // create row once; just update text later
   let promoRow = totalsWrap.querySelector(".total-row.promo-row");
   if (!promoRow) {
     promoRow = document.createElement("div");
@@ -342,6 +340,7 @@ if (totalsWrap) {
     promoRow.style.display = "none";
   }
 }
+
 
     
 // 5) optional mini invoice text in the "addons note" region (left column cue)
@@ -390,6 +389,7 @@ if (R.addonsNote) {
     }).catch(() => {});
   }
 }
+
 
   function lineItem(key, it) {
     const li = document.createElement("li");
