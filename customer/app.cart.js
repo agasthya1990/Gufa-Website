@@ -1,6 +1,21 @@
 // app.cart.js — resolves layout AFTER DOM is ready, then renders.
 // Works with window.CART_UI (list or table). Uses global window.Cart.
 
+function displayCodeFromLock(locked){
+  try {
+    const raw = String(locked?.code || "").toUpperCase();
+    const cid = String(locked?.scope?.couponId || "");
+    const looksLikeUuid = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i.test(raw);
+
+    if (!looksLikeUuid && raw) return raw;
+
+    // try to resolve human-readable code from global coupons map
+    const meta = (window.COUPONS instanceof Map) ? window.COUPONS.get(cid) : null;
+    const code = (meta?.code || raw || cid || "").toString().toUpperCase();
+    return code;
+  } catch { return String(locked?.code || "").toUpperCase(); }
+}
+
 (function () {
 const INR = (v) => "₹" + Math.round(Number(v) || 0).toLocaleString("en-IN");
 
@@ -243,13 +258,14 @@ if (totalsWrap) {
   }
   const labelEl = promoRow.querySelector("#promo-label");
   const amtEl   = promoRow.querySelector("#promo-amt");
-  if (discount > 0) {
-    labelEl.textContent = couponCode ? `Promotion (${couponCode})` : "Promotion";
-    amtEl.textContent = "− " + INR(discount);
-    promoRow.style.display = "";
-  } else {
-    promoRow.style.display = "none";
-  }
+if (discount > 0) {
+  const displayCode = displayCodeFromLock(locked); // ← NEW
+  labelEl.textContent = displayCode ? `Promotion (${displayCode})` : "Promotion";
+  amtEl.textContent = "− " + INR(discount);
+  promoRow.style.display = "";
+} else {
+  promoRow.style.display = "none";
+}
 }
 
 // 5) optional mini invoice text in the "addons note" region (left column cue)
