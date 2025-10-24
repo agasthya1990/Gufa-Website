@@ -257,40 +257,27 @@ if (R.total)    R.total.textContent    = INR(grand);
 // 4b) ensure a visible Promotion row right under Subtotal (if DOM allows)
 const totalsWrap = R.subtotal?.closest?.(".totals") || R.subtotal?.parentElement || null;
 if (totalsWrap) {
-  // create row once; just update text later
   let promoRow = totalsWrap.querySelector(".total-row.promo-row");
   if (!promoRow) {
     promoRow = document.createElement("div");
     promoRow.className = "total-row promo-row";
     promoRow.innerHTML = `<span id="promo-label" class="muted">Promotion</span><span id="promo-amt"></span>`;
-    // insert after Subtotal row if possible, else append at end
     const first = totalsWrap.firstElementChild;
     if (first) first.insertAdjacentElement("afterend", promoRow);
     else totalsWrap.appendChild(promoRow);
   }
-
-
-  if (!promoRow) {
-    promoRow = document.createElement("div");
-    promoRow.className = "total-row promo-row";
-    promoRow.innerHTML = `<span id="promo-label" class="muted">Promotion</span><span id="promo-amt"></span>`;
-    // insert after Subtotal row
-    const first = totalsWrap.firstElementChild;
-    if (first) first.insertAdjacentElement("afterend", promoRow);
-    else totalsWrap.prepend(promoRow);
-  }
   const labelEl = promoRow.querySelector("#promo-label");
   const amtEl   = promoRow.querySelector("#promo-amt");
-if (discount > 0) {
-  const displayCode = displayCodeFromLock(locked); // or couponCode in older copy
-  labelEl.textContent = displayCode ? `Promotion (${displayCode})` : "Promotion";
-  amtEl.textContent = "− " + INR(discount);
-  promoRow.style.display = "";
-} else {
-  promoRow.style.display = "none";
+  if (discount > 0) {
+    const displayCode = displayCodeFromLock(locked);
+    labelEl.textContent = displayCode ? `Promotion (${displayCode})` : "Promotion";
+    amtEl.textContent = "− " + INR(discount);
+    promoRow.style.display = "";
+  } else {
+    promoRow.style.display = "none";
+  }
 }
 
-}
 
 // 5) optional mini invoice text in the "addons note" region (left column cue)
 if (R.addonsNote) {
