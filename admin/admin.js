@@ -326,6 +326,29 @@ function setMultiHiddenValue(selectEl, values = []) {
   selectEl.dispatchEvent(new Event("change"));
 }
 
+// --- PROMOTION TAG HELPERS (used by single + bulk modals) ---
+const _uniqStr = (arr) => Array.from(new Set((arr || []).map(String).filter(Boolean)));
+
+async function setItemPromotions(itemId, couponIds) {
+  const ids = _uniqStr(couponIds);
+  await updateDoc(doc(db, "menuItems", String(itemId)), {
+    promotions: ids,
+    updatedAt: serverTimestamp()
+  });
+}
+
+async function bulkSetItemPromotions(itemIds, couponIds) {
+  const ids = _uniqStr(couponIds);
+  const ops = [];
+  (itemIds || []).forEach(id => {
+    ops.push(updateDoc(doc(db, "menuItems", String(id)), {
+      promotions: ids,
+      updatedAt: serverTimestamp()
+    }));
+  });
+  await Promise.all(ops);
+}
+
 // Button label for the custom Add-ons popover trigger
 function updateAddonBtnLabel() {
   if (!addonBtn || !addonsSelect) return;
@@ -1018,35 +1041,25 @@ try {
 
   // 7) Apply to all selected rows
   bpApply.onclick = async () => {
-    try {
-      if (!selectedIds?.size) return alert('No items selected');
-      bpApply.disabled = true;
+  try {
+    if (!selectedIds?.size) return alert('No items selected');
+    bpApply.disabled = true;
 
-      const clear = !!bpClear.checked;
-      const ids = clear
-        ? []
-        : Array.from(bpList.querySelectorAll('input[type="checkbox"]:checked'))
-            .map(i => i.value);
+    const clear = !!bpClear.checked;
+    const raw = clear
+      ? []
+      : Array.from(bpList.querySelectorAll('input[type="checkbox"]:checked'))
+          .map(i => i.value);
 
-      console.log('[BulkPromos] apply', { count: selectedIds.size, ids, clear });
-
-      const ops = [];
-      selectedIds.forEach(itemId => {
-        ops.push(updateDoc(doc(db, 'menuItems', itemId), {
-          promotions: ids,
-          updatedAt: serverTimestamp(),
-        }));
-      });
-      await Promise.all(ops);
-
-      closeOverlay(ov);
-    } catch (err) {
-      console.error('[BulkPromos] apply failed:', err);
-      alert('Failed to update promotions: ' + (err?.message || err));
-    } finally {
-      bpApply.disabled = false;
-    }
-  };
+    await bulkSetItemPromotions(Array.from(selectedIds), raw); // ← helper from PATCH 1
+    closeOverlay(ov);
+  } catch (err) {
+    console.error('[BulkPromos] apply failed:', err);
+    alert('Failed to update promotions: ' + (err?.message || err));
+  } finally {
+    bpApply.disabled = false;
+  }
+};
 }
 
 /* =========================
@@ -1419,22 +1432,24 @@ rows.push({
 
     // 7) Wire buttons
     btnCancel.onclick = () => closeOverlay(ov);
-    btnSave.onclick = async () => {
-      try {
-        btnSave.disabled = true;
-        const clear = !!ppClear.checked;
-        const ids = clear
-          ? []
-          : Array.from(list.querySelectorAll('input[type="checkbox"]:checked')).map(el => el.value);
-        await updateDoc(doc(db, 'menuItems', itemId), { promotions: ids, updatedAt: serverTimestamp() });
-        closeOverlay(ov);
-      } catch (err) {
-        console.error('[PromoModal] save failed:', err);
-        alert('Failed to assign promotions: ' + (err?.message || err));
-      } finally {
-        btnSave.disabled = false;
-      }
-    };
+ btnSave.onclick = async () => {
+  try {
+    btnSave.disabled = true;
+    const clear = !!ppClear.checked;
+
+    const raw = clear
+      ? []
+      : Array.from(list.querySelectorAll('input[type="checkbox"]:checked')).map(el => el.value);
+
+    await setItemPromotions(itemId, raw);   // ← use helper from PATCH 1
+    closeOverlay(ov);
+  } catch (err) {
+    console.error('[PromoModal] save failed:', err);
+    alert('Failed to assign promotions: ' + (err?.message || err));
+  } finally {
+    btnSave.disabled = false;
+  }
+};
   } catch (err) {
     console.error('[PromoModal] open failed (outer):', err);
     alert('Could not open Assign Promotions: ' + (err?.message || err));
