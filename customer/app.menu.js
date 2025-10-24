@@ -152,6 +152,21 @@ window.addEventListener("cart:update", () => {
   let listLabel = "";
   let searchQuery = "";
 
+  // --- Mode helpers (persist + broadcast) ---
+  window.getActiveMode = function () {
+    const m = String(localStorage.getItem("gufa_mode") || "delivery").toLowerCase();
+    return (m === "dining" ? "dining" : "delivery");
+  };
+  window.setActiveMode = function (mode) {
+    const m = (String(mode || "").toLowerCase() === "dining") ? "dining" : "delivery";
+    localStorage.setItem("gufa_mode", m);
+    // Notify menu/cart/checkout
+    window.dispatchEvent(new CustomEvent("mode:change", { detail: { mode: m } }));
+    window.dispatchEvent(new Event("cart:update"));
+  };
+
+
+
     // Coupon lock (first touch wins) — closes over view/listKind/listId/ITEMS
   window.lockCouponForActiveBannerIfNeeded = function (addedItemId) {
     try {
@@ -175,11 +190,17 @@ window.addEventListener("cart:update", () => {
 
       if (!eligibleItemIds.includes(String(addedItemId))) return;
 
-      const meta = (window.COUPONS instanceof Map) ? window.COUPONS.get(String(couponId)) : null;
+            const meta = (window.COUPONS instanceof Map) ? window.COUPONS.get(String(couponId)) : null;
+      const targets = (meta && meta.targets) ? meta.targets : { delivery: true, dining: true };
+
       const lock = {
         code:  (meta?.code || String(couponId)).toUpperCase(),
         type:  String(meta?.type || ""),
         value: Number(meta?.value || 0),
+        valid: {                      // ← NEW: per-mode validity
+          delivery: !!targets.delivery,
+          dining:   !!targets.dining
+        },
         scope: { bannerId: ACTIVE_BANNER_ID, couponId: String(couponId), eligibleItemIds },
         lockedAt: Date.now()
       };
