@@ -431,10 +431,10 @@ if (document.readyState !== "loading") {
 // keep in sync with store
 window.addEventListener("cart:update", () => {
   if (!mode) {
-    // late-mount safety: try resolving again
     if (!resolveLayout()) return;
   }
   render();
 });
 
 })();
+
