@@ -303,42 +303,28 @@ if (totalsWrap) {
   const labelEl = promoRow.querySelector("#promo-label");
   const amtEl   = promoRow.querySelector("#promo-amt");
 if (discount > 0) {
-  // resolve friendly code asynchronously; paint immediately with a neutral label, then update
-  labelEl.textContent = "Promotion";
-  amtEl.textContent   = "− " + INR(discount);
+  const displayCode = displayCodeFromLock(locked); // or couponCode in older copy
+  labelEl.textContent = displayCode ? `Promotion (${displayCode})` : "Promotion";
+  amtEl.textContent = "− " + INR(discount);
   promoRow.style.display = "";
-
-  // async resolve; no admin/menu dependency required
-  resolveDisplayCode(locked).then(code => {
-    if (code && promoRow && labelEl) labelEl.textContent = `Promotion (${code})`;
-  }).catch(() => {});
 } else {
   promoRow.style.display = "none";
 }
+
 }
 
 // 5) optional mini invoice text in the "addons note" region (left column cue)
 if (R.addonsNote) {
-  // paint first without code; update after resolve
-  const baseHtml = `
+  R.addonsNote.innerHTML = `
     <div class="muted" style="display:grid;row-gap:4px;">
       <div><span>Base Items:</span> <strong>${INR(baseSubtotal)}</strong></div>
       <div><span>Add-ons:</span> <strong>${INR(addonSubtotal)}</strong></div>
-      ${discount > 0 ? `<div class="promo-line"><span class="plabel">Promotion</span>: <strong style="color:#b00020;">−${INR(discount)}</strong></div>` : ""}
+      ${discount > 0 ? `<div><span>Promotion (${couponCode}):</span> <strong style="color:#b00020;">−${INR(discount)}</strong></div>` : ""}
       <div><span>${SERVICE_TAX_LABEL} (${(SERVICE_TAX_RATE*100).toFixed(0)}%):</span> <strong>${INR(tax)}</strong></div>
     </div>
   `;
-  R.addonsNote.innerHTML = baseHtml;
-
-  if (discount > 0) {
-    resolveDisplayCode(locked).then(code => {
-      const labelSpot = R.addonsNote.querySelector(".promo-line .plabel");
-      if (labelSpot && code) labelSpot.textContent = `Promotion (${code})`;
-    }).catch(() => {});
-  }
 }
-
-  }
+}
 
   function lineItem(key, it) {
     const li = document.createElement("li");
