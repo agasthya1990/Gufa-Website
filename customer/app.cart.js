@@ -551,15 +551,12 @@ window.addEventListener("cart:update", () => {
   render();
 });
 
- // also re-render when Delivery/Dining mode changes
 // also re-render when Delivery/Dining mode changes
-const onModeChange = () => {
+window.addEventListener("serviceMode:changed", () => {
   if (!mode) {
     if (!resolveLayout()) return;
   }
   render();
-};
-window.addEventListener("mode:change", onModeChange);
-window.addEventListener("serviceMode:changed", onModeChange);
-} 
+});
+
 })();
