@@ -27,8 +27,23 @@ const DELIVERY_TEXT     = "Shown at payment";
 const taxOn = (amount) => Math.max(0, (Number(amount) || 0) * SERVICE_TAX_RATE);
 
 // helpers
+// helpers
 const entries = () => {
-  try { return Object.entries(window.Cart?.get?.() || {}); } catch { return []; }};
+  try {
+    // 1) Prefer the live store
+    const store = window.Cart?.get?.();
+    if (store && typeof store === "object") return Object.entries(store);
+
+    // 2) Fallback: read directly from localStorage (so cart still paints)
+    const raw = localStorage.getItem("gufa_cart_v1");
+    const parsed = raw ? JSON.parse(raw) : null;
+    const items = (parsed && typeof parsed === "object" && parsed.items) ? parsed.items : {};
+    return Object.entries(items);
+  } catch {
+    return [];
+  }
+};
+
 const count = () => entries().reduce((n, [, it]) => n + (Number(it.qty) || 0), 0);
 const subtotal = () => entries().reduce((s, [, it]) => s + (Number(it.price)||0)*(Number(it.qty)||0), 0);
 
@@ -240,10 +255,21 @@ if (R.delivery) R.delivery.textContent = DELIVERY_TEXT;
 if (R.total)    R.total.textContent    = INR(grand);
 
 // 4b) ensure a visible Promotion row right under Subtotal (if DOM allows)
-const totalsWrap = R.subtotal?.closest?.(".totals") || null;
+const totalsWrap = R.subtotal?.closest?.(".totals") || R.subtotal?.parentElement || null;
 if (totalsWrap) {
   // create row once; just update text later
   let promoRow = totalsWrap.querySelector(".total-row.promo-row");
+  if (!promoRow) {
+    promoRow = document.createElement("div");
+    promoRow.className = "total-row promo-row";
+    promoRow.innerHTML = `<span id="promo-label" class="muted">Promotion</span><span id="promo-amt"></span>`;
+    // insert after Subtotal row if possible, else append at end
+    const first = totalsWrap.firstElementChild;
+    if (first) first.insertAdjacentElement("afterend", promoRow);
+    else totalsWrap.appendChild(promoRow);
+  }
+
+
   if (!promoRow) {
     promoRow = document.createElement("div");
     promoRow.className = "total-row promo-row";
@@ -400,18 +426,29 @@ if (R.addonsNote) {
   }
 
   // init after DOM is ready
-  document.addEventListener("DOMContentLoaded", () => {
-    if (!resolveLayout()) return; // logs once if nothing found
-    render();
-  });
+document.addEventListener("DOMContentLoaded", () => {
+  if (!resolveLayout()) return; // logs once if nothing found
+  render();
+});
 
-  // keep in sync with store
-  window.addEventListener("cart:update", () => {
-    if (!mode) {
-      // late-mount safety: try resolving again
-      if (!resolveLayout()) return;
+// If script loads after DOMContentLoaded already fired, bootstrap immediately
+if (document.readyState !== "loading") {
+  if (!mode) {
+    if (!resolveLayout()) {
+      console.warn("[cart] DOM already ready, but no layout found yet.");
+    } else {
+      render();
     }
-    render();
-  });
+  }
+}
+
+// keep in sync with store
+window.addEventListener("cart:update", () => {
+  if (!mode) {
+    // late-mount safety: try resolving again
+    if (!resolveLayout()) return;
+  }
+  render();
+});
 
 })();
