@@ -18,67 +18,19 @@ function displayCodeFromLock(locked){
 }
 
 (function () {
-async function resolveDisplayCode(locked) {
-  try {
-    const raw = String(locked?.code || "").toUpperCase();
-    const cid = String(locked?.scope?.couponId || "");
-    if (!cid) return raw;
-    const looksUuid = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i.test(raw);
-    if (raw && !looksUuid) return raw;                 // already human (e.g., SUMMER25)
-
-    // 2) Try global COUPONS Map if present (from menu pages)
-    if (window.COUPONS instanceof Map) {
-      const meta = window.COUPONS.get(cid);
-      const code = (meta?.code || raw || cid).toString().toUpperCase();
-      if (code && !/[0-9A-F-]{36}/.test(code)) {
-        // backfill and return
-        try {
-          const next = { ...locked, code };
-          localStorage.setItem("gufa_coupon", JSON.stringify(next));
-        } catch {}
-        return code;
-      }
-    }
-
-    // 3) Firestore one-shot read (no Admin edits; uses window.db from firebase.client.js)
-    if (window.db && cid) {
-      // dynamic import (safe in non-module scripts)
-      const { getDoc, doc } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js");
-      const snap = await getDoc(doc(window.db, "promotions", cid));
-      if (snap.exists()) {
-        const data = snap.data() || {};
-        const code = String(data.code || raw || cid).toUpperCase();
-        try {
-          const next = { ...locked, code };
-          localStorage.setItem("gufa_coupon", JSON.stringify(next));
-        } catch {}
-        return code;
-      }
-    }
-
-    // Fallbacks
-    return raw || cid.toUpperCase();
-  } catch {
-    return String(locked?.code || "").toUpperCase();
-  }
-}
 // --- Currency & tax helpers (required by renderers) ---
+  
 const INR = (v) => "₹" + Math.round(Number(v) || 0).toLocaleString("en-IN");
-
 const SERVICE_TAX_RATE  = 0.05;           // changeable without rewrites
 const SERVICE_TAX_LABEL = "Service Tax";  // label shown in UI
 const DELIVERY_TEXT     = "Shown at payment";
-
 const taxOn = (amount) => Math.max(0, (Number(amount) || 0) * SERVICE_TAX_RATE);
 
 // helpers
 const entries = () => {
-  try { return Object.entries(window.Cart?.get?.() || {}); } catch { return []; }
-};
+  try { return Object.entries(window.Cart?.get?.() || {}); } catch { return []; }};
 const count = () => entries().reduce((n, [, it]) => n + (Number(it.qty) || 0), 0);
 const subtotal = () => entries().reduce((s, [, it]) => s + (Number(it.price)||0)*(Number(it.qty)||0), 0);
-// (removed legacy gst() tied to GST_PERCENT)
-
 
   // runtime refs (filled after DOMContentLoaded)
   let mode = null; // 'list' | 'table'
