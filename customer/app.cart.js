@@ -17,15 +17,51 @@ function displayCodeFromLock(locked){
 }
 
 (function () {
-const INR = (v) => "₹" + Math.round(Number(v) || 0).toLocaleString("en-IN");
+async function resolveDisplayCode(locked) {
+  try {
+    const raw = String(locked?.code || "").toUpperCase();
+    const cid = String(locked?.scope?.couponId || "");
+    if (!cid) return raw;
+    const looksUuid = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i.test(raw);
+    if (raw && !looksUuid) return raw;                 // already human (e.g., SUMMER25)
 
-// --- Tax & delivery labels (cart-visible, configurable) ---
-const SERVICE_TAX_RATE  = 0.05;           // changeable without rewrites
-const SERVICE_TAX_LABEL = "Service Tax";  // label shown in UI
-const DELIVERY_TEXT     = "Shown at payment";
+    // 2) Try global COUPONS Map if present (from menu pages)
+    if (window.COUPONS instanceof Map) {
+      const meta = window.COUPONS.get(cid);
+      const code = (meta?.code || raw || cid).toString().toUpperCase();
+      if (code && !/[0-9A-F-]{36}/.test(code)) {
+        // backfill and return
+        try {
+          const next = { ...locked, code };
+          localStorage.setItem("gufa_coupon", JSON.stringify(next));
+        } catch {}
+        return code;
+      }
+    }
 
-// math helpers
-const taxOn = (amount) => Math.max(0, amount * SERVICE_TAX_RATE);
+    // 3) Firestore one-shot read (no Admin edits; uses window.db from firebase.client.js)
+    if (window.db && cid) {
+      // dynamic import (safe in non-module scripts)
+      const { getDoc, doc } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js");
+      const snap = await getDoc(doc(window.db, "promotions", cid));
+      if (snap.exists()) {
+        const data = snap.data() || {};
+        const code = String(data.code || raw || cid).toUpperCase();
+        try {
+          const next = { ...locked, code };
+          localStorage.setItem("gufa_coupon", JSON.stringify(next));
+        } catch {}
+        return code;
+      }
+    }
+
+    // Fallbacks
+    return raw || cid.toUpperCase();
+  } catch {
+    return String(locked?.code || "").toUpperCase();
+  }
+}
+
 
 // helpers
 const entries = () => {
@@ -259,10 +295,15 @@ if (totalsWrap) {
   const labelEl = promoRow.querySelector("#promo-label");
   const amtEl   = promoRow.querySelector("#promo-amt");
 if (discount > 0) {
-  const displayCode = displayCodeFromLock(locked); // ← NEW
-  labelEl.textContent = displayCode ? `Promotion (${displayCode})` : "Promotion";
-  amtEl.textContent = "− " + INR(discount);
+  // resolve friendly code asynchronously; paint immediately with a neutral label, then update
+  labelEl.textContent = "Promotion";
+  amtEl.textContent   = "− " + INR(discount);
   promoRow.style.display = "";
+
+  // async resolve; no admin/menu dependency required
+  resolveDisplayCode(locked).then(code => {
+    if (code && promoRow && labelEl) labelEl.textContent = `Promotion (${code})`;
+  }).catch(() => {});
 } else {
   promoRow.style.display = "none";
 }
@@ -270,15 +311,25 @@ if (discount > 0) {
 
 // 5) optional mini invoice text in the "addons note" region (left column cue)
 if (R.addonsNote) {
-  R.addonsNote.innerHTML = `
+  // paint first without code; update after resolve
+  const baseHtml = `
     <div class="muted" style="display:grid;row-gap:4px;">
       <div><span>Base Items:</span> <strong>${INR(baseSubtotal)}</strong></div>
       <div><span>Add-ons:</span> <strong>${INR(addonSubtotal)}</strong></div>
-      ${discount > 0 ? `<div><span>Promotion (${couponCode}):</span> <strong style="color:#b00020;">−${INR(discount)}</strong></div>` : ""}
+      ${discount > 0 ? `<div class="promo-line"><span class="plabel">Promotion</span>: <strong style="color:#b00020;">−${INR(discount)}</strong></div>` : ""}
       <div><span>${SERVICE_TAX_LABEL} (${(SERVICE_TAX_RATE*100).toFixed(0)}%):</span> <strong>${INR(tax)}</strong></div>
     </div>
   `;
+  R.addonsNote.innerHTML = baseHtml;
+
+  if (discount > 0) {
+    resolveDisplayCode(locked).then(code => {
+      const labelSpot = R.addonsNote.querySelector(".promo-line .plabel");
+      if (labelSpot && code) labelSpot.textContent = `Promotion (${code})`;
+    }).catch(() => {});
+  }
 }
+
   }
 
   function lineItem(key, it) {
