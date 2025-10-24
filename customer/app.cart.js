@@ -22,6 +22,18 @@ function displayCodeFromLock(locked){
   }
 }
 
+// Promise-shaped shim to keep existing .then(...) call sites working 
+
+function resolveDisplayCode(locked) { 
+  try { 
+  const code = displayCodeFromLock(locked); 
+    return Promise.resolve(code); 
+  } catch { 
+    return Promise.resolve(String(locked?.code || "").toUpperCase()); 
+  } 
+} 
+
+
 // parenthesis-safe, no inline IIFE
 async function fetchCouponCodeAndBackfill(cid, locked) {
   try {
