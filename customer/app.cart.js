@@ -258,31 +258,34 @@ let locked = null;
 try { locked = JSON.parse(localStorage.getItem("gufa_coupon") || "null"); } catch {}
 
 if (locked && Array.isArray(locked?.scope?.eligibleItemIds) && locked.scope.eligibleItemIds.length) {
+  // normalize eligible ids to strings
+  const eligibleIds = locked.scope.eligibleItemIds.map(x => String(x));
   // eligible base-only sum
   let eligibleBase = 0;
   for (const [key, it] of entries()) {
     const isAddon = String(key).split(":").length >= 3;
-    if (isAddon) continue;          // exclude add-ons
-    if (!locked.scope.eligibleItemIds.includes(it.id)) continue;
-    eligibleBase += (Number(it.price)||0) * (Number(it.qty)||0);
+    if (isAddon) continue; // exclude add-ons
+    if (!eligibleIds.includes(String(it?.id))) continue;
+    eligibleBase += (Number(it?.price) || 0) * (Number(it?.qty) || 0);
   }
 
   if (eligibleBase > 0) {
-    const t = String(locked.type || "").toLowerCase();
-    const v = Number(locked.value || 0);
+    const t = String(locked?.type || "").toLowerCase();
+    const v = Number(locked?.value || 0);
 
-    // --- NEW: gate discount by Delivery/Dining validity ---
+    // Gate discount by Delivery/Dining validity
     const validForMode = couponValidForCurrentMode(locked);
     if (validForMode) {
-      if (t === "percent") discount = Math.round(eligibleBase * (v/100));
+      if (t === "percent") discount = Math.round(eligibleBase * (v / 100));
       else if (t === "flat") discount = Math.min(v, eligibleBase);
     } else {
       discount = 0; // keep the lock, but no discount in this mode
     }
 
-    couponCode = String(locked.code || "").toUpperCase();
+    couponCode = String(locked?.code || "").toUpperCase();
   }
 }
+
 
 // 3) compute totals
 const preTax = Math.max(0, baseSubtotal + addonSubtotal - discount);
@@ -296,7 +299,8 @@ if (R.delivery) R.delivery.textContent = DELIVERY_TEXT;
 if (R.total)    R.total.textContent    = INR(grand);
 
 // 4b) ensure a visible Promotion row right under Subtotal (if DOM allows)
-const totalsWrap = R.subtotal?.closest?.(".totals") || null;
+// 4b) ensure a visible Promotion row right under Subtotal (if DOM allows)
+const totalsWrap = R.subtotal?.closest?.(".totals") || R.subtotal?.parentElement || null;
 if (totalsWrap) {
   // create row once; just update text later
   let promoRow = totalsWrap.querySelector(".total-row.promo-row");
@@ -382,15 +386,15 @@ if (R.addonsNote) {
   `;
   R.addonsNote.innerHTML = baseHtml;
 
-  // fill friendly code asynchronously on label (keeps not-valid notice intact)
-  if (hasLock) {
-    resolveDisplayCode(locked).then(code => {
-      const labelSpot = R.addonsNote.querySelector(".promo-line .plabel");
-      if (labelSpot && code) {
-        labelSpot.textContent = `Promotion (${code})${validForMode ? "" : ` — Not valid for ${_mode === "dining" ? "Dining" : "Delivery"}`}`;
-      }
-    }).catch(() => {});
-  }
+// fill friendly code asynchronously on label (keeps not-valid notice intact)
+if (hasLock) {
+  resolveDisplayCode(locked).then(code => {
+    const labelSpot = R.addonsNote?.querySelector?.(".promo-line .plabel");
+    if (labelSpot && code) {
+      labelSpot.textContent = `Promotion (${code})${validForMode ? "" : ` — Not valid for ${_mode === "dining" ? "Dining" : "Delivery"}`}`;
+    }
+  }).catch(() => {});
+ }
 }
 
   function lineItem(key, it) {
@@ -425,7 +429,7 @@ if (R.addonsNote) {
 
     const lineSub = document.createElement("div");
     lineSub.className = "line-subtotal";
-    lineSub.textContent = INR((Number(it.price) || 0) * (Number(it.qty) || 0));
+    lineSub.textContent = INR((Number(it?.price) || 0) * (Number(it?.qty) || 0));
 
     const remove = document.createElement("button");
     remove.className = "remove-link";
@@ -537,5 +541,14 @@ window.addEventListener("cart:update", () => {
   render();
 });
 
+// also re-render when Delivery/Dining mode changes
+window.addEventListener("mode:change", () => {
+  if (!mode) {
+    if (!resolveLayout()) return;
+  }
+  render();
+});
+
 })();
+
 
