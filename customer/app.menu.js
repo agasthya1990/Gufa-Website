@@ -118,49 +118,103 @@ function updateAllMiniCartBadges(){
   });
 }
 
-// --- Coupon lock (first touch wins) ---
-// Requires these vars already exist in your file: view, listKind, listId, listLabel, ITEMS
-function lockCouponForActiveBannerIfNeeded(addedItemId){
+// Keep coupons & banners available to cart and locker
+if (!(window.COUPONS instanceof Map)) window.COUPONS = new Map();
+if (!Array.isArray(window.BANNERS)) window.BANNERS = [];
+
+/** Coupon lock (first touch wins) — using Admin-authored eligibility */
+window.lockCouponForActiveBannerIfNeeded = function (addedItemId) {
   try {
-    if (!(view === "list" && listKind === "banner")) return; // only from a banner list
-    // if a coupon is already locked, do nothing (no stacking rule)
+    if (!(view === "list" && listKind === "banner")) return; // only when inside a banner list view
+
+    // if a coupon is already locked, do nothing (no stacking)
     const existing = JSON.parse(localStorage.getItem("gufa_coupon") || "null");
     if (existing && existing.code) return;
 
-    // Derive ACTIVE banner + coupon from current list context
-    const ACTIVE_BANNER_ID = listId || "";
-    const ACTIVE_BANNER = (window.BANNERS || []).find(b => String(b.id) === String(ACTIVE_BANNER_ID));
+    const ACTIVE_BANNER_ID = String(listId || "");
+    const ACTIVE_BANNER = (window.BANNERS || []).find(b => String(b.id) === ACTIVE_BANNER_ID);
     if (!ACTIVE_BANNER) return;
 
-    // Choose the first linked coupon id; real systems can be smarter
     const [couponId] = Array.isArray(ACTIVE_BANNER.linkedCouponIds) ? ACTIVE_BANNER.linkedCouponIds : [];
     if (!couponId) return;
 
-    // Eligible = all items currently visible for this banner (Admin wrote item.promotions[])
+    // Eligible = Admin wrote item.promotions[] with that couponId
     const eligibleItemIds = (ITEMS || [])
       .filter(it => Array.isArray(it.promotions) && it.promotions.map(String).includes(String(couponId)))
       .map(it => String(it.id));
 
     if (!eligibleItemIds.includes(String(addedItemId))) return; // safety
 
-    // Optional coupon meta if you hydrated coupons earlier
-    const c = (window.COUPONS && window.COUPONS[couponId]) || null;
-    const code  = (c?.code || String(couponId)).toUpperCase();
-    const type  = (c?.type || "").toLowerCase(); // 'percent'|'flat'
-    const value = Number(c?.value || 0);
-
+    // Optional coupon meta if coupons have hydrated
+    const meta = (window.COUPONS instanceof Map) ? window.COUPONS.get(String(couponId)) : null;
     const lock = {
-      code,
-      type,
-      value,
-      scope: { bannerId: String(ACTIVE_BANNER_ID), couponId: String(couponId), eligibleItemIds },
+      code:  (meta?.code || String(couponId)).toUpperCase(),
+      type:  String(meta?.type || "").toLowerCase(), // 'percent'|'flat'
+      value: Number(meta?.value || 0),
+      scope: { bannerId: ACTIVE_BANNER_ID, couponId: String(couponId), eligibleItemIds },
       lockedAt: Date.now()
     };
     localStorage.setItem("gufa_coupon", JSON.stringify(lock));
-    // let cart/checkout repaint
-    window.dispatchEvent(new CustomEvent("cart:update"));
+    window.dispatchEvent(new CustomEvent("cart:update")); // let cart repaint
   } catch {}
+};
+
+// --- Promotions snapshot: coupons → window.COUPONS (Map) ---
+try {
+  const { onSnapshot, collection, query, where } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js");
+
+  onSnapshot(collection(window.db, "promotions"), (snap) => {
+    const m = new Map();
+    snap.forEach(d => {
+      const x = d.data() || {};
+      if (x.kind === "coupon") {
+        m.set(d.id, {
+          id: d.id,
+          code: String(x.code || d.id).toUpperCase(),
+          type: String(x.type || "").toLowerCase(), // 'percent'|'flat'
+          value: Number(x.value || 0),
+          active: x.active !== false
+        });
+      }
+    });
+    window.COUPONS = m; // expose for cart + locker
+    // Optional: if a lock exists with only a UUID, backfill code and nudge cart
+    try {
+      const raw = localStorage.getItem("gufa_coupon");
+      if (raw) {
+        const lock = JSON.parse(raw);
+        const cid  = String(lock?.scope?.couponId || "");
+        if (cid && m.has(cid)) {
+          const code = m.get(cid)?.code || cid;
+          if (code && code !== lock.code) {
+            localStorage.setItem("gufa_coupon", JSON.stringify({ ...lock, code }));
+            window.dispatchEvent(new CustomEvent("cart:update"));
+          }
+        }
+      }
+    } catch {}
+  });
+
+  // --- Banners snapshot: banners → window.BANNERS (Array) ---
+  onSnapshot(query(collection(window.db, "promotions"), where("kind","==","banner")), (snap) => {
+    const arr = [];
+    snap.forEach(d => {
+      const b = d.data() || {};
+      arr.push({
+        id: d.id,
+        title: b.title || d.id,
+        linkedCouponIds: Array.isArray(b.linkedCouponIds) ? b.linkedCouponIds.map(String) : [],
+        active: b.active !== false,
+        targets: b.targets || b.channels || null
+      });
+    });
+    window.BANNERS = arr;
+  });
+
+} catch (e) {
+  console.warn("[menu] promotions/banners snapshots not wired:", e?.message || e);
 }
+
 
 // ===== Global Sync =====
 window.addEventListener("cart:update", () => {
@@ -350,10 +404,11 @@ if (q>0){
     const badge = document.querySelector(`.qty[data-key="${key}"] .num`);
     if (badge) badge.textContent = String(next);
 
-    try {
-      window.Cart?.setQty?.(key, next, { id: found.id, name: found.name, variant: variantKey, price });
-      if (next > 0) lockCouponForActiveBannerIfNeeded(found.id);
-    } catch {}
+try {
+  window.Cart?.setQty?.(key, next, { id: found.id, name: found.name, variant: variantKey, price });
+  if (next > 0) window.lockCouponForActiveBannerIfNeeded?.(found.id);
+} catch {}
+
 
     updateItemMiniCartBadge(found.id, /*rock:*/ true);
     updateCartLink();
