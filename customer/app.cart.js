@@ -50,6 +50,7 @@ async function fetchCouponCodeAndBackfill(cid, locked) {
 
 
 
+
 (function () {    
 const INR = (v) => "₹" + Math.round(Number(v) || 0).toLocaleString("en-IN");
 const SERVICE_TAX_RATE  = 0.05;           // changeable without rewrites
@@ -63,6 +64,7 @@ function activeMode() {
   const m = String(raw).toLowerCase();
   return (m === "dining" ? "dining" : "delivery");
 }
+
 
 
 function couponValidForCurrentMode(locked) {
@@ -550,11 +552,14 @@ window.addEventListener("cart:update", () => {
 });
 
  // also re-render when Delivery/Dining mode changes
-window.addEventListener("serviceMode:changed", () => {
+// also re-render when Delivery/Dining mode changes
+const onModeChange = () => {
   if (!mode) {
     if (!resolveLayout()) return;
   }
   render();
-});
+};
+window.addEventListener("mode:change", onModeChange);
+window.addEventListener("serviceMode:changed", onModeChange);
 } 
 })();
