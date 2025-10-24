@@ -6,15 +6,32 @@ function displayCodeFromLock(locked){
     const raw = String(locked?.code || "").toUpperCase();
     const cid = String(locked?.scope?.couponId || "");
     const looksLikeUuid = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i.test(raw);
+    if (raw && !looksLikeUuid) return raw;
 
-    if (!looksLikeUuid && raw) return raw;
-
-    // try to resolve human-readable code from global coupons map
+    // 1) Try global coupons Map from menu
     const meta = (window.COUPONS instanceof Map) ? window.COUPONS.get(cid) : null;
-    const code = (meta?.code || raw || cid || "").toString().toUpperCase();
-    return code;
-  } catch { return String(locked?.code || "").toUpperCase(); }
+    if (meta?.code) return String(meta.code).toUpperCase();
+
+    // 2) Firestore one-shot read (only on checkout if needed), then backfill
+    (async () => {
+      try {
+        if (!window.db || !cid) return;
+        const { getDoc, doc } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js");
+        const snap = await getDoc(doc(window.db, "promotions", cid));
+        if (snap.exists()) {
+          const code = String(snap.data()?.code || cid).toUpperCase();
+          localStorage.setItem("gufa_coupon", JSON.stringify({ ...(locked||{}), code }));
+          window.dispatchEvent(new CustomEvent("cart:update"));
+        }
+      } catch {}
+    })();
+
+    return raw || cid.toUpperCase(); // return something immediately
+  } catch {
+    return String(locked?.code || "").toUpperCase();
+  }
 }
+
 
 (function () {
 // --- Currency & tax helpers (required by renderers) ---
