@@ -13,24 +13,29 @@ function displayCodeFromLock(locked){
     if (meta?.code) return String(meta.code).toUpperCase();
 
     // 2) Firestore one-shot read (only on checkout if needed), then backfill
-    (async () => {
-      try {
-        if (!window.db || !cid) return;
-        const { getDoc, doc } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js");
-        const snap = await getDoc(doc(window.db, "promotions", cid));
-        if (snap.exists()) {
-          const code = String(snap.data()?.code || cid).toUpperCase();
-          localStorage.setItem("gufa_coupon", JSON.stringify({ ...(locked||{}), code }));
-          window.dispatchEvent(new CustomEvent("cart:update"));
-        }
-      } catch {}
-    })();
+    fetchCouponCodeAndBackfill(cid, locked);
 
-    return raw || cid.toUpperCase(); // return something immediately
+    // Return something immediately; label will update after backfill
+    return raw || cid.toUpperCase();
   } catch {
     return String(locked?.code || "").toUpperCase();
   }
 }
+
+// parenthesis-safe, no inline IIFE
+async function fetchCouponCodeAndBackfill(cid, locked) {
+  try {
+    if (!window.db || !cid) return;
+    const { getDoc, doc } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js");
+    const snap = await getDoc(doc(window.db, "promotions", cid));
+    if (snap.exists()) {
+      const code = String(snap.data()?.code || cid).toUpperCase();
+      localStorage.setItem("gufa_coupon", JSON.stringify({ ...(locked || {}), code }));
+      window.dispatchEvent(new CustomEvent("cart:update"));
+    }
+  } catch {}
+}
+
 
 
 (function () {    
@@ -299,7 +304,7 @@ if (R.delivery) R.delivery.textContent = DELIVERY_TEXT;
 if (R.total)    R.total.textContent    = INR(grand);
 
 // 4b) ensure a visible Promotion row right under Subtotal (if DOM allows)
-// 4b) ensure a visible Promotion row right under Subtotal (if DOM allows)
+    
 const totalsWrap = R.subtotal?.closest?.(".totals") || R.subtotal?.parentElement || null;
 if (totalsWrap) {
   // create row once; just update text later
@@ -308,7 +313,6 @@ if (totalsWrap) {
     promoRow = document.createElement("div");
     promoRow.className = "total-row promo-row";
     promoRow.innerHTML = `<span id="promo-label" class="muted">Promotion</span><span id="promo-amt"></span>`;
-    // insert after Subtotal row
     const first = totalsWrap.firstElementChild;
     if (first) first.insertAdjacentElement("afterend", promoRow);
     else totalsWrap.prepend(promoRow);
@@ -321,17 +325,14 @@ if (totalsWrap) {
   const modeLabel = (activeMode() === "dining") ? "Dining" : "Delivery";
 
   if (hasLock) {
-    // default label first; update with code and validity
     labelEl.textContent = "Promotion";
     if (!validForMode) {
-      // keep row visible, but show not-valid message and zero discount
       resolveDisplayCode(locked).then(code => {
         if (code && labelEl) labelEl.textContent = `Promotion (${code}) — Not valid for ${modeLabel}`;
       }).catch(() => {});
       amtEl.textContent = "− " + INR(0);
       promoRow.style.display = "";
     } else {
-      // valid in this mode
       amtEl.textContent = "− " + INR(discount);
       promoRow.style.display = "";
       resolveDisplayCode(locked).then(code => {
@@ -343,16 +344,13 @@ if (totalsWrap) {
   }
 }
 
-
-
 // 5) optional mini invoice text in the "addons note" region (left column cue)
     
 if (R.addonsNote) {
   const _mode = (String(localStorage.getItem("gufa_mode") || "delivery").toLowerCase() === "dining") ? "dining" : "delivery";
   const hasLock = !!(locked && locked.code);
 
-  // compute validity for current mode:
-
+  // compute validity for current mode
   let validForMode = true;
   if (hasLock) {
     if (locked.valid && typeof locked.valid === "object" && (_mode in locked.valid)) {
@@ -370,10 +368,7 @@ if (R.addonsNote) {
 
   // build promo line (always show when a coupon is locked; amount is 0 if not valid)
   const promoHtml = hasLock
-    ? `<div class="promo-line">
-         <span class="plabel">Promotion${validForMode ? "" : ` — Not valid for ${_mode === "dining" ? "Dining" : "Delivery"}`}</span>:
-         <strong style="color:#b00020;">−${INR(validForMode ? discount : 0)}</strong>
-       </div>`
+    ? `<div class="promo-line"><span class="plabel">Promotion${validForMode ? "" : ` — Not valid for ${_mode === "dining" ? "Dining" : "Delivery"}`}</span>: <strong style="color:#b00020;">−${INR(validForMode ? discount : 0)}</strong></div>`
     : "";
 
   const baseHtml = `
@@ -386,15 +381,15 @@ if (R.addonsNote) {
   `;
   R.addonsNote.innerHTML = baseHtml;
 
-// fill friendly code asynchronously on label (keeps not-valid notice intact)
-if (hasLock) {
-  resolveDisplayCode(locked).then(code => {
-    const labelSpot = R.addonsNote?.querySelector?.(".promo-line .plabel");
-    if (labelSpot && code) {
-      labelSpot.textContent = `Promotion (${code})${validForMode ? "" : ` — Not valid for ${_mode === "dining" ? "Dining" : "Delivery"}`}`;
-    }
-  }).catch(() => {});
- }
+  // fill friendly code asynchronously on label (keeps not-valid notice intact)
+  if (hasLock) {
+    resolveDisplayCode(locked).then(code => {
+      const labelSpot = R.addonsNote?.querySelector?.(".promo-line .plabel");
+      if (labelSpot && code) {
+        labelSpot.textContent = `Promotion (${code})${validForMode ? "" : ` — Not valid for ${_mode === "dining" ? "Dining" : "Delivery"}`}`;
+      }
+    }).catch(() => {});
+  }
 }
 
   function lineItem(key, it) {
@@ -550,5 +545,3 @@ window.addEventListener("mode:change", () => {
 });
 
 })();
-
-
