@@ -194,8 +194,6 @@ if (R.items) {
     }
     R.items.appendChild(renderGroup(g));
   }
-}
-
 
 // ---- PROMOTION & TAX (Base-only discount; add-ons excluded) ----
 
