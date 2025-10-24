@@ -304,7 +304,6 @@ if (R.delivery) R.delivery.textContent = DELIVERY_TEXT;
 if (R.total)    R.total.textContent    = INR(grand);
 
 // 4b) ensure a visible Promotion row right under Subtotal (if DOM allows)
-    
 const totalsWrap = R.subtotal?.closest?.(".totals") || R.subtotal?.parentElement || null;
 if (totalsWrap) {
   // create row once; just update text later
@@ -344,8 +343,8 @@ if (totalsWrap) {
   }
 }
 
-// 5) optional mini invoice text in the "addons note" region (left column cue)
     
+// 5) optional mini invoice text in the "addons note" region (left column cue)
 if (R.addonsNote) {
   const _mode = (String(localStorage.getItem("gufa_mode") || "delivery").toLowerCase() === "dining") ? "dining" : "delivery";
   const hasLock = !!(locked && locked.code);
