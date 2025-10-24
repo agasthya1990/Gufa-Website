@@ -51,17 +51,19 @@ const subtotal = () => entries().reduce((s, [, it]) => s + (Number(it.price)||0)
 
     // try list first
     const listEls = {
-      items: document.querySelector(listCfg.items),
-      empty: document.querySelector(listCfg.empty || null),
-      count: document.querySelector(listCfg.count || null),
-      addonsNote: document.querySelector(listCfg.addonsNote || null),
-      subtotal: document.querySelector(listCfg.subtotal),
-      gst: document.querySelector(listCfg.gst),
-      delivery: document.querySelector(listCfg.delivery),
-      total: document.querySelector(listCfg.total),
-      proceed: document.querySelector(listCfg.proceed || null),
-    };
-    const listOK = !!(listEls.items && listEls.subtotal && listEls.gst && listEls.delivery && listEls.total);
+  items: document.querySelector(listCfg.items),
+  empty: document.querySelector(listCfg.empty || null),
+  count: document.querySelector(listCfg.count || null),
+  addonsNote: document.querySelector(listCfg.addonsNote || null),
+  subtotal: document.querySelector(listCfg.subtotal || null),
+  gst: document.querySelector(listCfg.gst || null),
+  delivery: document.querySelector(listCfg.delivery || null),
+  total: document.querySelector(listCfg.total || null),
+  proceed: document.querySelector(listCfg.proceed || null),
+};
+// be tolerant: only the items container is required
+const listOK = !!listEls.items;
+
 
     if (listOK) {
       mode = 'list';
@@ -267,15 +269,16 @@ if (discount > 0) {
 
 // 5) optional mini invoice text in the "addons note" region (left column cue)
 if (R.addonsNote) {
+  const prettyCode = displayCodeFromLock(locked); // friendly label, if available
   R.addonsNote.innerHTML = `
     <div class="muted" style="display:grid;row-gap:4px;">
       <div><span>Base Items:</span> <strong>${INR(baseSubtotal)}</strong></div>
       <div><span>Add-ons:</span> <strong>${INR(addonSubtotal)}</strong></div>
-      ${discount > 0 ? `<div><span>Promotion (${couponCode}):</span> <strong style="color:#b00020;">−${INR(discount)}</strong></div>` : ""}
+      ${discount > 0 ? `<div><span>Promotion (${prettyCode || "CODE"}):</span> <strong style="color:#b00020;">−${INR(discount)}</strong></div>` : ""}
       <div><span>${SERVICE_TAX_LABEL} (${(SERVICE_TAX_RATE*100).toFixed(0)}%):</span> <strong>${INR(tax)}</strong></div>
     </div>
   `;
-}
+ }
 }
 
   function lineItem(key, it) {
