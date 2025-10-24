@@ -535,12 +535,17 @@ window.addEventListener("cart:update", () => {
   render();
 });
 
-// also re-render when Delivery/Dining mode changes
-window.addEventListener("mode:change", () => {
-  if (!mode) {
-    if (!resolveLayout()) return;
-  }
-  render();
-});
+ // also re-render when Delivery/Dining mode changes
+ window.addEventListener("mode:change", () => {
+   if (!mode) {
+     if (!resolveLayout()) return;
+   }
+   render();
+ });
+ 
+}
+ 
+ })();
+
 
 })();
