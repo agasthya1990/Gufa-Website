@@ -1,5 +1,4 @@
-// app.cart.
-js — resolves layout AFTER DOM is ready, then renders.
+// app.cart.js — resolves layout AFTER DOM is ready, then renders.
 // Works with window.CART_UI (list or table). Uses global window.Cart.
 
 function displayCodeFromLock(locked){
