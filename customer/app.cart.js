@@ -33,16 +33,31 @@ function displayCodeFromLock(locked){
 }
 
 
-(function () {
-// --- Currency & tax helpers (required by renderers) ---
-  
+(function () {    
 const INR = (v) => "₹" + Math.round(Number(v) || 0).toLocaleString("en-IN");
 const SERVICE_TAX_RATE  = 0.05;           // changeable without rewrites
 const SERVICE_TAX_LABEL = "Service Tax";  // label shown in UI
 const DELIVERY_TEXT     = "Shown at payment";
 const taxOn = (amount) => Math.max(0, (Number(amount) || 0) * SERVICE_TAX_RATE);
+  
+// --- Mode + coupon validity helpers ---
+function activeMode() {
+  const m = String(localStorage.getItem("gufa_mode") || "delivery").toLowerCase();
+  return (m === "dining" ? "dining" : "delivery");
+}
 
-// helpers
+function couponValidForCurrentMode(locked) {
+  try {
+    const mode = activeMode(); // 'delivery' | 'dining'
+    const v = locked?.valid;
+    if (v && typeof v === "object" && (mode in v)) return !!v[mode];
+    const cid = String(locked?.scope?.couponId || "");
+    const meta = (window.COUPONS instanceof Map) ? window.COUPONS.get(cid) : null;
+    if (meta && meta.targets && (mode in meta.targets)) return !!meta.targets[mode];
+    return true;
+  } catch { return true; }
+}
+
 // helpers
 const entries = () => {
   try {
@@ -241,6 +256,7 @@ for (const [key, it] of entries()) {
 let discount = 0, couponCode = "";
 let locked = null;
 try { locked = JSON.parse(localStorage.getItem("gufa_coupon") || "null"); } catch {}
+
 if (locked && Array.isArray(locked?.scope?.eligibleItemIds) && locked.scope.eligibleItemIds.length) {
   // eligible base-only sum
   let eligibleBase = 0;
@@ -250,11 +266,20 @@ if (locked && Array.isArray(locked?.scope?.eligibleItemIds) && locked.scope.elig
     if (!locked.scope.eligibleItemIds.includes(it.id)) continue;
     eligibleBase += (Number(it.price)||0) * (Number(it.qty)||0);
   }
+
   if (eligibleBase > 0) {
     const t = String(locked.type || "").toLowerCase();
     const v = Number(locked.value || 0);
-    if (t === "percent") discount = Math.round(eligibleBase * (v/100));
-    else if (t === "flat") discount = Math.min(v, eligibleBase);
+
+    // --- NEW: gate discount by Delivery/Dining validity ---
+    const validForMode = couponValidForCurrentMode(locked);
+    if (validForMode) {
+      if (t === "percent") discount = Math.round(eligibleBase * (v/100));
+      else if (t === "flat") discount = Math.min(v, eligibleBase);
+    } else {
+      discount = 0; // keep the lock, but no discount in this mode
+    }
+
     couponCode = String(locked.code || "").toUpperCase();
   }
 }
@@ -271,42 +296,101 @@ if (R.delivery) R.delivery.textContent = DELIVERY_TEXT;
 if (R.total)    R.total.textContent    = INR(grand);
 
 // 4b) ensure a visible Promotion row right under Subtotal (if DOM allows)
-const totalsWrap = R.subtotal?.closest?.(".totals") || R.subtotal?.parentElement || null;
+const totalsWrap = R.subtotal?.closest?.(".totals") || null;
 if (totalsWrap) {
+  // create row once; just update text later
   let promoRow = totalsWrap.querySelector(".total-row.promo-row");
   if (!promoRow) {
     promoRow = document.createElement("div");
     promoRow.className = "total-row promo-row";
     promoRow.innerHTML = `<span id="promo-label" class="muted">Promotion</span><span id="promo-amt"></span>`;
+    // insert after Subtotal row
     const first = totalsWrap.firstElementChild;
     if (first) first.insertAdjacentElement("afterend", promoRow);
-    else totalsWrap.appendChild(promoRow);
+    else totalsWrap.prepend(promoRow);
   }
   const labelEl = promoRow.querySelector("#promo-label");
   const amtEl   = promoRow.querySelector("#promo-amt");
-  if (discount > 0) {
-    const displayCode = displayCodeFromLock(locked);
-    labelEl.textContent = displayCode ? `Promotion (${displayCode})` : "Promotion";
-    amtEl.textContent = "− " + INR(discount);
-    promoRow.style.display = "";
+
+  const hasLock = !!(locked && locked.code);
+  const validForMode = hasLock ? couponValidForCurrentMode(locked) : true;
+  const modeLabel = (activeMode() === "dining") ? "Dining" : "Delivery";
+
+  if (hasLock) {
+    // default label first; update with code and validity
+    labelEl.textContent = "Promotion";
+    if (!validForMode) {
+      // keep row visible, but show not-valid message and zero discount
+      resolveDisplayCode(locked).then(code => {
+        if (code && labelEl) labelEl.textContent = `Promotion (${code}) — Not valid for ${modeLabel}`;
+      }).catch(() => {});
+      amtEl.textContent = "− " + INR(0);
+      promoRow.style.display = "";
+    } else {
+      // valid in this mode
+      amtEl.textContent = "− " + INR(discount);
+      promoRow.style.display = "";
+      resolveDisplayCode(locked).then(code => {
+        if (code && labelEl) labelEl.textContent = `Promotion (${code})`;
+      }).catch(() => {});
+    }
   } else {
     promoRow.style.display = "none";
   }
 }
 
 
+
 // 5) optional mini invoice text in the "addons note" region (left column cue)
+    
 if (R.addonsNote) {
-  const prettyCode = displayCodeFromLock(locked); // friendly label, if available
-  R.addonsNote.innerHTML = `
+  const _mode = (String(localStorage.getItem("gufa_mode") || "delivery").toLowerCase() === "dining") ? "dining" : "delivery";
+  const hasLock = !!(locked && locked.code);
+
+  // compute validity for current mode:
+
+  let validForMode = true;
+  if (hasLock) {
+    if (locked.valid && typeof locked.valid === "object" && (_mode in locked.valid)) {
+      validForMode = !!locked.valid[_mode];
+    } else {
+      const cid = String(locked?.scope?.couponId || "");
+      if (cid && (window.COUPONS instanceof Map)) {
+        const meta = window.COUPONS.get(cid);
+        if (meta && meta.targets && (_mode in meta.targets)) {
+          validForMode = !!meta.targets[_mode];
+        }
+      }
+    }
+  }
+
+  // build promo line (always show when a coupon is locked; amount is 0 if not valid)
+  const promoHtml = hasLock
+    ? `<div class="promo-line">
+         <span class="plabel">Promotion${validForMode ? "" : ` — Not valid for ${_mode === "dining" ? "Dining" : "Delivery"}`}</span>:
+         <strong style="color:#b00020;">−${INR(validForMode ? discount : 0)}</strong>
+       </div>`
+    : "";
+
+  const baseHtml = `
     <div class="muted" style="display:grid;row-gap:4px;">
       <div><span>Base Items:</span> <strong>${INR(baseSubtotal)}</strong></div>
       <div><span>Add-ons:</span> <strong>${INR(addonSubtotal)}</strong></div>
-      ${discount > 0 ? `<div><span>Promotion (${prettyCode || "CODE"}):</span> <strong style="color:#b00020;">−${INR(discount)}</strong></div>` : ""}
+      ${promoHtml}
       <div><span>${SERVICE_TAX_LABEL} (${(SERVICE_TAX_RATE*100).toFixed(0)}%):</span> <strong>${INR(tax)}</strong></div>
     </div>
   `;
- }
+  R.addonsNote.innerHTML = baseHtml;
+
+  // fill friendly code asynchronously on label (keeps not-valid notice intact)
+  if (hasLock) {
+    resolveDisplayCode(locked).then(code => {
+      const labelSpot = R.addonsNote.querySelector(".promo-line .plabel");
+      if (labelSpot && code) {
+        labelSpot.textContent = `Promotion (${code})${validForMode ? "" : ` — Not valid for ${_mode === "dining" ? "Dining" : "Delivery"}`}`;
+      }
+    }).catch(() => {});
+  }
 }
 
   function lineItem(key, it) {
