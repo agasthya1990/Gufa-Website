@@ -682,7 +682,45 @@ function itemsForList(){
   /* ---------- Promotions (D1) ---------- */
 let COUPONS = new Map();        // id -> { type: 'percent'|'flat', value, active }
 let BANNERS = [];               // [{ id, title, imageUrl, linkedCouponIds:[], targets:{delivery,dining}, active }]
+window.COUPONS = COUPONS;       // ← make it readable by app.cart.js
+backfillLockedCouponMeta(); 
 
+  // --- Backfill the saved lock with human-readable coupon code/type/value once coupons are ready ---
+function backfillLockedCouponMeta(){
+  try {
+    const raw = localStorage.getItem("gufa_coupon");
+    if (!raw) return;
+
+    const lock = JSON.parse(raw);
+    const cid  = String(lock?.scope?.couponId || "");
+    if (!cid || !(COUPONS instanceof Map) || !COUPONS.has(cid)) return;
+
+    const meta  = COUPONS.get(cid) || {};
+    const code  = (meta.code || lock.code || cid).toString().toUpperCase();
+    const type  = String(meta.type || lock.type || "");
+    const value = Number(meta.value || lock.value || 0);
+
+    // If any field improves, rewrite and notify listeners (cart, badges, etc.)
+    if (code !== lock.code || type !== lock.type || value !== lock.value){
+      const next = { ...lock, code, type, value };
+      localStorage.setItem("gufa_coupon", JSON.stringify(next));
+      window.dispatchEvent(new CustomEvent("cart:update"));
+    }
+  } catch {}
+}
+
+// --- Auto-run backfill once coupons hydrate (no need to touch your fetch/hydrate code) ---
+(function ensureBackfillOnceReady(){
+  const start = Date.now();
+  (function tick(){
+    try {
+      if ((COUPONS instanceof Map) && COUPONS.size > 0) { backfillLockedCouponMeta(); return; }
+      if (Date.now() - start > 10000) return; // stop after 10s to avoid infinite loop
+    } catch {}
+    setTimeout(tick, 300);
+  })();
+})();
+  
 function bannerMatchesMode(b){
   const m = (window.GUFA?.serviceMode?.get?.() || "delivery");
   const t = b?.targets || {};
