@@ -1,4 +1,5 @@
-// app.cart.js — resolves layout AFTER DOM is ready, then renders.
+// app.cart.
+js — resolves layout AFTER DOM is ready, then renders.
 // Works with window.CART_UI (list or table). Uses global window.Cart.
 
 function displayCodeFromLock(locked){
@@ -61,7 +62,14 @@ async function resolveDisplayCode(locked) {
     return String(locked?.code || "").toUpperCase();
   }
 }
+// --- Currency & tax helpers (required by renderers) ---
+const INR = (v) => "₹" + Math.round(Number(v) || 0).toLocaleString("en-IN");
 
+const SERVICE_TAX_RATE  = 0.05;           // changeable without rewrites
+const SERVICE_TAX_LABEL = "Service Tax";  // label shown in UI
+const DELIVERY_TEXT     = "Shown at payment";
+
+const taxOn = (amount) => Math.max(0, (Number(amount) || 0) * SERVICE_TAX_RATE);
 
 // helpers
 const entries = () => {
