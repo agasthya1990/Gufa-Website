@@ -112,22 +112,34 @@
   let eligibleBase = baseSubtotal;
   const ids = lock?.scope?.eligibleItemIds;
   if (Array.isArray(ids) && ids.length) {
-    const set = new Set(ids.map(x => String(x).toLowerCase()));
-    eligibleBase = 0;
+    // normalize coupon ids (trim + lowercase)
+const normIds = ids.map(x => String(x).trim().toLowerCase());
+
+// sets we’ll use for fast membership checks
+const idSet      = new Set(normIds);                  // e.g., "paneer_tikka" or "paneer_tikka:reg"
+const colonless  = new Set(normIds.filter(x => !x.includes(":")).map(x => x)); // itemIds only
+
+eligibleBase = 0;
 for (const [key, it] of entries()) {
   const parts   = String(key).split(":");
   const isAddon = parts.length >= 3;          // base: itemId:variant, addon: itemId:variant:addon
   if (isAddon) continue;
 
-  // Normalize candidates (case-insensitive)
-  const itemId  = String(it?.id ?? parts[0]).toLowerCase();
-  const baseKey = (parts.slice(0,2).join(":")).toLowerCase();
+  // candidates from the cart line
+  const itemId  = String(it?.id ?? parts[0]).trim().toLowerCase();  // "paneer_tikka"
+  const baseKey = (parts.slice(0,2).join(":")).trim().toLowerCase(); // "paneer_tikka:reg"
 
-  // Coupon ids may be either itemId OR baseKey; accept either.
-  if (!(set.has(itemId) || set.has(baseKey))) continue;
+  // match rules:
+  
+  const itemIdListed   = idSet.has(itemId);
+  const baseKeyListed  = idSet.has(baseKey);
+  const prefixListed   = colonless.size > 0 && [...colonless].some(x => baseKey.startsWith(x + ":"));
+
+  if (!(itemIdListed || baseKeyListed || prefixListed)) continue;
 
   eligibleBase += (Number(it.price)||0) * (Number(it.qty)||0);
 }
+
 
     if (eligibleBase <= 0) return { discount:0, reason:"scope" };
   } else {
