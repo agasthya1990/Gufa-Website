@@ -122,11 +122,18 @@ const subtotal = () => entries().reduce((s, [, it]) => s + (Number(it.price)||0)
     $countTop = document.querySelector('#cart-count');
 
     // prefer explicit config; otherwise try defaults
-    const listCfg = CFG.list || {
-      items:'#cart-items', empty:'#cart-empty', count:'#cart-items-count',
-      addonsNote:'#addons-note', subtotal:'#subtotal-amt', servicetax:'#servicetax-amt',
-       total:'#total-amt', proceed:'#proceed-btn'
-    };
+const listCfg = CFG.list || {
+  items:'#cart-items',
+  empty:'#cart-empty',
+  count:'#cart-items-count',
+  addonsNote:'#addons-note',
+  subtotal:'#subtotal-amt',
+  servicetax: '#servicetax-amt',   // renamed tax field
+  gst: '#servicetax-amt',          // backward alias (so old configs still work)
+  total:'#total-amt',
+  proceed:'#proceed-btn'
+};
+
     const tableCfg = CFG.table || { body:'#cartBody', total:'#cartTotal' };
 
     // try list first
