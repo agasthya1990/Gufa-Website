@@ -101,19 +101,17 @@ const entries = () => {
       if (live.length > 0) return live;
     }
 
-    // 2) Fallback: read persisted localStorage
-    
-    const keys = ["gufa_cart_v1", "gufa_cart", "GUFA:CART"];
-    for (const k of keys) {
-      const raw = localStorage.getItem(k);
-      if (!raw) continue;
-      const parsed = JSON.parse(raw);
-      const items = (parsed && typeof parsed === "object")
-        ? (parsed.items && typeof parsed.items === "object" ? parsed.items : parsed)
-        : {};
-      const list = Object.entries(items);
-      if (list.length) return list;
-    }
+    // 2) Fallback: read persisted localStorage (single source of truth)
+const raw = localStorage.getItem("gufa_cart");
+if (raw) {
+  const parsed = JSON.parse(raw);
+  const items = (parsed && typeof parsed === "object")
+    ? (parsed.items && typeof parsed.items === "object" ? parsed.items : parsed)
+    : {};
+  const list = Object.entries(items);
+  if (list.length) return list;
+}
+
 
     return [];
   } catch (err) {
