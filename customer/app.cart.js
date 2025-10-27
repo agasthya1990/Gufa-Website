@@ -78,28 +78,32 @@ function couponValidForCurrentMode(locked) {
 // helpers
 const entries = () => {
   try {
-    // 1) Prefer the live store, but only if it has usable item entries
+    // 1) Prefer the live store ONLY if we have real item pairs
     const store = window?.Cart?.get?.();
     if (store && typeof store === "object") {
-      // unwrap nested shape { items: {...} } if present
-      const itemsObj = (store.items && typeof store.items === "object")
-        ? store.items
-        : (store instanceof Map ? Object.fromEntries(store) : store);
+      // unwrap nested shape { items: {...} } if present; also support Map
+      const itemsObj =
+        (store.items && typeof store.items === "object")
+          ? store.items
+          : (store instanceof Map)
+              ? Object.fromEntries(store)
+              : store;
 
       const live = Object.entries(itemsObj || {});
-      if (live.length > 0) return live;   // only commit if we truly have [key,it] pairs
-      // else fall through to persisted fallbacks
+      if (live.length > 0) return live;   // only commit when we truly have [key, it]
+      // otherwise fall through to persisted fallbacks
     }
 
-    // 2) Fallbacks: try known storage keys (newest → legacy)
+    // 2) Persisted fallbacks (newest → legacy)
     const keys = ["gufa_cart_v1", "gufa_cart", "GUFA:CART"];
     for (const k of keys) {
       const raw = localStorage.getItem(k);
       if (!raw) continue;
       const parsed = JSON.parse(raw);
-      const items = (parsed && typeof parsed === "object")
-        ? (parsed.items && typeof parsed.items === "object" ? parsed.items : parsed)
-        : {};
+      const items =
+        (parsed && typeof parsed === "object")
+          ? (parsed.items && typeof parsed.items === "object" ? parsed.items : parsed)
+          : {};
       const list = Object.entries(items);
       if (list.length) return list;
     }
@@ -109,8 +113,6 @@ const entries = () => {
     return [];
   }
 };
-
-
 
 
 const count = () => entries().reduce((n, [, it]) => n + (Number(it.qty) || 0), 0);
