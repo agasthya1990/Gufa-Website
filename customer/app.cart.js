@@ -268,7 +268,7 @@ if (R.items) {
     if (!hasBase && g.addons.length) {
       // synthesize a "base" shell using the first addon’s meta (just for title/thumb)
       const first = g.addons[0];
-      g.base = { key: first.key.split(":").slice(0,2).join(":"), it: { ...first.it } };
+      g.base = { key: first.key.split(":").slice(0,2).join(":"), it: { ...(first.it || {}) } };
     }
     R.items.appendChild(renderGroup(g));
   }
