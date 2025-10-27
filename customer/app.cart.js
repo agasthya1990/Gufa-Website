@@ -80,13 +80,15 @@ const entries = () => {
   try {
     // 1) Prefer the live store, but only if it has entries
     const store = window?.Cart?.get?.();
-    if (store) {
-      const live = (store instanceof Map) ? Array.from(store.entries())
-                 : (typeof store === "object") ? Object.entries(store)
-                 : [];
-      if (live.length > 0) return live;  // only commit if populated
-      // otherwise fall through to localStorage scan
-    }
+if (store) {
+  const live = (store instanceof Map)
+    ? Array.from(store.entries())
+    : (typeof store === "object")
+      ? Object.entries(store)
+      : [];
+  // ✅ only use live if it actually has something
+  if (Array.isArray(live) && live.length > 0) return live;
+}
 
     // 2) Fallbacks: try known storage keys (newest → legacy)
     const keys = ["gufa_cart_v1", "gufa_cart", "GUFA:CART"];
