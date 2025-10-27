@@ -93,8 +93,7 @@
 
         <div class="totals">
           <div class="total-row"><span>Subtotal</span><span id="subtotal-amt">₹0</span></div>
-          <div class="total-row"><span>GST (5%)</span><span id="gst-amt">₹0</span></div>
-          <div class="total-row muted"><span>Delivery fee</span><span id="delivery-amt">Shown at payment</span></div>
+          <div class="total-row"><span>Service Tax (5%)</span><span id="servicetax-amt">₹0</span></div>
           <div class="total-row grand"><span>Total</span><span id="total-amt">₹0</span></div>
         </div>
 
@@ -139,7 +138,7 @@
       count: '#cart-items-count',
       addonsNote: '#addons-note',
       subtotal: '#subtotal-amt',
-      gst: '#gst-amt',
+      servicetax: '#servicetax-amt',
       delivery: '#delivery-amt',
       total: '#total-amt',
       proceed: '#proceed-btn'
@@ -148,11 +147,12 @@
   };
 </script>
 <script src="./cart.store.js"></script>
-<script src="app.cart.js"></script>
+<script src="./app.cart.js"></script>
 <script>document.getElementById('year').textContent = new Date().getFullYear();</script>
 
 </body>
 </html>
+
 
 
 
