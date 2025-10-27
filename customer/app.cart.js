@@ -63,8 +63,6 @@ function activeMode() {
   return (m === "dining" ? "dining" : "delivery");
 }
 
-
-
 function couponValidForCurrentMode(locked) {
   try {
     const mode = activeMode(); // 'delivery' | 'dining'
@@ -80,11 +78,14 @@ function couponValidForCurrentMode(locked) {
 // helpers
 const entries = () => {
   try {
-    // 1) Prefer the live store
+    // 1) Prefer the live store, but only if it has entries
     const store = window?.Cart?.get?.();
     if (store) {
-      if (store instanceof Map) return Array.from(store.entries());      // [[key, it], ...]
-      if (typeof store === "object") return Object.entries(store);       // plain object
+      const live = (store instanceof Map) ? Array.from(store.entries())
+                 : (typeof store === "object") ? Object.entries(store)
+                 : [];
+      if (live.length > 0) return live;  // only commit if populated
+      // otherwise fall through to localStorage scan
     }
 
     // 2) Fallbacks: try known storage keys (newest → legacy)
@@ -107,6 +108,7 @@ const entries = () => {
 };
 
 
+
 const count = () => entries().reduce((n, [, it]) => n + (Number(it.qty) || 0), 0);
 const subtotal = () => entries().reduce((s, [, it]) => s + (Number(it.price)||0)*(Number(it.qty)||0), 0);
 
@@ -122,8 +124,8 @@ const subtotal = () => entries().reduce((s, [, it]) => s + (Number(it.price)||0)
     // prefer explicit config; otherwise try defaults
     const listCfg = CFG.list || {
       items:'#cart-items', empty:'#cart-empty', count:'#cart-items-count',
-      addonsNote:'#addons-note', subtotal:'#subtotal-amt', gst:'#gst-amt',
-      delivery:'#delivery-amt', total:'#total-amt', proceed:'#proceed-btn'
+      addonsNote:'#addons-note', subtotal:'#subtotal-amt', servicetax:'#servicetax-amt',
+       total:'#total-amt', proceed:'#proceed-btn'
     };
     const tableCfg = CFG.table || { body:'#cartBody', total:'#cartTotal' };
 
@@ -134,8 +136,7 @@ const subtotal = () => entries().reduce((s, [, it]) => s + (Number(it.price)||0)
   count: document.querySelector(listCfg.count || null),
   addonsNote: document.querySelector(listCfg.addonsNote || null),
   subtotal: document.querySelector(listCfg.subtotal || null),
-  gst: document.querySelector(listCfg.gst || null),
-  delivery: document.querySelector(listCfg.delivery || null),
+  servicetax: document.querySelector(listCfg.servicetax || null),
   total: document.querySelector(listCfg.total || null),
   proceed: document.querySelector(listCfg.proceed || null),
 };
@@ -326,8 +327,7 @@ const grand = preTax + tax;
 
 // 4) paint existing fields (right column)
 if (R.subtotal) R.subtotal.textContent = INR(baseSubtotal + addonSubtotal);
-if (R.gst)      R.gst.textContent      = INR(tax);
-if (R.delivery) R.delivery.textContent = DELIVERY_TEXT;
+if (R.servicetax)      R.servicetax.textContent      = INR(tax);
 if (R.total)    R.total.textContent    = INR(grand);
 
 const totalsWrap = R.subtotal?.closest?.(".totals") || R.subtotal?.parentElement || null;
