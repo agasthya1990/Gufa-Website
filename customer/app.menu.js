@@ -1664,6 +1664,20 @@ window.addEventListener("serviceMode:changed", () => {
   if (window.__modeReloadPending) return;
   window.__modeReloadPending = true;
 
+window.addEventListener("serviceMode:changed", () => {
+  // refresh deals strip (filters banners by mode)
+  try { renderDeals?.(); } catch {}
+
+  // if user is viewing a banner-filtered list, re-filter the items
+  try {
+    if (typeof view !== "undefined" && view === "list" && typeof listKind !== "undefined" && listKind === "banner") {
+      renderContentView?.();
+    }
+  } catch {}
+});
+
+
+  
   // Small delay to allow any in-flight UI actions to settle.
   setTimeout(() => { try { location.reload(); } catch {} }, 120);
 });
