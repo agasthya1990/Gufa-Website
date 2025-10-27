@@ -1,5 +1,18 @@
 // app.menu.js — align menu cards with the real Cart store and folder paths (no UI changes)
 
+// --- Ensure global Cart API is available on Menu (no-op if already present)
+(function ensureCartAPI(){
+  if (window.Cart && typeof window.Cart.setQty === "function") return;
+  try {
+    const s = document.createElement("script");
+    // menu is served from site root; cart scripts live in /customer/
+    s.src = "./customer/cart.store.js";
+    s.async = false; // keep order predictable
+    document.head.appendChild(s);
+  } catch {}
+})();
+
+
 // ===== Cart Helpers =====
 function getCartEntries() {
   try { return Object.entries(Cart.get() || {}); } catch { return []; }
