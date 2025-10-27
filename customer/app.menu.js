@@ -718,6 +718,37 @@ function itemsForList(){
   });
 }
 
+// Bind steppers only once
+if (!document.body.dataset.steppersBound) {
+  document.body.addEventListener("click", (ev) => {
+    const inc = ev.target.closest(".stepper .inc");
+    const dec = inc ? null : ev.target.closest(".stepper .dec");
+    const btn = inc || dec;
+    if (!btn) return;
+
+    const wrap = btn.closest(".stepper");
+    if (!wrap) return;
+
+    const itemId     = wrap.getAttribute("data-item");
+    const variantKey = wrap.getAttribute("data-variant");
+    const numEl      = wrap.querySelector(".qty .num");
+    const priceEl    = wrap.querySelector(".vprice");
+    const price      = priceEl ? Number(String(priceEl.textContent).replace(/[₹,\s]/g,"")) || 0 : 0;
+    const cur        = parseInt(numEl?.textContent || "0", 10) || 0;
+    const next       = inc ? cur + 1 : Math.max(0, cur - 1);
+
+    const found = (typeof ITEMS !== "undefined")
+      ? (ITEMS.find(x => String(x.id) === String(itemId)) || { id: itemId, name: "" })
+      : { id: itemId, name: "" };
+
+    setQty(found, variantKey, price, next);
+    updateAddonsButtonState(itemId);
+  }, false);
+
+  document.body.dataset.steppersBound = "1";
+}
+
+                         
   function showHome(){
   view = "home"; listKind=""; listId=""; listLabel="";
   globalResults.classList.add("hidden");
