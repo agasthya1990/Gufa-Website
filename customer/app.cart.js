@@ -112,16 +112,23 @@
   let eligibleBase = baseSubtotal;
   const ids = lock?.scope?.eligibleItemIds;
   if (Array.isArray(ids) && ids.length) {
-    const set = new Set(ids.map(String));
+    const set = new Set(ids.map(x => String(x).toLowerCase()));
     eligibleBase = 0;
-    for (const [key, it] of entries()) {
-      const isAddon = String(key).split(":").length >= 3;
-      if (isAddon) continue;
-      // Fallback to key prefix when it.id is missing: "ITEMID:variant:..."
-      const itemId = String(it?.id ?? key.split(":")[0]);
-      if (!set.has(itemId)) continue;
-      eligibleBase += (Number(it.price)||0) * (Number(it.qty)||0);
-    }
+for (const [key, it] of entries()) {
+  const parts   = String(key).split(":");
+  const isAddon = parts.length >= 3;          // base: itemId:variant, addon: itemId:variant:addon
+  if (isAddon) continue;
+
+  // Normalize candidates (case-insensitive)
+  const itemId  = String(it?.id ?? parts[0]).toLowerCase();
+  const baseKey = (parts.slice(0,2).join(":")).toLowerCase();
+
+  // Coupon ids may be either itemId OR baseKey; accept either.
+  if (!(set.has(itemId) || set.has(baseKey))) continue;
+
+  eligibleBase += (Number(it.price)||0) * (Number(it.qty)||0);
+}
+
     if (eligibleBase <= 0) return { discount:0, reason:"scope" };
   } else {
     // If no eligible list is provided, treat as "no eligible items configured"
