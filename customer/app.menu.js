@@ -177,15 +177,18 @@ window.addEventListener("cart:update", () => {
     const m = String(localStorage.getItem("gufa_mode") || "delivery").toLowerCase();
     return (m === "dining" ? "dining" : "delivery");
   };
+  
   window.setActiveMode = function (mode) {
-    const m = (String(mode || "").toLowerCase() === "dining") ? "dining" : "delivery";
-    // Standardize mode key for all scripts
-    localStorage.setItem("gufa_mode", m);
-    localStorage.removeItem("gufa:serviceMode"); // cleanup old key if exists
+  const m = (String(mode || "").toLowerCase() === "dining") ? "dining" : "delivery";
+  // Write BOTH keys so old & new listeners stay in sync
+  try { localStorage.setItem("gufa_mode", m); } catch {}
+  try { localStorage.setItem("gufa:serviceMode", m); } catch {}
 
-    // Notify menu/cart/checkout
-    window.dispatchEvent(new CustomEvent("mode:change", { detail: { mode: m } }));
-  };
+  // Broadcast BOTH events so all subscribers update immediately
+  window.dispatchEvent(new CustomEvent("mode:change", { detail: { mode: m } }));
+  window.dispatchEvent(new CustomEvent("serviceMode:changed", { detail: { mode: m } }));
+};
+
 
 
 
@@ -692,12 +695,14 @@ function itemsForList(){
       arr = arr.filter(it=>categoryMatch(it, c));
       
 } else if (listKind === "banner") {
-  if (typeof itemMatchesBanner === "function" && ACTIVE_BANNER) {
+  const hasActiveBanner = (typeof ACTIVE_BANNER !== "undefined" && ACTIVE_BANNER);
+  if (typeof itemMatchesBanner === "function" && hasActiveBanner) {
     arr = arr.filter(it => itemMatchesBanner(it, ACTIVE_BANNER));
   } else {
-    arr = []; // safe fallback if helpers not ready for any reason
+    arr = []; // fallback if helpers not ready
   }
 }
+
   }
   return arr;
 }
