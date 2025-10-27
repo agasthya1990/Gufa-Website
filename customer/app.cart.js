@@ -109,24 +109,29 @@ function computeDiscount(lock, baseSubtotal, mode) {
   if (!couponValidForCurrentMode(lock)) return { discount:0, reason:"mode" };
 
   // 3) Eligible set (BASE only) — strict to banner-selected IDs
-  // Accept multiple field names and shapes from the writer
-  const idsRaw =
+  // Accept multiple field names and shapes from the writer, including object entries.
+  let idsRaw =
     (lock?.scope?.eligibleItemIds) ??
     (lock?.scope?.eligibleIds) ??
     (lock?.eligibleItemIds) ??
     (lock?.eligibleIds) ?? [];
 
   if (!Array.isArray(idsRaw) || idsRaw.length === 0) {
-    // No configured eligible list → treat as no eligible items (strict)
     return { discount:0, reason:"scope" };
   }
 
-  // Normalize coupon ids (trim + lowercase)
-  const normIds = idsRaw.map(x => String(x).trim().toLowerCase());
+  // normalize coupon ids (strings or objects like {id}, {key}, {itemId}, {baseKey})
+  idsRaw = idsRaw.map(entry => {
+    if (entry && typeof entry === "object") {
+      const val = entry.id ?? entry.key ?? entry.itemId ?? entry.baseKey ?? "";
+      return String(val);
+    }
+    return String(entry);
+  });
 
-  // Fast lookup sets
-  const idSet    = new Set(normIds);                        // might contain itemIds and/or baseKeys
-  const itemOnly = normIds.filter(x => !x.includes(":"));   // just itemIds (no variant)
+  const normIds = idsRaw.map(x => x.trim().toLowerCase());
+  const idSet   = new Set(normIds);                          // may contain itemIds and/or baseKeys
+  const itemIdsOnly = normIds.filter(x => !x.includes(":")); // only itemIds (no variant)
 
   // Compute eligible base (sum of eligible BASE lines only)
   let eligibleBase = 0;
@@ -136,15 +141,17 @@ function computeDiscount(lock, baseSubtotal, mode) {
     const isAddon = parts.length >= 3; // base: itemId:variant, addon: itemId:variant:addon
     if (isAddon) continue;
 
-    // Candidates from the cart line
-    const itemId  = String(it?.id ?? parts[0]).trim().toLowerCase();     // "paneer_tikka"
-    const baseKey = parts.slice(0,2).join(":").trim().toLowerCase();     // "paneer_tikka:reg"
+    // Candidates from the cart line (derive if missing)
+    const itemId  = String(it?.id ?? it?.itemId ?? it?._id ?? it?.uid ?? parts[0]).trim().toLowerCase();
+    const baseKey = parts.slice(0,2).join(":").trim().toLowerCase();
 
-    // Match rules:
-  
-    const matchItem = idSet.has(itemId);
-    const matchBase = idSet.has(baseKey);
-    const matchPref = itemOnly.some(x => baseKey.startsWith(x + ":"));
+    // Match rules (any is OK):
+    //  (1) exact itemId
+    //  (2) exact baseKey
+    //  (3) coupon lists itemId (no colon) and baseKey startsWith(itemId + ":")
+    const matchItem  = idSet.has(itemId);
+    const matchBase  = idSet.has(baseKey);
+    const matchPref  = itemIdsOnly.some(x => baseKey.startsWith(x + ":"));
 
     if (!(matchItem || matchBase || matchPref)) continue;
 
