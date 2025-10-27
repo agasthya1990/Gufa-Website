@@ -78,17 +78,18 @@ function couponValidForCurrentMode(locked) {
 // helpers
 const entries = () => {
   try {
-    // 1) Prefer the live store, but only if it has entries
+    // 1) Prefer the live store, but only if it has usable item entries
     const store = window?.Cart?.get?.();
-if (store) {
-  const live = (store instanceof Map)
-    ? Array.from(store.entries())
-    : (typeof store === "object")
-      ? Object.entries(store)
-      : [];
-  // ✅ only use live if it actually has something
-  if (Array.isArray(live) && live.length > 0) return live;
-}
+    if (store && typeof store === "object") {
+      // unwrap nested shape { items: {...} } if present
+      const itemsObj = (store.items && typeof store.items === "object")
+        ? store.items
+        : (store instanceof Map ? Object.fromEntries(store) : store);
+
+      const live = Object.entries(itemsObj || {});
+      if (live.length > 0) return live;   // only commit if we truly have [key,it] pairs
+      // else fall through to persisted fallbacks
+    }
 
     // 2) Fallbacks: try known storage keys (newest → legacy)
     const keys = ["gufa_cart_v1", "gufa_cart", "GUFA:CART"];
@@ -108,6 +109,7 @@ if (store) {
     return [];
   }
 };
+
 
 
 
