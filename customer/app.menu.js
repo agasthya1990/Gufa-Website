@@ -134,10 +134,6 @@ if (!Array.isArray(window.BANNERS)) window.BANNERS = [];
 
 
 // ===== Global Sync =====
-window.addEventListener("cart:update", () => {
-  updateAllMiniCartBadges();
-  updateCartLink();
-});
 
 // Prevent rapid duplicate event calls that cause double badge renders
 let lastCartUpdate = 0;
@@ -184,7 +180,6 @@ window.addEventListener("cart:update", (e) => {
 
     // Notify menu/cart/checkout
     window.dispatchEvent(new CustomEvent("mode:change", { detail: { mode: m } }));
-    window.dispatchEvent(new Event("cart:update"));
   };
 
 
