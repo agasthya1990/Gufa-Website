@@ -98,62 +98,69 @@
     return { baseSubtotal, addonSubtotal };
   }
   
-  function computeDiscount(lock, baseSubtotal, mode) {
+function computeDiscount(lock, baseSubtotal, mode) {
   if (!lock) return { discount:0, reason:null };
 
-  // min order on BASE only
+  // 1) Min order on BASE only
   const minOrder = Number(lock.minOrder || 0);
   if (minOrder > 0 && baseSubtotal < minOrder) return { discount:0, reason:"min" };
 
-  // mode validity
+  // 2) Mode validity
   if (!couponValidForCurrentMode(lock)) return { discount:0, reason:"mode" };
 
-  // eligible set (BASE only) — strict to coupon.scope.eligibleItemIds
-  let eligibleBase = baseSubtotal;
-  const ids = lock?.scope?.eligibleItemIds;
-  if (Array.isArray(ids) && ids.length) {
-    // normalize coupon ids (trim + lowercase)
-const normIds = ids.map(x => String(x).trim().toLowerCase());
+  // 3) Eligible set (BASE only) — strict to banner-selected IDs
+  // Accept multiple field names and shapes from the writer
+  const idsRaw =
+    (lock?.scope?.eligibleItemIds) ??
+    (lock?.scope?.eligibleIds) ??
+    (lock?.eligibleItemIds) ??
+    (lock?.eligibleIds) ?? [];
 
-// sets we’ll use for fast membership checks
-const idSet      = new Set(normIds);                  // e.g., "paneer_tikka" or "paneer_tikka:reg"
-const colonless  = new Set(normIds.filter(x => !x.includes(":")).map(x => x)); // itemIds only
-
-eligibleBase = 0;
-for (const [key, it] of entries()) {
-  const parts   = String(key).split(":");
-  const isAddon = parts.length >= 3;          // base: itemId:variant, addon: itemId:variant:addon
-  if (isAddon) continue;
-
-  // candidates from the cart line
-  const itemId  = String(it?.id ?? parts[0]).trim().toLowerCase();  // "paneer_tikka"
-  const baseKey = (parts.slice(0,2).join(":")).trim().toLowerCase(); // "paneer_tikka:reg"
-
-  // match rules:
-  
-  const itemIdListed   = idSet.has(itemId);
-  const baseKeyListed  = idSet.has(baseKey);
-  const prefixListed   = colonless.size > 0 && [...colonless].some(x => baseKey.startsWith(x + ":"));
-
-  if (!(itemIdListed || baseKeyListed || prefixListed)) continue;
-
-  eligibleBase += (Number(it.price)||0) * (Number(it.qty)||0);
-}
-
-
-    if (eligibleBase <= 0) return { discount:0, reason:"scope" };
-  } else {
-    // If no eligible list is provided, treat as "no eligible items configured"
-    // so discount doesn't apply accidentally.
+  if (!Array.isArray(idsRaw) || idsRaw.length === 0) {
+    // No configured eligible list → treat as no eligible items (strict)
     return { discount:0, reason:"scope" };
   }
 
+  // Normalize coupon ids (trim + lowercase)
+  const normIds = idsRaw.map(x => String(x).trim().toLowerCase());
+
+  // Fast lookup sets
+  const idSet    = new Set(normIds);                        // might contain itemIds and/or baseKeys
+  const itemOnly = normIds.filter(x => !x.includes(":"));   // just itemIds (no variant)
+
+  // Compute eligible base (sum of eligible BASE lines only)
+  let eligibleBase = 0;
+
+  for (const [key, it] of entries()) {
+    const parts   = String(key).split(":");
+    const isAddon = parts.length >= 3; // base: itemId:variant, addon: itemId:variant:addon
+    if (isAddon) continue;
+
+    // Candidates from the cart line
+    const itemId  = String(it?.id ?? parts[0]).trim().toLowerCase();     // "paneer_tikka"
+    const baseKey = parts.slice(0,2).join(":").trim().toLowerCase();     // "paneer_tikka:reg"
+
+    // Match rules:
+  
+    const matchItem = idSet.has(itemId);
+    const matchBase = idSet.has(baseKey);
+    const matchPref = itemOnly.some(x => baseKey.startsWith(x + ":"));
+
+    if (!(matchItem || matchBase || matchPref)) continue;
+
+    eligibleBase += (Number(it.price)||0) * (Number(it.qty)||0);
+  }
+
+  if (eligibleBase <= 0) return { discount:0, reason:"scope" };
+
+  // 4) Discount math
   const t = String(lock.type||"").toLowerCase();
   const v = Number(lock.value||0);
-  if (t === "percent") return { discount: Math.round(eligibleBase * (v/100)), reason:null };
+  if (t === "percent") return { discount: Math.round(eligibleBase * (v / 100)), reason:null };
   if (t === "flat")    return { discount: Math.min(v, eligibleBase), reason:null };
   return { discount:0, reason:null };
 }
+
 
 
   // ---- layout resolution ----
@@ -363,6 +370,8 @@ for (const [key, it] of entries()) {
     const locked = getLockedCoupon();
     const modeNow = activeMode();
     const { discount, reason } = computeDiscount(locked, baseSubtotal, modeNow);
+    if (reason === "scope") console.debug("[promo] scope mismatch:", { eligible: (locked?.scope?.eligibleItemIds ?? locked?.scope?.eligibleIds ?? locked?.eligibleItemIds ?? locked?.eligibleIds), cartKeys: Object.keys(window.Cart?.get?.()||{}) });
+
 
     const preTax = Math.max(0, baseSubtotal + addonSubtotal - discount);
     const tax = taxOn(preTax);
