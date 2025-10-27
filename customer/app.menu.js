@@ -84,15 +84,6 @@ function nudgeBaseSteppers(itemId){
 }
 
 
-// ===== Header Cart =====
-function updateCartLink(){
-  const total = getCartEntries().reduce((n, [, it]) => n + (Number(it.qty)||0), 0);
-  const el = document.getElementById("cartLink");
-  if (el) el.textContent = `Cart (${total})`;
-}
-
-
-
 // ===== Mini-cart Badge =====
 function updateItemMiniCartBadge(itemId, rock=false){
   const card = document.querySelector(`.menu-item[data-id="${itemId}"]`);
@@ -1669,19 +1660,6 @@ window.addEventListener("serviceMode:changed", () => {
   if (view === "list" && listKind === "banner" && typeof decorateBannerDealBadges === "function") {
     try { decorateBannerDealBadges(); } catch {}
   }
-});
-
-  
- // Keep header & badges in sync whenever the cart store updates
-window.addEventListener("cart:update", () => {
-  updateAllMiniCartBadges();
-  updateCartLink();
-
-  // NEW: keep Add-ons button state in sync with cart
-  document.querySelectorAll(".menu-item[data-id]").forEach(el => {
-    const itemId = el.getAttribute("data-id");
-    updateAddonsButtonState(itemId);
-  });
 });
 
 })();
