@@ -1448,10 +1448,24 @@ document.addEventListener("click", (e) => {
     qty = sumQtyByPrefix(itemId + ":");  // uses Cart.get() under the hood
   } catch {}
 
-  if (qty > 0) {
-    // proceed to checkout (keep your current path)
-    window.location.href = "/customer/checkout.html";
-  } else {
+if (qty > 0) {
+  // proceed to checkout with cross-origin handoff support
+  const target = "/customer/checkout.html";
+  const to = new URL(target, location.href);
+  const sameOrigin = to.origin === location.origin;
+
+  if (!sameOrigin) {
+    // Snapshot current cart (same as your anchor patch)
+    const store = (window?.Cart?.get?.() || {});
+    const snap = { items: store };
+    const raw = JSON.stringify(snap);
+    const b64 = btoa(raw).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/,'');
+
+    to.searchParams.set('cart', b64);
+  }
+
+  window.location.href = to.toString();
+} else {
     // empty -> do a quick rock/wobble and do nothing
     btn.classList.remove("rock");
     // reflow to retrigger the animation even on repeated clicks
