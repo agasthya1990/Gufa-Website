@@ -11,27 +11,31 @@ Schema saved in localStorage:
 */
 
 (function (window, document) {
-  const LS_KEY = "gufa_cart_v1";
+  const LS_KEY = "gufa_cart";
 
-  // ---- internal helpers ----
-  function readState() {
-    try {
-      const raw = localStorage.getItem(LS_KEY);
-      const parsed = raw ? JSON.parse(raw) : null;
-      if (!parsed || typeof parsed !== "object") return { items: {} };
-      if (!parsed.items || typeof parsed.items !== "object") parsed.items = {};
-      return parsed;
-    } catch {
-      return { items: {} };
+// ---- internal helpers ----
+function readState() {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    const parsed = raw ? JSON.parse(raw) : null;
+    if (!parsed || typeof parsed !== "object") return { items: {} };
+    // accept both flat and nested; normalize to { items:{...} }
+    if (parsed.items && typeof parsed.items === "object") {
+      return { items: parsed.items };
     }
+    return { items: parsed }; // flat legacy
+  } catch {
+    return { items: {} };
   }
+}
 
-  function writeState(state) {
-    try {
-      localStorage.setItem(LS_KEY, JSON.stringify(state));
-    } catch {}
-    dispatch();
-  }
+function writeState(state) {
+  try {
+    // store flat for single source of truth
+    localStorage.setItem(LS_KEY, JSON.stringify(state.items || {}));
+  } catch {}
+  dispatch();
+}
 
   function dispatch() {
     try {
