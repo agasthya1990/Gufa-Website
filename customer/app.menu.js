@@ -134,15 +134,20 @@ if (!Array.isArray(window.BANNERS)) window.BANNERS = [];
 
 
 // ===== Global Sync =====
-
-// Prevent rapid duplicate event calls that cause double badge renders
 let lastCartUpdate = 0;
-window.addEventListener("cart:update", (e) => {
+window.addEventListener("cart:update", () => {
   const now = Date.now();
-  if (now - lastCartUpdate < 80) return; // ignore duplicates within 80 ms
+  if (now - lastCartUpdate < 80) return; // ignore quick duplicates
   lastCartUpdate = now;
+
   updateAllMiniCartBadges();
   updateCartLink();
+
+  // Keep Add-ons button state in sync with cart
+  document.querySelectorAll(".menu-item[data-id]").forEach(el => {
+    const itemId = el.getAttribute("data-id");
+    updateAddonsButtonState(itemId);
+  });
 });
 
 (function () {
