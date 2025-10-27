@@ -943,42 +943,40 @@ function lockCouponForActiveBannerIfNeeded(addedItemId) {
   if (localStorage.getItem("gufa_coupon")) return;
 
   const item = (window.ITEMS || []).find(x => String(x.id) === String(addedItemId));
-  if (!item || !itemMatchesBanner(item, ACTIVE_BANNER)) return;
+  if (!item) return;
 
-  // 1) Try to pick a fully-hydrated coupon (has type/value). If not ready, fall back.
+  // Item must currently match the open banner
+  if (!itemMatchesBanner(item, ACTIVE_BANNER)) return;
+
+  // Prefer a fully hydrated coupon meta; else fall back gracefully
   let chosen = null;
   try { chosen = pickCouponForItem(item, ACTIVE_BANNER); } catch {}
-  // Compute first intersecting coupon id as fallback (no meta yet)
+
+  // Compute a first-intersecting coupon id as fallback (if meta hasn’t hydrated yet)
   const rawItemIds = Array.isArray(item.couponIds) ? item.couponIds
-                    : Array.isArray(item.coupons)    ? item.coupons
-                    : Array.isArray(item.promotions) ? item.promotions
-                    : [];
+                  : Array.isArray(item.coupons)    ? item.coupons
+                  : Array.isArray(item.promotions) ? item.promotions
+                  : [];
   const itemIds   = rawItemIds.map(String).map(s => s.trim()).filter(Boolean);
   const bannerIds = (ACTIVE_BANNER.linkedCouponIds || []).map(String).map(s => s.trim()).filter(Boolean);
   const firstIntersectId = bannerIds.find(cid => itemIds.includes(cid)) || "";
 
-    // 2) Eligible items = exactly what the banner list shows to the user now
-  //    (keeps Menu -> Cart consistent even if item.promotions metadata lags)
+  // Eligible items = exactly what the user sees in the banner list right now
   const eligibleItemIds = (function() {
     try {
-      if (typeof itemsForList === "function") {
-        return itemsForList().map(it => String(it.id));
-      }
-      // Fallback to the same predicate used for banner list
+      if (typeof itemsForList === "function") return itemsForList().map(it => String(it.id));
       return (window.ITEMS || [])
         .filter(it => itemMatchesBanner(it, ACTIVE_BANNER))
         .map(it => String(it.id));
     } catch { return []; }
   })();
 
-  // 3) Resolve coupon details from COUPONS map if available
+  // Resolve coupon details from COUPONS map if available
   const chosenId   = (chosen?.id || firstIntersectId || "").toString();
   const chosenMeta = (window.COUPONS instanceof Map) ? window.COUPONS.get(chosenId) : null;
 
   const payload = {
-    code: String(
-      (chosen?.code || chosenMeta?.code || chosenId || ACTIVE_BANNER.id)
-    ).toUpperCase(),
+    code: String((chosen?.code || chosenMeta?.code || chosenId || ACTIVE_BANNER.id)).toUpperCase(),
     type: String(chosen?.type ?? chosenMeta?.type ?? ""),
     value: Number(chosen?.value ?? chosenMeta?.value ?? 0),
 
@@ -997,8 +995,11 @@ function lockCouponForActiveBannerIfNeeded(addedItemId) {
   };
 
   try { localStorage.setItem("gufa_coupon", JSON.stringify(payload)); } catch {}
-  console.info(`[promo] Locked: ${payload.code} (type=${payload.type||"pending"} value=${payload.value||"pending"})`);
+  window.dispatchEvent(new CustomEvent("cart:update"));
 }
+// expose (some older code calls it via window.*)
+window.lockCouponForActiveBannerIfNeeded = lockCouponForActiveBannerIfNeeded;
+
 
 
 /* ===== D3 — Deal badges on item cards (banner list only) ===== */
