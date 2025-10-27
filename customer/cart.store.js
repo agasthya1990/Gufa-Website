@@ -42,9 +42,11 @@ Schema saved in localStorage:
   }
 
   // ---- public API ----
-  function get() {
-    return readState().items;
-  }
+function get() {
+  const state = readState();
+  return state && typeof state.items === "object" ? state.items : {};
+}
+
 
   // setQty(key, qty, meta) — qty <= 0 removes the line
   // meta may include: { id, name, variant, price, thumb }
