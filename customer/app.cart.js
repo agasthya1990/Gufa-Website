@@ -99,74 +99,44 @@
   }
   
 function computeDiscount(lock, baseSubtotal, mode) {
-  if (!lock) return { discount:0, reason:null };
+  if (!lock) return { discount: 0, reason: null };
 
-  // 1) Min order on BASE only
-  const minOrder = Number(lock.minOrder || 0);
-  if (minOrder > 0 && baseSubtotal < minOrder) return { discount:0, reason:"min" };
-
-  // 2) Mode validity
-  if (!couponValidForCurrentMode(lock)) return { discount:0, reason:"mode" };
-
-  // 3) Eligible set (BASE only) — strict to banner-selected IDs
-  // Accept multiple field names and shapes from the writer, including object entries.
-  let idsRaw =
-    (lock?.scope?.eligibleItemIds) ??
-    (lock?.scope?.eligibleIds) ??
-    (lock?.eligibleItemIds) ??
-    (lock?.eligibleIds) ?? [];
-
-  if (!Array.isArray(idsRaw) || idsRaw.length === 0) {
-    return { discount:0, reason:"scope" };
+  // Mode validity
+  if (lock.valid && typeof lock.valid === "object" && (mode in lock.valid)) {
+    if (!lock.valid[mode]) return { discount: 0, reason: "mode" };
   }
 
-  // normalize coupon ids (strings or objects like {id}, {key}, {itemId}, {baseKey})
-  idsRaw = idsRaw.map(entry => {
-    if (entry && typeof entry === "object") {
-      const val = entry.id ?? entry.key ?? entry.itemId ?? entry.baseKey ?? "";
-      return String(val);
-    }
-    return String(entry);
-  });
+  // Minimum order (applies on BASE items only)
+  const minOrder = Number(lock.minOrder || 0);
+  if (minOrder > 0 && baseSubtotal < minOrder) return { discount: 0, reason: "min" };
 
-  const normIds = idsRaw.map(x => x.trim().toLowerCase());
-  const idSet   = new Set(normIds);                          // may contain itemIds and/or baseKeys
-  const itemIdsOnly = normIds.filter(x => !x.includes(":")); // only itemIds (no variant)
+  // Build normalized eligibility set
+  const rawIds = Array.isArray(lock?.scope?.eligibleItemIds) ? lock.scope.eligibleItemIds : [];
+  const elig = new Set(rawIds.map(x => String(x).trim().toLowerCase()));
 
-  // Compute eligible base (sum of eligible BASE lines only)
+  // Sum eligible BASE (no add-ons) by matching either:
+  //  1) item.id, or
+  //  2) baseKey "id:variant" via startsWith("id:")
   let eligibleBase = 0;
-
   for (const [key, it] of entries()) {
     const parts   = String(key).split(":");
-    const isAddon = parts.length >= 3; // base: itemId:variant, addon: itemId:variant:addon
-    if (isAddon) continue;
+    if (parts.length >= 3) continue; // skip add-ons
+    const baseKey = parts.slice(0,2).join(":").toLowerCase();
+    const itemId  = String(it?.id ?? parts[0]).toLowerCase();
 
-    // Candidates from the cart line (derive if missing)
-    const itemId  = String(it?.id ?? it?.itemId ?? it?._id ?? it?.uid ?? parts[0]).trim().toLowerCase();
-    const baseKey = parts.slice(0,2).join(":").trim().toLowerCase();
-
-    // Match rules (any is OK):
-    //  (1) exact itemId
-    //  (2) exact baseKey
-    //  (3) coupon lists itemId (no colon) and baseKey startsWith(itemId + ":")
-    const matchItem  = idSet.has(itemId);
-    const matchBase  = idSet.has(baseKey);
-    const matchPref  = itemIdsOnly.some(x => baseKey.startsWith(x + ":"));
-
-    if (!(matchItem || matchBase || matchPref)) continue;
-
-    eligibleBase += (Number(it.price)||0) * (Number(it.qty)||0);
+    const match = elig.has(itemId) || elig.has(baseKey) || (elig.has(itemId) || [...elig].some(x => !x.includes(":") && baseKey.startsWith(x + ":")));
+    if (match) eligibleBase += (Number(it.price)||0) * (Number(it.qty)||0);
   }
 
-  if (eligibleBase <= 0) return { discount:0, reason:"scope" };
+  if (eligibleBase <= 0) return { discount: 0, reason: "scope" };
 
-  // 4) Discount math
-  const t = String(lock.type||"").toLowerCase();
-  const v = Number(lock.value||0);
-  if (t === "percent") return { discount: Math.round(eligibleBase * (v / 100)), reason:null };
-  if (t === "flat")    return { discount: Math.min(v, eligibleBase), reason:null };
-  return { discount:0, reason:null };
+  const t = String(lock.type || "").toLowerCase();
+  const v = Number(lock.value || 0);
+  if (t === "percent") return { discount: Math.round(eligibleBase * (v/100)), reason: null };
+  if (t === "flat")    return { discount: Math.min(v, eligibleBase),          reason: null };
+  return { discount: 0, reason: null };
 }
+
 
 
 
