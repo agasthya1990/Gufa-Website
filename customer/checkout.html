@@ -78,7 +78,7 @@
 <body>
 
   <header>
-    <a href="../index.html" id="back-link">Menu</a>
+    <a href="../" id="back-link">← Menu</a>
     <div class="cart-badge-wrap">Cart: <span id="cart-count">0</span></div>
   </header>
 
@@ -103,7 +103,7 @@
   (function () {
     const a = document.getElementById('back-link');
     if (!a) return;
-    a.href = new URL('./', location.href).toString();
+    a.href = new URL('../', location.href).toString();
   })();
 </script>
   <!-- Load order: store first, then cart UI -->
@@ -112,4 +112,5 @@
   
 </body>
 </html>
+
 
