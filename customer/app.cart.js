@@ -57,11 +57,17 @@ const DELIVERY_TEXT     = "Shown at payment";
 const taxOn = (amount) => Math.max(0, (Number(amount) || 0) * SERVICE_TAX_RATE);
   
 // --- Mode + coupon validity helpers ---
+  
 function activeMode() {
+  const api = window?.GUFA?.serviceMode?.get;
+  if (typeof api === "function") {
+    return api() === "dining" ? "dining" : "delivery";
+  }
   const raw = localStorage.getItem("gufa:serviceMode") ?? localStorage.getItem("gufa_mode") ?? "delivery";
   const m = String(raw).toLowerCase();
   return (m === "dining" ? "dining" : "delivery");
 }
+
 
 function couponValidForCurrentMode(locked) {
   try {
