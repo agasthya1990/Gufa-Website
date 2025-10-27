@@ -403,44 +403,40 @@ function setQty(found, variantKey, price, nextQty) {
     }
   } catch {}
 
-    // 2️⃣ Persistent mirror for checkout hydration (dual-write: v1 + legacy)
-  try {
-    const LS_KEY_V1     = "gufa_cart_v1"; // canonical (nested)
-    const LS_KEY_LEGACY = "gufa_cart";    // legacy (flat)
+    // 2️⃣ Persistent mirror for checkout hydration (single-key, flat)
+try {
+  const LS_KEY = "gufa_cart";
+  let bag = {};
 
-    let state = { items: {} };
+  // Prefer the live store’s flat items object
+  const live = window?.Cart?.get?.();
+  if (live && typeof live === "object" && Object.keys(live).length) {
+    bag = (live.items && typeof live.items === "object") ? live.items : live;
+  } else {
+    try { bag = JSON.parse(localStorage.getItem(LS_KEY) || "{}"); }
+    catch { bag = {}; }
+  }
+  if (!bag || typeof bag !== "object") bag = {};
 
-    // Prefer the live store’s flat items object
-    const live = window?.Cart?.get?.();
-    if (live && typeof live === "object" && Object.keys(live).length) {
-      state.items = (live.items && typeof live.items === "object") ? live.items : live;
-    } else {
-      try { state = JSON.parse(localStorage.getItem(LS_KEY_V1) || '{"items":{}}'); }
-      catch { state = { items: {} }; }
-    }
-    if (!state.items || typeof state.items !== "object") state.items = {};
+  // Apply this key
+  if (next <= 0) {
+    delete bag[key];
+  } else {
+    const prev = bag[key] || {};
+    bag[key] = {
+      id: found.id,
+      name: found.name,
+      variant: variantKey,
+      price: Number(price) || Number(prev.price) || 0,
+      thumb: prev.thumb || "",
+      qty: next
+    };
+  }
 
-    // Apply this key
-    if (next <= 0) {
-      delete state.items[key];
-    } else {
-      const prev = state.items[key] || {};
-      state.items[key] = {
-        id: found.id,
-        name: found.name,
-        variant: variantKey,
-        price: Number(price) || Number(prev.price) || 0,
-        thumb: prev.thumb || "",
-        qty: next
-      };
-    }
-
-    // Write canonical v1 (nested) and legacy (flat) for maximum compatibility
-    localStorage.setItem(LS_KEY_V1,     JSON.stringify(state));
-    localStorage.setItem(LS_KEY_LEGACY, JSON.stringify(state.items || {}));
-
-    window.dispatchEvent(new CustomEvent("cart:update", { detail: { cart: state } }));
-  } catch {}
+  localStorage.setItem(LS_KEY, JSON.stringify(bag));
+  // keep the event detail compatible (nested shape expected by some listeners)
+  window.dispatchEvent(new CustomEvent("cart:update", { detail: { cart: { items: bag } } }));
+} catch {}
 
 
   if (next > 0) {
@@ -450,15 +446,15 @@ function setQty(found, variantKey, price, nextQty) {
   updateItemMiniCartBadge(found.id, true);
   updateCartLink();
 
-  setTimeout(() => {
-    try {
-      const bag = window?.Cart?.get?.() || JSON.parse(localStorage.getItem("gufa_cart_v1") || '{"items":{}}').items;
-      const cartQty = Number(bag?.[key]?.qty || 0);
-      if (badge && cartQty !== next) badge.textContent = String(cartQty || next);
-      updateItemMiniCartBadge(found.id);
-      updateCartLink();
-    } catch {}
-  }, 50);
+setTimeout(() => {
+  try {
+    const bag = window?.Cart?.get?.() || JSON.parse(localStorage.getItem("gufa_cart") || "{}");
+    const cartQty = Number(bag?.[key]?.qty || 0);
+    if (badge && cartQty !== next) badge.textContent = String(cartQty || next);
+    updateItemMiniCartBadge(found.id);
+    updateCartLink();
+  } catch {}
+}, 50);
 }
 
 
