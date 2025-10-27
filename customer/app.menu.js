@@ -192,47 +192,47 @@ window.addEventListener("cart:update", () => {
 
 
 
-    // Coupon lock (first touch wins) — closes over view/listKind/listId/ITEMS
-  window.lockCouponForActiveBannerIfNeeded = function (addedItemId) {
-    try {
-      if (!(view === "list" && listKind === "banner")) return;
+   window.lockCouponForActiveBannerIfNeeded = function (addedItemId) {
+  try {
+    if (!(view === "list" && listKind === "banner")) return;
 
-      // do not overwrite an existing lock
-      const existing = JSON.parse(localStorage.getItem("gufa_coupon") || "null");
-      if (existing && existing.code) return;
+    // Skip if another coupon is already locked
+    const existing = JSON.parse(localStorage.getItem("gufa_coupon") || "null");
+    if (existing && existing.code) return;
 
-      const ACTIVE_BANNER_ID = String(listId || "");
-      const ACTIVE_BANNER = (window.BANNERS || []).find(b => String(b.id) === ACTIVE_BANNER_ID);
-      if (!ACTIVE_BANNER) return;
+    const ACTIVE_BANNER_ID = String(listId || "");
+    const ACTIVE_BANNER = (window.BANNERS || []).find(b => String(b.id) === ACTIVE_BANNER_ID);
+    if (!ACTIVE_BANNER) return;
 
-      const [couponId] = Array.isArray(ACTIVE_BANNER.linkedCouponIds) ? ACTIVE_BANNER.linkedCouponIds : [];
-      if (!couponId) return;
+    const [couponId] = Array.isArray(ACTIVE_BANNER.linkedCouponIds) ? ACTIVE_BANNER.linkedCouponIds : [];
+    if (!couponId) return;
 
-      // eligible base items for scope (Admin wrote item.promotions[])
-      const eligibleItemIds = (ITEMS || [])
-        .filter(it => Array.isArray(it.promotions) && it.promotions.map(String).includes(String(couponId)))
-        .map(it => String(it.id));
+    const eligibleItemIds = (ITEMS || [])
+      .filter(it => Array.isArray(it.promotions) && it.promotions.map(String).includes(String(couponId)))
+      .map(it => String(it.id));
 
-      if (!eligibleItemIds.includes(String(addedItemId))) return;
+    if (!eligibleItemIds.includes(String(addedItemId))) return;
 
-            const meta = (window.COUPONS instanceof Map) ? window.COUPONS.get(String(couponId)) : null;
-      const targets = (meta && meta.targets) ? meta.targets : { delivery: true, dining: true };
+    const meta = (window.COUPONS instanceof Map) ? window.COUPONS.get(String(couponId)) : null;
+    const targets = (meta && meta.targets) ? meta.targets : { delivery: true, dining: true };
 
-      const lock = {
-        code:  (meta?.code || String(couponId)).toUpperCase(),
-        type:  String(meta?.type || ""),
-        value: Number(meta?.value || 0),
-        valid: {                      // ← NEW: per-mode validity
-          delivery: !!targets.delivery,
-          dining:   !!targets.dining
-        },
-        scope: { bannerId: ACTIVE_BANNER_ID, couponId: String(couponId), eligibleItemIds },
-        lockedAt: Date.now()
-      };
-      localStorage.setItem("gufa_coupon", JSON.stringify(lock));
-      window.dispatchEvent(new CustomEvent("cart:update"));
-    } catch {}
-  };
+    const payload = {
+      code:  (meta?.code || String(couponId)).toUpperCase(),
+      type:  String(meta?.type || ""),
+      value: Number(meta?.value || 0),
+      valid: {
+        delivery: !!targets.delivery,
+        dining:   !!targets.dining
+      },
+      scope: { couponId: String(couponId), eligibleItemIds },
+      lockedAt: Date.now()
+    };
+
+    localStorage.setItem("gufa_coupon", JSON.stringify(payload));
+    window.dispatchEvent(new CustomEvent("cart:update", { detail: { coupon: payload } }));
+  } catch {}
+};
+
 
 
   /* ---------- DOM ---------- */
@@ -391,36 +391,34 @@ function setQty(found, variantKey, price, nextQty) {
   const key  = `${found.id}:${variantKey}`;
   const next = Math.max(0, Number(nextQty || 0));
 
-  // Update on-card number immediately
   const badge = document.querySelector(`.qty[data-key="${key}"] .num`);
   if (badge) badge.textContent = String(next);
 
-  // 1) Write to the live Cart API if available
-  let usedCartApi = false;
+  // 1️⃣ Live Cart update
   try {
     if (window.Cart && typeof window.Cart.setQty === "function") {
       window.Cart.setQty(key, next, {
         id: found.id, name: found.name, variant: variantKey, price: Number(price) || 0
       });
-      usedCartApi = true;
     }
   } catch {}
 
-  // 2) Mirror to localStorage snapshot (always) so checkout can hydrate on fresh page load
+  // 2️⃣ Persistent mirror for checkout hydration
   try {
-    const LS_KEY = "gufa_cart_v1"; // single source of truth for cross-page
-    // Start from the live store if available; otherwise from existing LS
+    const LS_KEY = "gufa_cart_v1";
     let state = { items: {} };
-    const live = (window?.Cart?.get?.() || {});
+
+    // Prefer the live store’s flat items object
+    const live = window?.Cart?.get?.();
     if (live && typeof live === "object" && Object.keys(live).length) {
-      state.items = live;
+      state.items = live.items && typeof live.items === "object" ? live.items : live;
     } else {
       try { state = JSON.parse(localStorage.getItem(LS_KEY) || '{"items":{}}'); }
       catch { state = { items: {} }; }
     }
     if (!state.items || typeof state.items !== "object") state.items = {};
 
-    // Apply this one key change to the snapshot
+    // Apply this key
     if (next <= 0) {
       delete state.items[key];
     } else {
@@ -434,8 +432,8 @@ function setQty(found, variantKey, price, nextQty) {
         qty: next
       };
     }
+
     localStorage.setItem(LS_KEY, JSON.stringify(state));
-    // Notify listeners in all cases (cart, totals, badges)
     window.dispatchEvent(new CustomEvent("cart:update", { detail: { cart: state } }));
   } catch {}
 
@@ -443,15 +441,12 @@ function setQty(found, variantKey, price, nextQty) {
     try { window.lockCouponForActiveBannerIfNeeded?.(found.id); } catch {}
   }
 
-  updateItemMiniCartBadge(found.id, /*rock:*/ true);
+  updateItemMiniCartBadge(found.id, true);
   updateCartLink();
 
-  // Reconcile the DOM count with the locker after a short tick
   setTimeout(() => {
     try {
-      const bag = (window.Cart && typeof window.Cart.get === "function")
-        ? (window.Cart.get() || {})
-        : (JSON.parse(localStorage.getItem("gufa_cart_v1") || '{"items":{}}').items || {});
+      const bag = window?.Cart?.get?.() || JSON.parse(localStorage.getItem("gufa_cart_v1") || '{"items":{}}').items;
       const cartQty = Number(bag?.[key]?.qty || 0);
       if (badge && cartQty !== next) badge.textContent = String(cartQty || next);
       updateItemMiniCartBadge(found.id);
@@ -459,6 +454,7 @@ function setQty(found, variantKey, price, nextQty) {
     } catch {}
   }, 50);
 }
+
 
 
 
