@@ -13,9 +13,11 @@ function displayCodeFromLock(locked){
     if (meta?.code) return String(meta.code).toUpperCase();
 
     // 2) Firestore one-shot read (only on checkout if needed), then backfill
+    
     fetchCouponCodeAndBackfill(cid, locked);
 
     // Return something immediately; label will update after backfill
+    
     return raw || cid.toUpperCase();
   } catch {
     return String(locked?.code || "").toUpperCase();
@@ -35,6 +37,7 @@ function resolveDisplayCode(locked) {
 
 
 // parenthesis-safe, no inline IIFE
+
 async function fetchCouponCodeAndBackfill(cid, locked) {
   try {
     if (!window.db || !cid) return;
@@ -56,7 +59,7 @@ const SERVICE_TAX_LABEL = "Service Tax";  // label shown in UI
 const DELIVERY_TEXT     = "Shown at payment";
 const taxOn = (amount) => Math.max(0, (Number(amount) || 0) * SERVICE_TAX_RATE);
   
-// --- Mode + coupon validity helpers ---
+// --- Mode + coupon validity helpers ---//
   
 function activeMode() {
   const api = window?.GUFA?.serviceMode?.get;
@@ -82,12 +85,14 @@ function couponValidForCurrentMode(locked) {
 }
 
 // helpers
+  
 const entries = () => {
   try {
     // 1) Prefer the live Cart store, unwrap if nested
+    
     const store = window?.Cart?.get?.();
     if (store && typeof store === "object") {
-      // ✅ un-nest { items:{...} } → {...}
+            
       const itemsObj = (store.items && typeof store.items === "object")
         ? store.items
         : (store instanceof Map ? Object.fromEntries(store) : store);
@@ -97,6 +102,7 @@ const entries = () => {
     }
 
     // 2) Fallback: read persisted localStorage
+    
     const keys = ["gufa_cart_v1", "gufa_cart", "GUFA:CART"];
     for (const k of keys) {
       const raw = localStorage.getItem(k);
@@ -119,7 +125,8 @@ const entries = () => {
 const count = () => entries().reduce((n, [, it]) => n + (Number(it.qty) || 0), 0);
 const subtotal = () => entries().reduce((s, [, it]) => s + (Number(it.price)||0)*(Number(it.qty)||0), 0);
 
-  // runtime refs (filled after DOMContentLoaded)
+  // runtime refs (filled after DOMContentLoaded)//
+  
   let mode = null; // 'list' | 'table'
   let R = {};      // resolved elements
   let $countTop = null;
@@ -128,7 +135,8 @@ const subtotal = () => entries().reduce((s, [, it]) => s + (Number(it.price)||0)
     const CFG = window.CART_UI || {};
     $countTop = document.querySelector('#cart-count');
 
-    // prefer explicit config; otherwise try defaults
+    // prefer explicit config; otherwise try defaults//
+    
 const listCfg = CFG.list || {
   items:'#cart-items',
   empty:'#cart-empty',
@@ -136,7 +144,7 @@ const listCfg = CFG.list || {
   addonsNote:'#addons-note',
   subtotal:'#subtotal-amt',
   servicetax: '#servicetax-amt',   // renamed tax field
-  gst: '#servicetax-amt',          // backward alias (so old configs still work)
+  gst: '#servicetax-amt',          // backward alias (so old configs still work)*//
   total:'#total-amt',
   proceed:'#proceed-btn'
 };
@@ -144,6 +152,7 @@ const listCfg = CFG.list || {
     const tableCfg = CFG.table || { body:'#cartBody', total:'#cartTotal' };
 
     // try list first
+    
     const listEls = {
   items: document.querySelector(listCfg.items),
   empty: document.querySelector(listCfg.empty || null),
@@ -154,9 +163,10 @@ const listCfg = CFG.list || {
   total: document.querySelector(listCfg.total || null),
   proceed: document.querySelector(listCfg.proceed || null),
 };
+    
 // be tolerant: only the items container is required
+    
 const listOK = !!listEls.items;
-
 
     if (listOK) {
       mode = 'list';
@@ -165,6 +175,7 @@ const listOK = !!listEls.items;
     }
 
     // fallback: table
+    
     const tableEls = {
       body: document.querySelector(tableCfg.body),
       total: document.querySelector(tableCfg.total)
@@ -177,24 +188,28 @@ const listOK = !!listEls.items;
     }
 
     // neither found
+    
     mode = null;
     R = {};
     console.warn("[cart] No usable layout found. Make sure window.CART_UI is set before app.cart.js and IDs exist in checkout.html.");
     return false;
   }
 
-  // ----- unified render + gentle rehydrate loop -----
+  // ----- unified render + gentle rehydrate loop -----//
+  
   function render() {
-    // ensure we have a resolved layout
     if (!mode && !resolveLayout()) return;
     if (mode === 'list') { renderList(); }
     else if (mode === 'table') { renderTable(); }
   }
 
   // If initial read is empty (race with menu’s mirror), try a few quick retries.
+  
   function rehydrateIfEmpty() {
     if (entries().length > 0) return;
+    
     // staggered retries to catch late-arriving snapshot
+    
     setTimeout(() => { if (entries().length === 0) render(); }, 80);
     setTimeout(() => { if (entries().length === 0) render(); }, 220);
     setTimeout(() => { if (entries().length === 0) render(); }, 480);
@@ -202,17 +217,20 @@ const listOK = !!listEls.items;
 
     // ----- boot + reactive subscriptions -----
   function boot() {
+    
     // 1) initial resolve + paint
     resolveLayout();
     render();
     rehydrateIfEmpty();
 
     // 2) react to producer (menu) signals
+    
     window.addEventListener('cart:update', render, false);
     window.addEventListener('mode:change', render, false);
     window.addEventListener('serviceMode:changed', render, false);
 
     // 3) react to storage changes (other tabs or late localStorage writes)
+    
     window.addEventListener('storage', (e) => {
       if (!e) return;
       if (e.key === 'gufa_cart_v1' || e.key === 'gufa_cart' || e.key === 'GUFA:CART' || e.key === 'gufa_coupon') {
@@ -221,6 +239,7 @@ const listOK = !!listEls.items;
     }, false);
 
     // 4) page lifecycle helpers
+    
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible') { render(); rehydrateIfEmpty(); }
     }, false);
@@ -236,7 +255,7 @@ const listOK = !!listEls.items;
     boot();
   }
 
-  // ----- renderers -----
+  // ----- renderers -----//
 
   function buildGroups() {
   const bag = entries(); // [key,it][]
