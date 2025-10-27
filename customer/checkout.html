@@ -107,8 +107,30 @@
   <footer class="site-footer"><small>© <span id="year"></span> GUFA</small></footer>
   
   <!-- Load scripts in the right order -->
-  <script type="module" src="./firebase.client.js"></script>
-  <script src="./cart.store.js"></script>
+<script type="module" src="./firebase.client.js"></script>
+
+<!-- HYDRATE FROM ?cart= BEFORE ANY CART SCRIPTS RUN -->
+<script>
+(function () {
+  function fromBase64Url(s) {
+    s = s.replace(/-/g, '+').replace(/_/g, '/');
+    while (s.length % 4) s += '=';
+    return atob(s);
+  }
+  const qs = new URLSearchParams(location.search);
+  const blob = qs.get('cart');
+  if (blob && !localStorage.getItem('gufa_cart_v1')) {
+    try {
+      const json = JSON.parse(fromBase64Url(blob));
+      if (json && json.items && typeof json.items === 'object') {
+        localStorage.setItem('gufa_cart_v1', JSON.stringify(json));
+      }
+    } catch {}
+  }
+})();
+</script>
+
+<!-- Now the cart scripts can see the hydrated store -->
 <script>
   window.CART_UI = {
     list: {
@@ -128,32 +150,10 @@
 <script src="./cart.store.js"></script>
 <script src="./app.cart.js"></script>
 <script>document.getElementById('year').textContent = new Date().getFullYear();</script>
-<script>
-(function () {
-  // Base64URL decode helper
-  function fromBase64Url(s) {
-    s = s.replace(/-/g, '+').replace(/_/g, '/');
-    // pad
-    while (s.length % 4) s += '=';
-    return atob(s);
-  }
-
-  const qs = new URLSearchParams(location.search);
-  const blob = qs.get('cart');
-  // Only hydrate if our local store is empty to avoid clobbering
-  if (blob && !localStorage.getItem('gufa_cart_v1')) {
-    try {
-      const json = JSON.parse(fromBase64Url(blob));
-      if (json && typeof json === 'object' && json.items && typeof json.items === 'object') {
-        localStorage.setItem('gufa_cart_v1', JSON.stringify(json));
-      }
-    } catch (_) {}
-  }
-})();
-</script>
 
 </body>
 </html>
+
 
 
 
