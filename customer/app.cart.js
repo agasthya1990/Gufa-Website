@@ -183,6 +183,59 @@ const listOK = !!listEls.items;
     return false;
   }
 
+  // ----- unified render + gentle rehydrate loop -----
+  function render() {
+    // ensure we have a resolved layout
+    if (!mode && !resolveLayout()) return;
+    if (mode === 'list') { renderList(); }
+    else if (mode === 'table') { renderTable(); }
+  }
+
+  // If initial read is empty (race with menu’s mirror), try a few quick retries.
+  function rehydrateIfEmpty() {
+    if (entries().length > 0) return;
+    // staggered retries to catch late-arriving snapshot
+    setTimeout(() => { if (entries().length === 0) render(); }, 80);
+    setTimeout(() => { if (entries().length === 0) render(); }, 220);
+    setTimeout(() => { if (entries().length === 0) render(); }, 480);
+  }
+
+    // ----- boot + reactive subscriptions -----
+  function boot() {
+    // 1) initial resolve + paint
+    resolveLayout();
+    render();
+    rehydrateIfEmpty();
+
+    // 2) react to producer (menu) signals
+    window.addEventListener('cart:update', render, false);
+    window.addEventListener('mode:change', render, false);
+    window.addEventListener('serviceMode:changed', render, false);
+
+    // 3) react to storage changes (other tabs or late localStorage writes)
+    window.addEventListener('storage', (e) => {
+      if (!e) return;
+      if (e.key === 'gufa_cart_v1' || e.key === 'gufa_cart' || e.key === 'GUFA:CART' || e.key === 'gufa_coupon') {
+        render();
+      }
+    }, false);
+
+    // 4) page lifecycle helpers
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') { render(); rehydrateIfEmpty(); }
+    }, false);
+    window.addEventListener('pageshow', (ev) => {
+      // bfcache restore needs a fresh paint
+      if (ev && ev.persisted) { render(); rehydrateIfEmpty(); }
+    }, false);
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', boot, { once: true });
+  } else {
+    boot();
+  }
+
   // ----- renderers -----
 
   function buildGroups() {
