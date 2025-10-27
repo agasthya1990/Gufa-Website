@@ -379,59 +379,54 @@ function setQty(found, variantKey, price, nextQty) {
   const key  = `${found.id}:${variantKey}`;
   const next = Math.max(0, Number(nextQty || 0));
 
-  // 1) Update on-card number immediately for visual feedback
+  // Update on-card number immediately
   const badge = document.querySelector(`.qty[data-key="${key}"] .num`);
   if (badge) badge.textContent = String(next);
 
-  // 2) Ensure we ALWAYS persist to the shared locker used by checkout (gufa_cart_v1)
-  const ensureWrite = () => {
-    try {
-      // Preferred: global Cart API (if cart.store.js is present on this page)
-      if (window.Cart && typeof window.Cart.setQty === "function") {
-        window.Cart.setQty(key, next, { id: found.id, name: found.name, variant: variantKey, price });
-        return true;
-      }
-    } catch {}
+  // Prefer Cart API; if missing or fails, write to localStorage (gufa_cart_v1)
+  let wrote = false;
+  try {
+    if (window.Cart && typeof window.Cart.setQty === "function") {
+      window.Cart.setQty(key, next, {
+        id: found.id, name: found.name, variant: variantKey, price: Number(price) || 0
+      });
+      wrote = true;
+    }
+  } catch {}
 
-    // Fallback: write directly to localStorage in the same schema Checkout expects
+  if (!wrote) {
     try {
       const LS_KEY = "gufa_cart_v1";
       const state  = JSON.parse(localStorage.getItem(LS_KEY) || '{"items":{}}');
       if (!state.items || typeof state.items !== "object") state.items = {};
-
       if (next <= 0) {
         delete state.items[key];
       } else {
         const prev = state.items[key] || {};
         state.items[key] = {
-          id:       found.id,
-          name:     found.name,
-          variant:  variantKey,
-          price:    Number(price) || Number(prev.price) || 0,
-          thumb:    prev.thumb || "",
-          qty:      next
+          id: found.id,
+          name: found.name,
+          variant: variantKey,
+          price: Number(price) || Number(prev.price) || 0,
+          thumb: prev.thumb || "",
+          qty: next
         };
       }
       localStorage.setItem(LS_KEY, JSON.stringify(state));
-
-      // Mirror cart.store.js behavior so other listeners react immediately
-      const ev = new CustomEvent("cart:update", { detail: { cart: state } });
-      window.dispatchEvent(ev);
-      return true;
+      // mirror store’s event so badges/checkout repaint
+      window.dispatchEvent(new CustomEvent("cart:update", { detail: { cart: state } }));
+      wrote = true;
     } catch {}
-    return false;
-  };
+  }
 
-  const wrote = ensureWrite();
   if (wrote && next > 0) {
     try { window.lockCouponForActiveBannerIfNeeded?.(found.id); } catch {}
   }
 
-  // 3) Refresh badges / header link immediately
   updateItemMiniCartBadge(found.id, /*rock:*/ true);
   updateCartLink();
 
-  // 4) After a tick, reconcile DOM count with the locker (covers concurrent add-ons)
+  // Reconcile the DOM count with the locker after a short tick
   setTimeout(() => {
     try {
       const bag = (window.Cart && typeof window.Cart.get === "function")
