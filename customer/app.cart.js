@@ -99,43 +99,44 @@
   }
   
 function computeDiscount(lock, baseSubtotal, mode) {
-  if (!lock) return { discount: 0, reason: null };
+  if (!lock) return { discount:0, reason:null };
 
-  // Mode validity
-  if (lock.valid && typeof lock.valid === "object" && (mode in lock.valid)) {
-    if (!lock.valid[mode]) return { discount: 0, reason: "mode" };
-  }
-
-  // Minimum order (applies on BASE items only)
+  // min-order first
   const minOrder = Number(lock.minOrder || 0);
-  if (minOrder > 0 && baseSubtotal < minOrder) return { discount: 0, reason: "min" };
+  if (minOrder > 0 && baseSubtotal < minOrder) return { discount:0, reason:"min" };
 
-  // Build normalized eligibility set
-  const rawIds = Array.isArray(lock?.scope?.eligibleItemIds) ? lock.scope.eligibleItemIds : [];
-  const elig = new Set(rawIds.map(x => String(x).trim().toLowerCase()));
+  // mode validity
+  const okMode = (function(){
+    const t = lock.valid || {};
+    const m = (typeof activeMode === "function" ? activeMode() : "delivery");
+    if (m in t) return !!t[m];
+    return true;
+  })();
+  if (!okMode) return { discount:0, reason:"mode" };
 
-  // Sum eligible BASE (no add-ons) by matching either:
-  //  1) item.id, or
-  //  2) baseKey "id:variant" via startsWith("id:")
+  // eligible base across only non-addon lines, matching either itemId or baseKey
   let eligibleBase = 0;
+  const ids = Array.isArray(lock?.scope?.eligibleItemIds) ? lock.scope.eligibleItemIds.map(x=>String(x).toLowerCase()) : [];
+
   for (const [key, it] of entries()) {
-    const parts   = String(key).split(":");
-    if (parts.length >= 3) continue; // skip add-ons
-    const baseKey = parts.slice(0,2).join(":").toLowerCase();
+    const parts = String(key).split(":");
+    if (parts.length >= 3) continue;              // skip add-ons
     const itemId  = String(it?.id ?? parts[0]).toLowerCase();
+    const baseKey = parts.slice(0,2).join(":").toLowerCase();
 
-    const match = elig.has(itemId) || elig.has(baseKey) || (elig.has(itemId) || [...elig].some(x => !x.includes(":") && baseKey.startsWith(x + ":")));
-    if (match) eligibleBase += (Number(it.price)||0) * (Number(it.qty)||0);
+    if (!ids.length || ids.includes(itemId) || ids.includes(baseKey) || ids.some(x => !x.includes(":") && baseKey.startsWith(x + ":"))) {
+      eligibleBase += (Number(it.price)||0) * (Number(it.qty)||0);
+    }
   }
+  if (eligibleBase <= 0) return { discount:0, reason:"scope" };
 
-  if (eligibleBase <= 0) return { discount: 0, reason: "scope" };
-
-  const t = String(lock.type || "").toLowerCase();
-  const v = Number(lock.value || 0);
-  if (t === "percent") return { discount: Math.round(eligibleBase * (v/100)), reason: null };
-  if (t === "flat")    return { discount: Math.min(v, eligibleBase),          reason: null };
-  return { discount: 0, reason: null };
+  const t = String(lock.type||"").toLowerCase();
+  const v = Number(lock.value||0);
+  if (t === "percent") return { discount: Math.round(eligibleBase * (v/100)), reason:null };
+  if (t === "flat")    return { discount: Math.min(v, eligibleBase), reason:null };
+  return { discount:0, reason:null };
 }
+
 
 
 
