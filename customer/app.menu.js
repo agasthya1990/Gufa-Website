@@ -403,17 +403,19 @@ function setQty(found, variantKey, price, nextQty) {
     }
   } catch {}
 
-  // 2️⃣ Persistent mirror for checkout hydration
+    // 2️⃣ Persistent mirror for checkout hydration (dual-write: v1 + legacy)
   try {
-    const LS_KEY = "gufa_cart_v1";
+    const LS_KEY_V1     = "gufa_cart_v1"; // canonical (nested)
+    const LS_KEY_LEGACY = "gufa_cart";    // legacy (flat)
+
     let state = { items: {} };
 
     // Prefer the live store’s flat items object
     const live = window?.Cart?.get?.();
     if (live && typeof live === "object" && Object.keys(live).length) {
-      state.items = live.items && typeof live.items === "object" ? live.items : live;
+      state.items = (live.items && typeof live.items === "object") ? live.items : live;
     } else {
-      try { state = JSON.parse(localStorage.getItem(LS_KEY) || '{"items":{}}'); }
+      try { state = JSON.parse(localStorage.getItem(LS_KEY_V1) || '{"items":{}}'); }
       catch { state = { items: {} }; }
     }
     if (!state.items || typeof state.items !== "object") state.items = {};
@@ -433,9 +435,13 @@ function setQty(found, variantKey, price, nextQty) {
       };
     }
 
-    localStorage.setItem(LS_KEY, JSON.stringify(state));
+    // Write canonical v1 (nested) and legacy (flat) for maximum compatibility
+    localStorage.setItem(LS_KEY_V1,     JSON.stringify(state));
+    localStorage.setItem(LS_KEY_LEGACY, JSON.stringify(state.items || {}));
+
     window.dispatchEvent(new CustomEvent("cart:update", { detail: { cart: state } }));
   } catch {}
+
 
   if (next > 0) {
     try { window.lockCouponForActiveBannerIfNeeded?.(found.id); } catch {}
