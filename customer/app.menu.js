@@ -957,25 +957,45 @@ function lockCouponForActiveBannerIfNeeded(addedItemId) {
   const bannerIds = (ACTIVE_BANNER.linkedCouponIds || []).map(String).map(s => s.trim()).filter(Boolean);
   const firstIntersectId = bannerIds.find(cid => itemIds.includes(cid)) || "";
 
-  // 2) Eligible items list (so we can restrict the discount scope)
-  const eligibleItemIds = (window.ITEMS || [])
-    .filter(it => itemMatchesBanner(it, ACTIVE_BANNER))
-    .map(it => String(it.id));
+    // 2) Eligible items = exactly what the banner list shows to the user now
+  //    (keeps Menu -> Cart consistent even if item.promotions metadata lags)
+  const eligibleItemIds = (function() {
+    try {
+      if (typeof itemsForList === "function") {
+        return itemsForList().map(it => String(it.id));
+      }
+      // Fallback to the same predicate used for banner list
+      return (window.ITEMS || [])
+        .filter(it => itemMatchesBanner(it, ACTIVE_BANNER))
+        .map(it => String(it.id));
+    } catch { return []; }
+  })();
 
-  // 3) Persist lock now (even if we don’t have meta yet)
+  // 3) Resolve coupon details from COUPONS map if available
+  const chosenId   = (chosen?.id || firstIntersectId || "").toString();
+  const chosenMeta = (window.COUPONS instanceof Map) ? window.COUPONS.get(chosenId) : null;
+
   const payload = {
-    code: String((chosen?.code || chosen?.id || firstIntersectId || ACTIVE_BANNER.id)).toUpperCase(),
-    type: String(chosen?.type || ""),   // may be empty for now
-    value: Number(chosen?.value || 0),  // may be 0 for now
-    mode: "any",                        // mode handling later
-    scope: {
-      bannerId: ACTIVE_BANNER.id,
-      couponId: chosen?.id || firstIntersectId,
-      eligibleItemIds
-    },
+    code: String(
+      (chosen?.code || chosenMeta?.code || chosenId || ACTIVE_BANNER.id)
+    ).toUpperCase(),
+    type: String(chosen?.type ?? chosenMeta?.type ?? ""),
+    value: Number(chosen?.value ?? chosenMeta?.value ?? 0),
+
+    // explicit per-mode validity; default permissive if meta missing
+    valid: (function(){
+      const t = chosenMeta?.targets || {};
+      return {
+        delivery: ("delivery" in t) ? !!t.delivery : true,
+        dining:   ("dining"   in t) ? !!t.dining   : true
+      };
+    })(),
+
+    scope: { bannerId: ACTIVE_BANNER.id, couponId: chosenId, eligibleItemIds },
     lockedAt: Date.now(),
     source: "banner:" + ACTIVE_BANNER.id
   };
+
   try { localStorage.setItem("gufa_coupon", JSON.stringify(payload)); } catch {}
   console.info(`[promo] Locked: ${payload.code} (type=${payload.type||"pending"} value=${payload.value||"pending"})`);
 }
