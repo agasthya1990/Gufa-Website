@@ -125,11 +125,36 @@
     table: null
   };
 </script>
+<script src="./cart.store.js"></script>
 <script src="./app.cart.js"></script>
 <script>document.getElementById('year').textContent = new Date().getFullYear();</script>
+<script>
+(function () {
+  // Base64URL decode helper
+  function fromBase64Url(s) {
+    s = s.replace(/-/g, '+').replace(/_/g, '/');
+    // pad
+    while (s.length % 4) s += '=';
+    return atob(s);
+  }
+
+  const qs = new URLSearchParams(location.search);
+  const blob = qs.get('cart');
+  // Only hydrate if our local store is empty to avoid clobbering
+  if (blob && !localStorage.getItem('gufa_cart_v1')) {
+    try {
+      const json = JSON.parse(fromBase64Url(blob));
+      if (json && typeof json === 'object' && json.items && typeof json.items === 'object') {
+        localStorage.setItem('gufa_cart_v1', JSON.stringify(json));
+      }
+    } catch (_) {}
+  }
+})();
+</script>
 
 </body>
 </html>
+
 
 
 
