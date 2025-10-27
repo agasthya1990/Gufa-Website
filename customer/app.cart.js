@@ -97,38 +97,45 @@
     }
     return { baseSubtotal, addonSubtotal };
   }
+  
   function computeDiscount(lock, baseSubtotal, mode) {
-    if (!lock) return { discount:0, reason:null };
+  if (!lock) return { discount:0, reason:null };
 
-    // min order on BASE only
-    const minOrder = Number(lock.minOrder || 0);
-    if (minOrder > 0 && baseSubtotal < minOrder) return { discount:0, reason:"min" };
+  // min order on BASE only
+  const minOrder = Number(lock.minOrder || 0);
+  if (minOrder > 0 && baseSubtotal < minOrder) return { discount:0, reason:"min" };
 
-    // mode validity
-    if (!couponValidForCurrentMode(lock)) return { discount:0, reason:"mode" };
+  // mode validity
+  if (!couponValidForCurrentMode(lock)) return { discount:0, reason:"mode" };
 
-    // eligible set (BASE only)
-    let eligibleBase = baseSubtotal;
-    const ids = lock?.scope?.eligibleItemIds;
-    if (Array.isArray(ids) && ids.length) {
-      const set = new Set(ids.map(String));
-      eligibleBase = 0;
-      for (const [key, it] of entries()) {
-        const isAddon = String(key).split(":").length >= 3;
-        if (isAddon) continue;
-        if (set.has(String(it?.id))) {
-          eligibleBase += (Number(it.price)||0) * (Number(it.qty)||0);
-        }
-      }
-      if (eligibleBase <= 0) return { discount:0, reason:"scope" };
+  // eligible set (BASE only) — strict to coupon.scope.eligibleItemIds
+  let eligibleBase = baseSubtotal;
+  const ids = lock?.scope?.eligibleItemIds;
+  if (Array.isArray(ids) && ids.length) {
+    const set = new Set(ids.map(String));
+    eligibleBase = 0;
+    for (const [key, it] of entries()) {
+      const isAddon = String(key).split(":").length >= 3;
+      if (isAddon) continue;
+      // Fallback to key prefix when it.id is missing: "ITEMID:variant:..."
+      const itemId = String(it?.id ?? key.split(":")[0]);
+      if (!set.has(itemId)) continue;
+      eligibleBase += (Number(it.price)||0) * (Number(it.qty)||0);
     }
-
-    const t = String(lock.type||"").toLowerCase();
-    const v = Number(lock.value||0);
-    if (t === "percent") return { discount: Math.round(eligibleBase * (v/100)), reason:null };
-    if (t === "flat")    return { discount: Math.min(v, eligibleBase), reason:null };
-    return { discount:0, reason:null };
+    if (eligibleBase <= 0) return { discount:0, reason:"scope" };
+  } else {
+    // If no eligible list is provided, treat as "no eligible items configured"
+    // so discount doesn't apply accidentally.
+    return { discount:0, reason:"scope" };
   }
+
+  const t = String(lock.type||"").toLowerCase();
+  const v = Number(lock.value||0);
+  if (t === "percent") return { discount: Math.round(eligibleBase * (v/100)), reason:null };
+  if (t === "flat")    return { discount: Math.min(v, eligibleBase), reason:null };
+  return { discount:0, reason:null };
+}
+
 
   // ---- layout resolution ----
   let mode = null; // 'list' | 'table'
@@ -409,9 +416,11 @@
       const hasLock = !!locked;
       const modeLabel = (modeNow === "dining") ? "Dining" : "Delivery";
 
-      const promoHtml = hasLock
-        ? `<div class="promo-line"><span class="plabel">Promotion${reason ? ` — ${reason==="mode" ? `Not valid for ${modeLabel}`: reason==="min" ? "Min order not met" : "No eligible items"}` : ""}</span>: <strong style="color:#b00020;">−${INR(reason?0:discount)}</strong></div>`
-        : "";
+const codeText = hasLock ? displayCodeFromLock(locked) : "";
+const promoHtml = hasLock
+  ? `<div class="promo-line"><span class="plabel">Promotion${codeText ? ` (${codeText})` : ""}${reason ? ` — ${reason==="mode" ? `Not valid for ${modeLabel}`: reason==="min" ? "Min order not met" : "No eligible items"}` : ""}</span>: <strong style="color:#b00020;">−${INR(reason?0:discount)}</strong></div>`
+  : "";
+
 
       const baseHtml = `
         <div class="muted" style="display:grid;row-gap:4px;">
