@@ -1,16 +1,13 @@
 // app.menu.js — align menu cards with the real Cart store and folder paths (no UI changes)
 
-// --- Ensure global Cart API is available on Menu (no-op if already present)
-(function ensureCartAPI(){
-  if (window.Cart && typeof window.Cart.setQty === "function") return;
-  try {
-    const s = document.createElement("script");
-    // menu is served from site root; cart scripts live in /customer/
-    s.src = "./customer/cart.store.js";
-    s.async = false; // keep order predictable
-    document.head.appendChild(s);
-  } catch {}
+// Cart store is now always pre-loaded via index.html (before this script),
+// so no dynamic injection needed — just verify readiness.
+(function ensureCartReady(){
+  if (!window.Cart || typeof window.Cart.setQty !== "function") {
+    console.warn("[gufa] Cart API not initialized before menu.js");
+  }
 })();
+
 
 
 // ===== Cart Helpers =====
@@ -142,6 +139,15 @@ window.addEventListener("cart:update", () => {
   updateCartLink();
 });
 
+// Prevent rapid duplicate event calls that cause double badge renders
+let lastCartUpdate = 0;
+window.addEventListener("cart:update", (e) => {
+  const now = Date.now();
+  if (now - lastCartUpdate < 80) return; // ignore duplicates within 80 ms
+  lastCartUpdate = now;
+  updateAllMiniCartBadges();
+  updateCartLink();
+});
 
 (function () {
   const $  = (s, r=document) => r.querySelector(s);
@@ -172,7 +178,10 @@ window.addEventListener("cart:update", () => {
   };
   window.setActiveMode = function (mode) {
     const m = (String(mode || "").toLowerCase() === "dining") ? "dining" : "delivery";
+    // Standardize mode key for all scripts
     localStorage.setItem("gufa_mode", m);
+    localStorage.removeItem("gufa:serviceMode"); // cleanup old key if exists
+
     // Notify menu/cart/checkout
     window.dispatchEvent(new CustomEvent("mode:change", { detail: { mode: m } }));
     window.dispatchEvent(new Event("cart:update"));
@@ -396,8 +405,10 @@ function setQty(found, variantKey, price, nextQty) {
 
   if (!wrote) {
     try {
-      const LS_KEY = "gufa_cart_v1";
-      const state  = JSON.parse(localStorage.getItem(LS_KEY) || '{"items":{}}');
+       const LS_KEY = "gufa_cart_v1"; // single source of truth
+       let state;
+       try { state = JSON.parse(localStorage.getItem(LS_KEY) || '{"items":{}}'); }
+       catch { state = { items: {} }; }
       if (!state.items || typeof state.items !== "object") state.items = {};
       if (next <= 0) {
         delete state.items[key];
@@ -413,8 +424,10 @@ function setQty(found, variantKey, price, nextQty) {
         };
       }
       localStorage.setItem(LS_KEY, JSON.stringify(state));
-      // mirror store’s event so badges/checkout repaint
-      window.dispatchEvent(new CustomEvent("cart:update", { detail: { cart: state } }));
+      // Fire only if Cart.setQty not available (i.e., manual fallback write)
+if (!window.Cart || typeof window.Cart.setQty !== "function") {
+  window.dispatchEvent(new CustomEvent("cart:update", { detail: { cart: state } }));
+}
       wrote = true;
     } catch {}
   }
