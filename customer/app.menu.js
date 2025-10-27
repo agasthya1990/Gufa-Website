@@ -395,47 +395,51 @@ function setQty(found, variantKey, price, nextQty) {
   const badge = document.querySelector(`.qty[data-key="${key}"] .num`);
   if (badge) badge.textContent = String(next);
 
-  // Prefer Cart API; if missing or fails, write to localStorage (gufa_cart_v1)
-  let wrote = false;
+  // 1) Write to the live Cart API if available
+  let usedCartApi = false;
   try {
     if (window.Cart && typeof window.Cart.setQty === "function") {
       window.Cart.setQty(key, next, {
         id: found.id, name: found.name, variant: variantKey, price: Number(price) || 0
       });
-      wrote = true;
+      usedCartApi = true;
     }
   } catch {}
 
-  if (!wrote) {
-    try {
-       const LS_KEY = "gufa_cart_v1"; // single source of truth
-       let state;
-       try { state = JSON.parse(localStorage.getItem(LS_KEY) || '{"items":{}}'); }
-       catch { state = { items: {} }; }
-      if (!state.items || typeof state.items !== "object") state.items = {};
-      if (next <= 0) {
-        delete state.items[key];
-      } else {
-        const prev = state.items[key] || {};
-        state.items[key] = {
-          id: found.id,
-          name: found.name,
-          variant: variantKey,
-          price: Number(price) || Number(prev.price) || 0,
-          thumb: prev.thumb || "",
-          qty: next
-        };
-      }
-      localStorage.setItem(LS_KEY, JSON.stringify(state));
-      // Fire only if Cart.setQty not available (i.e., manual fallback write)
-if (!window.Cart || typeof window.Cart.setQty !== "function") {
-  window.dispatchEvent(new CustomEvent("cart:update", { detail: { cart: state } }));
-}
-      wrote = true;
-    } catch {}
-  }
+  // 2) Mirror to localStorage snapshot (always) so checkout can hydrate on fresh page load
+  try {
+    const LS_KEY = "gufa_cart_v1"; // single source of truth for cross-page
+    // Start from the live store if available; otherwise from existing LS
+    let state = { items: {} };
+    const live = (window?.Cart?.get?.() || {});
+    if (live && typeof live === "object" && Object.keys(live).length) {
+      state.items = live;
+    } else {
+      try { state = JSON.parse(localStorage.getItem(LS_KEY) || '{"items":{}}'); }
+      catch { state = { items: {} }; }
+    }
+    if (!state.items || typeof state.items !== "object") state.items = {};
 
-  if (wrote && next > 0) {
+    // Apply this one key change to the snapshot
+    if (next <= 0) {
+      delete state.items[key];
+    } else {
+      const prev = state.items[key] || {};
+      state.items[key] = {
+        id: found.id,
+        name: found.name,
+        variant: variantKey,
+        price: Number(price) || Number(prev.price) || 0,
+        thumb: prev.thumb || "",
+        qty: next
+      };
+    }
+    localStorage.setItem(LS_KEY, JSON.stringify(state));
+    // Notify listeners in all cases (cart, totals, badges)
+    window.dispatchEvent(new CustomEvent("cart:update", { detail: { cart: state } }));
+  } catch {}
+
+  if (next > 0) {
     try { window.lockCouponForActiveBannerIfNeeded?.(found.id); } catch {}
   }
 
@@ -455,6 +459,7 @@ if (!window.Cart || typeof window.Cart.setQty !== "function") {
     } catch {}
   }, 50);
 }
+
 
 
   /* ---------- Card templates ---------- */
