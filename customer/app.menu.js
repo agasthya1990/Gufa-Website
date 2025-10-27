@@ -1608,3 +1608,30 @@ window.addEventListener("cart:update", () => {
 });
 
 })();
+
+// Cross-origin checkout handoff: attach cart snapshot to the URL
+document.addEventListener('click', (e) => {
+  const a = e.target.closest('a[href]');
+  if (!a) return;
+
+  // Only act on links that go to checkout
+  const href = a.getAttribute('href') || '';
+  if (!/checkout\.html(\?|#|$)/i.test(href)) return;
+
+  // Resolve absolute target to compare origins
+  const to = new URL(href, location.href);
+  const sameOrigin = to.origin === location.origin;
+  if (sameOrigin) return; // no need to hand off within same origin
+
+  // Snapshot current cart
+  const store = (window?.Cart?.get?.() || {});
+  const snap = { items: store };
+
+  // Base64URL encode
+  const raw = JSON.stringify(snap);
+  const b64 = btoa(raw).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/,'');
+
+  // Append ?cart= payload
+  to.searchParams.set('cart', b64);
+  a.href = to.toString();
+});
