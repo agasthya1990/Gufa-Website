@@ -597,4 +597,4 @@ if (R.addonsNote) {
     tr.append(tdImg, tdName, tdPrice, tdQty, tdSub);
     return tr;
   }
- })();
+  })();
