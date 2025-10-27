@@ -84,6 +84,52 @@
   const count    = () => entries().reduce((n, [, it]) => n + (Number(it.qty) || 0), 0);
   const subtotal = () => entries().reduce((s, [, it]) => s + (Number(it.price)||0)*(Number(it.qty)||0), 0);
 
+  // ----- PROMO HELPERS -----
+  function getLockedCoupon() {
+    try { return JSON.parse(localStorage.getItem("gufa_coupon") || "null"); } catch { return null; }
+  }
+  function computeSplits() {
+    let baseSubtotal = 0, addonSubtotal = 0;
+    for (const [key, it] of entries()) {
+      const isAddon = String(key).split(":").length >= 3;
+      const line = (Number(it.price)||0) * (Number(it.qty)||0);
+      if (isAddon) addonSubtotal += line; else baseSubtotal += line;
+    }
+    return { baseSubtotal, addonSubtotal };
+  }
+  function computeDiscount(lock, baseSubtotal, mode) {
+    if (!lock) return { discount:0, reason:null };
+
+    // min order on BASE only
+    const minOrder = Number(lock.minOrder || 0);
+    if (minOrder > 0 && baseSubtotal < minOrder) return { discount:0, reason:"min" };
+
+    // mode validity
+    if (!couponValidForCurrentMode(lock)) return { discount:0, reason:"mode" };
+
+    // eligible set (BASE only)
+    let eligibleBase = baseSubtotal;
+    const ids = lock?.scope?.eligibleItemIds;
+    if (Array.isArray(ids) && ids.length) {
+      const set = new Set(ids.map(String));
+      eligibleBase = 0;
+      for (const [key, it] of entries()) {
+        const isAddon = String(key).split(":").length >= 3;
+        if (isAddon) continue;
+        if (set.has(String(it?.id))) {
+          eligibleBase += (Number(it.price)||0) * (Number(it.qty)||0);
+        }
+      }
+      if (eligibleBase <= 0) return { discount:0, reason:"scope" };
+    }
+
+    const t = String(lock.type||"").toLowerCase();
+    const v = Number(lock.value||0);
+    if (t === "percent") return { discount: Math.round(eligibleBase * (v/100)), reason:null };
+    if (t === "flat")    return { discount: Math.min(v, eligibleBase), reason:null };
+    return { discount:0, reason:null };
+  }
+
   // ---- layout resolution ----
   let mode = null; // 'list' | 'table'
   let R = {};
@@ -287,40 +333,10 @@
     }
 
     // --- PROMOTION & TAX (Base-only discount; add-ons excluded) ---
-    let baseSubtotal = 0, addonSubtotal = 0;
-    for (const [key, it] of entries()) {
-      const isAddon = String(key).split(":").length >= 3;
-      const lineTotal = (Number(it.price)||0) * (Number(it.qty)||0);
-      if (isAddon) addonSubtotal += lineTotal; else baseSubtotal += lineTotal;
-    }
-
-    let discount = 0;
-    let locked = null;
-    try { locked = JSON.parse(localStorage.getItem("gufa_coupon") || "null"); } catch {}
-
-    if (locked && Array.isArray(locked?.scope?.eligibleItemIds) && locked.scope.eligibleItemIds.length) {
-      const eligibleIds = locked.scope.eligibleItemIds.map(x => String(x));
-      let eligibleBase = 0;
-      for (const [key, it] of entries()) {
-        const isAddon = String(key).split(":").length >= 3;
-        if (isAddon) continue;
-        if (!eligibleIds.includes(String(it?.id))) continue;
-        eligibleBase += (Number(it?.price) || 0) * (Number(it?.qty) || 0);
-      }
-
-      if (eligibleBase > 0) {
-        const t = String(locked?.type || "").toLowerCase();
-        const v = Number(locked?.value || 0);
-        const validForMode = couponValidForCurrentMode(locked);
-
-        if (validForMode) {
-          if (t === "percent") discount = Math.round(eligibleBase * (v / 100));
-          else if (t === "flat") discount = Math.min(v, eligibleBase);
-        } else {
-          discount = 0; // locked but not valid in this mode
-        }
-      }
-    }
+    const { baseSubtotal, addonSubtotal } = computeSplits();
+    const locked = getLockedCoupon();
+    const modeNow = activeMode();
+    const { discount, reason } = computeDiscount(locked, baseSubtotal, modeNow);
 
     const preTax = Math.max(0, baseSubtotal + addonSubtotal - discount);
     const tax = taxOn(preTax);
@@ -329,6 +345,14 @@
     if (R.subtotal)   R.subtotal.textContent   = INR(baseSubtotal + addonSubtotal);
     if (R.servicetax) R.servicetax.textContent = INR(tax);
     if (R.total)      R.total.textContent      = INR(grand);
+
+    // proceed guard: respect coupon minOrder on BASE subtotal
+    (function guardProceed(){
+      let minOk = true;
+      const minOrder = Number(locked?.minOrder || 0);
+      if (minOrder > 0) minOk = baseSubtotal >= minOrder;
+      if (R.proceed) R.proceed.disabled = (n === 0) || !minOk;
+    })();
 
     // promo row (with async code fill)
     const totalsWrap = R.subtotal?.closest?.(".totals") || R.subtotal?.parentElement || null;
@@ -342,54 +366,51 @@
         if (first) first.insertAdjacentElement("afterend", promoRow);
         else totalsWrap.prepend(promoRow);
       }
+
       const labelEl = promoRow.querySelector("#promo-label");
       const amtEl   = promoRow.querySelector("#promo-amt");
 
-      const hasLock = !!(locked && locked.code);
-      const validForMode = hasLock ? couponValidForCurrentMode(locked) : true;
-      const modeLabel = (activeMode() === "dining") ? "Dining" : "Delivery";
-
-      if (hasLock) {
-        if (!validForMode) {
-          resolveDisplayCode(locked).then(code => {
-            if (code && labelEl) labelEl.textContent = `Promotion (${code}) — Not valid for ${modeLabel}`;
-          }).catch(() => {});
-          amtEl.textContent = "− " + INR(0);
-          promoRow.style.display = "";
-        } else {
-          amtEl.textContent = "− " + INR(discount);
-          promoRow.style.display = "";
-          resolveDisplayCode(locked).then(code => {
-            if (code && labelEl) labelEl.textContent = `Promotion (${code})`;
-          }).catch(() => {});
-        }
-      } else {
+      // set label/amount based on reason
+      if (!locked) {
         promoRow.style.display = "none";
+      } else {
+        promoRow.style.display = "";
+
+        // default code text (will be refined async if needed)
+        let codeText = displayCodeFromLock(locked);
+
+        // label + amount
+        if (reason === "mode") {
+          if (labelEl) labelEl.textContent = `Promotion (${codeText}) — Not valid for ${modeNow === "dining" ? "Dining" : "Delivery"}`;
+          if (amtEl)   amtEl.textContent   = "− " + INR(0);
+        } else if (reason === "min") {
+          if (labelEl) labelEl.textContent = `Promotion (${codeText}) — Min order not met`;
+          if (amtEl)   amtEl.textContent   = "− " + INR(0);
+        } else if (reason === "scope") {
+          if (labelEl) labelEl.textContent = `Promotion (${codeText}) — No eligible items`;
+          if (amtEl)   amtEl.textContent   = "− " + INR(0);
+        } else {
+          if (labelEl) labelEl.textContent = `Promotion (${codeText})`;
+          if (amtEl)   amtEl.textContent   = "− " + INR(discount);
+        }
+
+        // async refine code if we initially had a uuid-ish code
+        resolveDisplayCode(locked).then(code => {
+          if (code && labelEl) {
+            const baseText = labelEl.textContent.replace(/\(.*?\)/, `(${code})`);
+            labelEl.textContent = baseText;
+          }
+        }).catch(() => {});
       }
     }
 
     // left-column mini invoice text
     if (R.addonsNote) {
-      const _mode = activeMode();
-      const hasLock = !!(locked && locked.code);
-
-      let validForMode = true;
-      if (hasLock) {
-        if (locked.valid && typeof locked.valid === "object" && (_mode in locked.valid)) {
-          validForMode = !!locked.valid[_mode];
-        } else {
-          const cid = String(locked?.scope?.couponId || "");
-          if (cid && (window.COUPONS instanceof Map)) {
-            const meta = window.COUPONS.get(cid);
-            if (meta && meta.targets && (_mode in meta.targets)) {
-              validForMode = !!meta.targets[_mode];
-            }
-          }
-        }
-      }
+      const hasLock = !!locked;
+      const modeLabel = (modeNow === "dining") ? "Dining" : "Delivery";
 
       const promoHtml = hasLock
-        ? `<div class="promo-line"><span class="plabel">Promotion${validForMode ? "" : ` — Not valid for ${_mode === "dining" ? "Dining" : "Delivery"}`}</span>: <strong style="color:#b00020;">−${INR(validForMode ? discount : 0)}</strong></div>`
+        ? `<div class="promo-line"><span class="plabel">Promotion${reason ? ` — ${reason==="mode" ? `Not valid for ${modeLabel}`: reason==="min" ? "Min order not met" : "No eligible items"}` : ""}</span>: <strong style="color:#b00020;">−${INR(reason?0:discount)}</strong></div>`
         : "";
 
       const baseHtml = `
@@ -406,7 +427,11 @@
         resolveDisplayCode(locked).then(code => {
           const labelSpot = R.addonsNote?.querySelector?.(".promo-line .plabel");
           if (labelSpot && code) {
-            labelSpot.textContent = `Promotion (${code})${validForMode ? "" : ` — Not valid for ${_mode === "dining" ? "Dining" : "Delivery"}`}`;
+            // keep any suffix like "— Not valid for …"
+            const suffix = labelSpot.textContent.includes("—")
+              ? " — " + labelSpot.textContent.split("—").slice(1).join("—").trim()
+              : "";
+            labelSpot.textContent = `Promotion (${code})${suffix ? "" : ""}${suffix}`;
           }
         }).catch(() => {});
       }
