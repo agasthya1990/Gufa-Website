@@ -201,17 +201,27 @@
     if (!any) setLock(null);
   }
 
-  function enforceFirstComeLock(){
-    const current = getLock();
-    // Priority: if current still valid & applicable, keep it (no stacking).
-    clearLockIfNoLongerApplicable();
-    const kept = getLock();
-    if (kept) return;
+function enforceFirstComeLock(){
+  // If there’s a current lock but it’s no longer applicable, clear it first.
+  clearLockIfNoLongerApplicable();
 
-    // Otherwise, pick first eligible coupon from cart contents.
-    const fcfs = findFirstApplicableCouponForCart();
-    if (fcfs) setLock(fcfs);
+  // If we still have a lock, keep it only if it actually produces a discount now.
+  const kept = getLock();
+  const { base } = splitBaseVsAddons();
+  if (kept) {
+    const { discount } = computeDiscount(kept, base);
+    if (discount > 0) return;         // keep current non-stackable lock
+    // Otherwise fall through to try the next applicable coupon (FCFS among remaining items)
+    setLock(null);
   }
+
+  // Pick the first coupon that actually yields a non-zero discount for current cart & mode.
+  const fcfs = findFirstApplicableCouponForCart();
+  if (!fcfs) return;
+  const test = computeDiscount(fcfs, base);
+  if (test.discount > 0) setLock(fcfs);
+}
+
 
   /* ===================== Discount computation ===================== */
   function computeDiscount(locked, baseSubtotal){
@@ -241,11 +251,13 @@
     }
     if (eligibleBase <= 0) return { discount:0 };
 
-    const t = String(locked?.type||"").toLowerCase();
-    const v = Number(locked?.value||0);
-    if (t === "percent") return { discount: Math.round(eligibleBase * (v/100)) };
-    if (t === "flat")    return { discount: Math.min(v, eligibleBase) };
-    return { discount:0 };
+const t = String(locked?.type||"").toLowerCase();
+const v = Number(locked?.value||0);
+let d = 0;
+if (t === "percent") d = Math.round(eligibleBase * (v/100));
+else if (t === "flat") d = Math.min(v, eligibleBase);
+return { discount: Math.max(0, Math.round(d)) };
+    
   }
 
   /* ===================== Grouping & rows ===================== */
@@ -538,8 +550,18 @@
 
     // Promo totals row (left label + right amount)
     const codeText = locked ? displayCode(locked) : "";
-    if (R.promoLbl) R.promoLbl.textContent = codeText ? `Promotion (${codeText}):` : `Promotion (): none`;
-    if (R.promoAmt) R.promoAmt.textContent = `− ${INR(codeText ? discount : 0)}`;
+if (R.promoLbl) {
+  if (discount > 0) {
+    const tag = codeText || "APPLIED";        // show a neutral tag if meta lacks a printable code
+    R.promoLbl.textContent = `Promotion (${tag}):`;
+  } else {
+    R.promoLbl.textContent = `Promotion (): none`;
+  }
+}
+if (R.promoAmt) {
+  R.promoAmt.textContent = `− ${INR(discount)}`; // always mirror the real deduction
+}
+
 
     // Delivery address section (mode = delivery only)
     ensureDeliveryForm();
