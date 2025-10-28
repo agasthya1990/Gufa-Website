@@ -82,10 +82,17 @@ function findCouponByCode(codeUpp) {
 }
 
 function buildLockFromMeta(cid, meta) {
-  // Eligible set from banners by coupon
-  const elig = eligibleIdsFromBanners({ couponId: cid });
+  // Prefer explicit meta eligibility if present; else derive from banners
+  const explicit = Array.isArray(meta?.eligibleItemIds) ? meta.eligibleItemIds
+                 : Array.isArray(meta?.eligibleIds)     ? meta.eligibleIds
+                 : Array.isArray(meta?.itemIds)         ? meta.itemIds
+                 : [];
+  let eligSet = new Set(explicit.map(s => String(s).toLowerCase()));
+  if (!eligSet.size) {
+    eligSet = eligibleIdsFromBanners({ couponId: cid });
+  }
   return {
-    scope: { couponId: cid, eligibleItemIds: Array.from(elig) },
+    scope: { couponId: cid, eligibleItemIds: Array.from(eligSet) },
     type:  String(meta?.type || "flat").toLowerCase(),
     value: Number(meta?.value || 0),
     minOrder: Number(meta?.minOrder || 0),
@@ -186,43 +193,22 @@ function showPromoError(msg) {
 
   // FCFS: pick the first base item in the cart that matches any coupon eligibility,
   // and use that coupon exclusively (non-stackable).
-  function findFirstApplicableCouponForCart(){
-    const es = entries();
-    if (!es.length) return null;
-    if (!(window.COUPONS instanceof Map)) return null;
+function findFirstApplicableCouponForCart(){
+  const es = entries();
+  if (!es.length) return null;
+  if (!(window.COUPONS instanceof Map)) return null;
 
-    // Build couponId -> eligible set
-    const couponEligible = new Map();
-    for (const [cid, meta] of window.COUPONS){
-      if (!checkUsageAvailable(meta)) continue; // respect (future) usage limits
-      const set = eligibleIdsFromBanners({ couponId: cid });
-      if (set.size) couponEligible.set(String(cid), set);
-    }
-
-    for (const [key, it] of es){
-      const parts = String(key).split(":");
-      if (parts.length >= 3) continue; // skip add-ons
-      const itemId  = String(it?.id ?? parts[0]).toLowerCase();
-      const baseKey = parts.slice(0,2).join(":").toLowerCase();
-
-      for (const [cid, set] of couponEligible){
-        if (set.has(itemId) || set.has(baseKey) || Array.from(set).some(x => !x.includes(":") && baseKey.startsWith(x + ":"))){
-          const meta = window.COUPONS.get(cid) || {};
-          // Prepare a full lock payload
-          return {
-            scope: { couponId: cid, eligibleItemIds: Array.from(set) },
-            type:  String(meta?.type || "flat").toLowerCase(),
-            value: Number(meta?.value || 0),
-            minOrder: Number(meta?.minOrder || 0),
-            valid: meta?.targets ? { delivery: !!meta.targets.delivery, dining: !!meta.targets.dining } : undefined,
-            code: meta?.code ? String(meta.code).toUpperCase() : undefined,
-            // future: usageLimit/usedCount could be mirrored into the lock if desired
-          };
-        }
-      }
-    }
-    return null;
+  const { base } = splitBaseVsAddons();
+  for (const [cid, meta] of window.COUPONS){
+    if (!checkUsageAvailable(meta)) continue;
+    // Build a complete lock from meta and test actual discount
+    const lock = buildLockFromMeta(String(cid), meta);
+    const { discount } = computeDiscount(lock, base);
+    if (discount > 0) return lock; // pick the first that really deducts now
   }
+  return null;
+}
+
 
   function clearLockIfNoLongerApplicable(){
     const lock = getLock();
@@ -285,24 +271,27 @@ function enforceFirstComeLock(){
     const elig = resolveEligibilitySet(locked);
     if (!elig.size) return { discount:0 };
 
-    // Eligible base subtotal only
-    let eligibleBase = 0;
-    for (const [key, it] of entries()){
-      if (isAddonKey(key)) continue;
-      const parts = String(key).split(":");
-      const itemId  = String(it?.id ?? parts[0]).toLowerCase();
-      const baseKey = parts.slice(0,2).join(":").toLowerCase();
-      if (elig.has(itemId) || elig.has(baseKey) || Array.from(elig).some(x => !x.includes(":") && baseKey.startsWith(x + ":"))){
-        eligibleBase += clamp0(it.price) * clamp0(it.qty);
-      }
-    }
+// Eligible base subtotal only
+let eligibleBase = 0;
+let eligibleQty  = 0; // NEW: count units across eligible base lines
+for (const [key, it] of entries()){
+  if (isAddonKey(key)) continue;
+  const parts = String(key).split(":");
+  const itemId  = String(it?.id ?? parts[0]).toLowerCase();
+  const baseKey = parts.slice(0,2).join(":").toLowerCase();
+  if (elig.has(itemId) || elig.has(baseKey) || Array.from(elig).some(x => !x.includes(":") && baseKey.startsWith(x + ":"))){
+    const q = clamp0(it.qty);
+    eligibleBase += clamp0(it.price) * q;
+    eligibleQty  += q; // count quantity
+  }
+}
     if (eligibleBase <= 0) return { discount:0 };
 
 const t = String(locked?.type||"").toLowerCase();
 const v = Number(locked?.value||0);
 let d = 0;
 if (t === "percent") d = Math.round(eligibleBase * (v/100));
-else if (t === "flat") d = Math.min(v, eligibleBase);
+else if (t === "flat") d = Math.min(v * eligibleQty, eligibleBase); // stack flat per unit, cap at line value;
 return { discount: Math.max(0, Math.round(d)) };
     
   }
