@@ -9,13 +9,14 @@
 
   // ---- mode + coupon helpers ----
   
-function activeMode() {
-  const api = window?.GUFA?.serviceMode?.get;
-  if (typeof api === "function") return api() === "dining" ? "dining" : "delivery";
-  const raw = localStorage.getItem("gufa_mode") ?? localStorage.getItem("gufa:serviceMode") ?? "delivery";
-  const m = String(raw).toLowerCase();
-  return m === "dining" ? "dining" : "delivery";
-}
+  function activeMode() {
+    const api = window?.GUFA?.serviceMode?.get;
+    if (typeof api === "function") return api() === "dining" ? "dining" : "delivery";
+    const raw = localStorage.getItem("gufa_mode") ?? localStorage.getItem("gufa:serviceMode") ?? "delivery";
+    const m = String(raw).toLowerCase();
+    return m === "dining" ? "dining" : "delivery";
+  }
+
 
 
   function couponValidForCurrentMode(locked) {
@@ -66,6 +67,126 @@ localStorage.setItem("gufa_coupon", JSON.stringify({ ...(locked || {}), code }))
 window.dispatchEvent(new CustomEvent("cart:update"));
       }
     } catch {}
+  }
+
+    // Enrich lock with type/value/minOrder/targets by id or code
+  async function enrichLockedCoupon(lock) {
+    try {
+      // Already enriched? (type present and value not null)
+      if (!lock || (lock.type && (lock.value ?? null) !== null)) return lock;
+
+      const rawCode = String(lock?.code || "").toUpperCase().trim();
+      const cid = String(
+        lock?.scope?.couponId ||
+        (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(lock?.code||"")) ? lock.code : "")
+      );
+
+      const writeAndNotify = (next) => {
+        try { localStorage.setItem("gufa_coupon", JSON.stringify(next)); } catch {}
+        window.dispatchEvent(new CustomEvent("cart:update"));
+        return next;
+      };
+
+      // 1) Try in-memory COUPONS by id
+      if (cid && (window.COUPONS instanceof Map)) {
+        const meta = window.COUPONS.get(cid);
+        if (meta) {
+          const next = {
+            ...lock,
+            code: String(meta.code || lock.code || cid).toUpperCase(),
+            type: meta.type ?? lock.type ?? "",
+            value: Number(meta.value ?? lock.value ?? 0),
+            minOrder: Number(meta.minOrder ?? lock.minOrder ?? 0),
+            valid: (() => {
+              const t = meta.targets || {};
+              return {
+                delivery: ("delivery" in t) ? !!t.delivery : true,
+                dining:   ("dining"   in t) ? !!t.dining   : true
+              };
+            })()
+          };
+          return writeAndNotify(next);
+        }
+      }
+
+      // 2) Try in-memory COUPONS by code (when id missing)
+      if (!cid && rawCode && (window.COUPONS instanceof Map)) {
+        for (const [id, meta] of window.COUPONS.entries()) {
+          if (String(meta?.code || "").toUpperCase().trim() === rawCode) {
+            const next = {
+              ...lock,
+              scope: { ...(lock.scope||{}), couponId: id },
+              code: rawCode,
+              type: meta.type ?? lock.type ?? "",
+              value: Number(meta.value ?? lock.value ?? 0),
+              minOrder: Number(meta.minOrder ?? lock.minOrder ?? 0),
+              valid: (() => {
+                const t = meta.targets || {};
+                return {
+                  delivery: ("delivery" in t) ? !!t.delivery : true,
+                  dining:   ("dining"   in t) ? !!t.dining   : true
+                };
+              })()
+            };
+            return writeAndNotify(next);
+          }
+        }
+      }
+
+      // 3) Firestore by id
+      if (cid && window.db) {
+        const { getDoc, doc } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js");
+        const snap = await getDoc(doc(window.db, "promotions", cid));
+        if (snap.exists()) {
+          const d = snap.data() || {};
+          const next = {
+            ...lock,
+            code: String(d.code || lock.code || cid).toUpperCase(),
+            type: d.type ?? lock.type ?? "",
+            value: Number(d.value ?? lock.value ?? 0),
+            minOrder: Number(d.minOrder ?? lock.minOrder ?? 0),
+            valid: (() => {
+              const t = d.targets || {};
+              return {
+                delivery: ("delivery" in t) ? !!t.delivery : true,
+                dining:   ("dining"   in t) ? !!t.dining   : true
+              };
+            })()
+          };
+          return writeAndNotify(next);
+        }
+      }
+
+      // 4) Firestore by code (when only code present)
+      if (!cid && rawCode && window.db) {
+        const { getDocs, query, where, limit, collection } =
+          await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js");
+        const q = query(collection(window.db, "promotions"), where("code", "==", rawCode), limit(1));
+        const qs = await getDocs(q);
+        if (!qs.empty) {
+          const docSnap = qs.docs[0];
+          const d = docSnap.data() || {};
+          const id = docSnap.id;
+          const next = {
+            ...lock,
+            scope: { ...(lock.scope||{}), couponId: id },
+            code: String(d.code || rawCode).toUpperCase(),
+            type: d.type ?? lock.type ?? "",
+            value: Number(d.value ?? lock.value ?? 0),
+            minOrder: Number(d.minOrder ?? lock.minOrder ?? 0),
+            valid: (() => {
+              const t = d.targets || {};
+              return {
+                delivery: ("delivery" in t) ? !!t.delivery : true,
+                dining:   ("dining"   in t) ? !!t.dining   : true
+              };
+            })()
+          };
+          return writeAndNotify(next);
+        }
+      }
+    } catch {}
+    return lock;
   }
 
 
