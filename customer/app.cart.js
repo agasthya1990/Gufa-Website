@@ -8,6 +8,7 @@
   const taxOn = (amount) => Math.max(0, (Number(amount) || 0) * SERVICE_TAX_RATE);
 
   // ---- mode + coupon helpers ----
+  
 function activeMode() {
   const api = window?.GUFA?.serviceMode?.get;
   if (typeof api === "function") return api() === "dining" ? "dining" : "delivery";
@@ -15,6 +16,7 @@ function activeMode() {
   const m = String(raw).toLowerCase();
   return m === "dining" ? "dining" : "delivery";
 }
+
 
   function couponValidForCurrentMode(locked) {
     try {
@@ -28,6 +30,9 @@ function activeMode() {
     } catch { return true; }
   }
 
+if (!(window.COUPONS instanceof Map)) window.COUPONS = new Map();
+if (!Array.isArray(window.BANNERS)) window.BANNERS = [];
+  
   function displayCodeFromLock(locked){
     try {
       const raw = String(locked?.code || "").toUpperCase();
@@ -56,9 +61,9 @@ function activeMode() {
       const { getDoc, doc } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js");
       const snap = await getDoc(doc(window.db, "promotions", cid));
       if (snap.exists()) {
-        const code = String(snap.data()?.code || cid).toUpperCase();
-        localStorage.setItem("gufa_coupon", JSON.stringify({ ...(locked || {}), code }));
-        window.dispatchEvent(new CustomEvent("cart:update"));
+const code = String(snap.data()?.code || cid).toUpperCase();
+localStorage.setItem("gufa_coupon", JSON.stringify({ ...(locked || {}), code }));
+window.dispatchEvent(new CustomEvent("cart:update"));
       }
     } catch {}
   }
@@ -84,6 +89,9 @@ function activeMode() {
   const count    = () => entries().reduce((n, [, it]) => n + (Number(it.qty) || 0), 0);
   const subtotal = () => entries().reduce((s, [, it]) => s + (Number(it.price)||0)*(Number(it.qty)||0), 0);
 
+
+
+  
   // ----- PROMO HELPERS -----
   function getLockedCoupon() {
     try { return JSON.parse(localStorage.getItem("gufa_coupon") || "null"); } catch { return null; }
