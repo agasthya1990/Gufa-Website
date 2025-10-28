@@ -35,6 +35,7 @@ if (!(window.COUPONS instanceof Map)) window.COUPONS = new Map();
 if (!Array.isArray(window.BANNERS)) window.BANNERS = [];
 
 // hydrate COUPONS for the locked coupon only (checkout-local)
+  
 async function hydrateCouponsForLockedOnce() {
   try {
     // already hydrated or no lock?
@@ -103,6 +104,57 @@ async function hydrateCouponsForLockedOnce() {
       changed = true;
     }
     if (changed) {
+      try { localStorage.setItem("gufa_coupon", JSON.stringify(next)); } catch {}
+    }
+
+    window.dispatchEvent(new CustomEvent("cart:update"));
+  } catch {}
+}
+
+  // hydrate BANNERS for the locked banner only (checkout-local)
+async function hydrateBannerItemsForLockedOnce() {
+  try {
+    if (!(window.BANNERS instanceof Map)) window.BANNERS = new Map();
+
+    const locked = JSON.parse(localStorage.getItem("gufa_coupon") || "null");
+    const bid = String(locked?.scope?.bannerId || "").trim();
+    if (!bid) return;
+
+    // if already hydrated with a non-empty list, skip
+    const already = window.BANNERS.get(bid);
+    if (Array.isArray(already) && already.length) return;
+    if (already && already.size && Array.from(already).length) return;
+
+    // wait briefly for Firestore init
+    async function waitForDb(ms=2000) {
+      const t0 = Date.now();
+      while (!window.db && Date.now() - t0 < ms) {
+        await new Promise(r => setTimeout(r, 50));
+      }
+      return !!window.db;
+    }
+    const ready = await waitForDb();
+    if (!ready) return;
+
+    // fetch banner doc by id; be tolerant to field naming
+    const { getDoc, doc } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js");
+    const snap = await getDoc(doc(window.db, "banners", bid));
+    if (!snap?.exists()) return;
+
+    const d = snap.data() || {};
+    const list =
+      Array.isArray(d.itemIds)      ? d.itemIds :
+      Array.isArray(d.items)        ? d.items :
+      Array.isArray(d.menuItemIds)  ? d.menuItemIds :
+      [];
+
+    // store as simple lowercased array for easy matching
+    const lc = list.map(x => String(x).toLowerCase().trim());
+    window.BANNERS.set(bid, lc);
+
+    // if lock had no eligible list, you may optionally enrich it for transparency
+    if (!Array.isArray(locked?.scope?.eligibleItemIds) || !locked.scope.eligibleItemIds.length) {
+      const next = { ...(locked||{}) , scope: { ...(locked?.scope||{}), eligibleItemIds: list } };
       try { localStorage.setItem("gufa_coupon", JSON.stringify(next)); } catch {}
     }
 
@@ -443,16 +495,26 @@ function computeDiscount(lock, baseSubtotal, mode) {
   })();
   if (!okMode) return { discount:0, reason:"mode" };
 
-  // eligible base across only non-addon lines, matching either itemId or baseKey
+// eligible base across only non-addon lines, matching either itemId or baseKey
+  
 let eligibleBase = 0;
-// accept multiple legacy aliases for scope → eligible items
 const scope = lock?.scope || {};
-const ids = (
+let ids = (
   Array.isArray(scope.eligibleItemIds) ? scope.eligibleItemIds :
   Array.isArray(scope.eligibleIds)     ? scope.eligibleIds :
   Array.isArray(scope.itemIds)         ? scope.itemIds :
   []
 ).map(x => String(x).toLowerCase());
+
+// If bannerId present, prefer the live banner list (banner-wide intent)
+if (scope.bannerId) {
+  const bid = String(scope.bannerId).trim();
+  const b = (window.BANNERS instanceof Map) ? window.BANNERS.get(bid) : null;
+  if (Array.isArray(b) && b.length) {
+    ids = b.map(String).map(x => x.toLowerCase());
+  }
+}
+
 
 for (const [key, it] of entries()) {
   const parts = String(key).split(":");
@@ -683,6 +745,7 @@ let locked = getLockedCoupon();
 if (locked && (!locked.type || (locked.value ?? null) === null)) {
   enrichLockedCoupon(locked);
 }
+  hydrateBannerItemsForLockedOnce();
   hydrateCouponsForLockedOnce();
 const modeNow = activeMode();
 const { discount, reason } = computeDiscount(locked, baseSubtotal, modeNow);
