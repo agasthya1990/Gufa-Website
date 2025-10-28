@@ -82,15 +82,31 @@ function findCouponByCode(codeUpp) {
 }
 
 function buildLockFromMeta(cid, meta) {
-  // Prefer explicit meta eligibility if present; else derive from banners
+  // 1) Prefer explicit meta eligibility if present
   const explicit = Array.isArray(meta?.eligibleItemIds) ? meta.eligibleItemIds
                  : Array.isArray(meta?.eligibleIds)     ? meta.eligibleIds
                  : Array.isArray(meta?.itemIds)         ? meta.itemIds
                  : [];
   let eligSet = new Set(explicit.map(s => String(s).toLowerCase()));
+
+  // 2) Else derive from banners
   if (!eligSet.size) {
     eligSet = eligibleIdsFromBanners({ couponId: cid });
   }
+
+  // 3) FINAL FALLBACK: if still empty (e.g., banners not hydrated yet),
+  //    use current cart base lines so a known valid code can apply immediately.
+  if (!eligSet.size) {
+    for (const [k, it] of entries()){
+      const p = String(k).split(":");
+      if (p.length >= 3) continue; // base only
+      const itemId  = String(it?.id ?? p[0]).toLowerCase();
+      const baseKey = p.slice(0,2).join(":").toLowerCase();
+      eligSet.add(itemId);
+      eligSet.add(baseKey);
+    }
+  }
+
   return {
     scope: { couponId: cid, eligibleItemIds: Array.from(eligSet) },
     type:  String(meta?.type || "flat").toLowerCase(),
@@ -100,6 +116,7 @@ function buildLockFromMeta(cid, meta) {
     code: (meta?.code ? String(meta.code).toUpperCase() : undefined),
   };
 }
+
 
 // Create/find a small error line under the input (single-line, red, compact)
 function ensurePromoErrorHost() {
@@ -199,15 +216,24 @@ function findFirstApplicableCouponForCart(){
   if (!(window.COUPONS instanceof Map)) return null;
 
   const { base } = splitBaseVsAddons();
-  for (const [cid, meta] of window.COUPONS){
-    if (!checkUsageAvailable(meta)) continue;
-    // Build a complete lock from meta and test actual discount
-    const lock = buildLockFromMeta(String(cid), meta);
-    const { discount } = computeDiscount(lock, base);
-    if (discount > 0) return lock; // pick the first that really deducts now
+
+  // Walk the cart in order (base lines only), and for each base line
+  // scan coupons to find the first that yields a positive discount now.
+  for (const [key] of es){
+    const parts = String(key).split(":");
+    if (parts.length >= 3) continue; // skip add-ons
+
+    for (const [cid, meta] of window.COUPONS){
+      if (!checkUsageAvailable(meta)) continue;
+      const lock = buildLockFromMeta(String(cid), meta);
+      const { discount } = computeDiscount(lock, base);
+      if (discount > 0) return lock; // FCFS over cart order
+    }
   }
   return null;
 }
+
+
 
 
   function clearLockIfNoLongerApplicable(){
@@ -638,6 +664,7 @@ if (R.promoApply && !R.promoApply._wired){
     // It’s valid: set as the active lock and clear any error
     setLock(fullLock);
     showPromoError("");
+    enforceFirstComeLock(); // ensure non-stackable discipline & immediate deduction
     window.dispatchEvent(new CustomEvent("cart:update"));
   }, false);
  }
