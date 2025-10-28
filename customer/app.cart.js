@@ -97,6 +97,69 @@ function activeMode() {
     }
     return { baseSubtotal, addonSubtotal };
   }
+
+async function enrichLockedCoupon(lock) {
+  try {
+    if (!lock || (lock.type && (lock.value ?? null) !== null)) return lock;
+
+    const cid = String(
+      lock?.scope?.couponId ||
+      (/^[0-9a-f-]{20,}$/i.test(String(lock?.code||"")) ? lock.code : "")
+    );
+
+    // 1) Try in-memory COUPONS map (fast path from menu hydration)
+    if (cid && (window.COUPONS instanceof Map)) {
+      const meta = window.COUPONS.get(cid);
+      if (meta) {
+        const next = {
+          ...lock,
+          code: String(meta.code || lock.code || cid).toUpperCase(),
+          type: meta.type ?? lock.type ?? "",
+          value: Number(meta.value ?? lock.value ?? 0),
+          minOrder: Number(meta.minOrder ?? lock.minOrder ?? 0),
+          valid: (function(){
+            const t = meta.targets || {};
+            return {
+              delivery: ("delivery" in t) ? !!t.delivery : true,
+              dining:   ("dining"   in t) ? !!t.dining   : true
+            };
+          })()
+        };
+        try { localStorage.setItem("gufa_coupon", JSON.stringify(next)); } catch {}
+        window.dispatchEvent(new CustomEvent("cart:update"));
+        return next;
+      }
+    }
+
+    // 2) Fallback: Firestore one-shot (same place you already fetch code)
+    if (cid && window.db) {
+      const { getDoc, doc } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js");
+      const snap = await getDoc(doc(window.db, "promotions", cid));
+      if (snap.exists()) {
+        const d = snap.data() || {};
+        const next = {
+          ...lock,
+          code: String(d.code || lock.code || cid).toUpperCase(),
+          type: d.type ?? lock.type ?? "",
+          value: Number(d.value ?? lock.value ?? 0),
+          minOrder: Number(d.minOrder ?? lock.minOrder ?? 0),
+          valid: (function(){
+            const t = d.targets || {};
+            return {
+              delivery: ("delivery" in t) ? !!t.delivery : true,
+              dining:   ("dining"   in t) ? !!t.dining   : true
+            };
+          })()
+        };
+        try { localStorage.setItem("gufa_coupon", JSON.stringify(next)); } catch {}
+        window.dispatchEvent(new CustomEvent("cart:update"));
+        return next;
+      }
+    }
+  } catch {}
+  return lock;
+}
+
   
 function computeDiscount(lock, baseSubtotal, mode) {
   if (!lock) return { discount:0, reason:null };
@@ -137,77 +200,7 @@ function computeDiscount(lock, baseSubtotal, mode) {
   return { discount:0, reason:null };
 }
 
-  // INSERT ↓↓↓
-  async function enrichLockedCoupon(lock) {
-    try {
-      if (!lock || (lock.type && (lock.value ?? null) !== null)) return lock;
-
-      // Prefer couponId in scope; fallback to lock.code if it looks like an id
-      const cid = String(
-        lock?.scope?.couponId ||
-        (/^[0-9a-f-]{20,}$/i.test(String(lock?.code||"")) ? lock.code : "")
-      );
-
-      // 1) Try COUPONS map (fast path from menu hydrate)
-      if (cid && (window.COUPONS instanceof Map)) {
-        const meta = window.COUPONS.get(cid);
-        if (meta) {
-          const next = {
-            ...lock,
-            code: String(meta.code || lock.code || cid).toUpperCase(),
-            type: meta.type ?? lock.type ?? "",
-            value: Number(meta.value ?? lock.value ?? 0),
-            minOrder: Number(meta.minOrder ?? lock.minOrder ?? 0),
-            valid: (function(){
-              const t = meta.targets || {};
-              return {
-                delivery: ("delivery" in t) ? !!t.delivery : true,
-                dining:   ("dining"   in t) ? !!t.dining   : true
-              };
-            })()
-          };
-          if (JSON.stringify(next) !== JSON.stringify(lock)) {
-            try { localStorage.setItem("gufa_coupon", JSON.stringify(next)); } catch {}
-            window.dispatchEvent(new CustomEvent("cart:update"));
-            return next;
-          }
-          return lock;
-        }
-      }
-
-      // 2) Fallback: Firestore one-shot (only if db present)
-      if (cid && window.db) {
-        const { getDoc, doc } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js");
-        const snap = await getDoc(doc(window.db, "promotions", cid));
-        if (snap.exists()) {
-          const d = snap.data() || {};
-          const next = {
-            ...lock,
-            code: String(d.code || lock.code || cid).toUpperCase(),
-            type: d.type ?? lock.type ?? "",
-            value: Number(d.value ?? lock.value ?? 0),
-            minOrder: Number(d.minOrder ?? lock.minOrder ?? 0),
-            valid: (function(){
-              const t = d.targets || {};
-              return {
-                delivery: ("delivery" in t) ? !!t.delivery : true,
-                dining:   ("dining"   in t) ? !!t.dining   : true
-              };
-            })()
-          };
-          try { localStorage.setItem("gufa_coupon", JSON.stringify(next)); } catch {}
-          window.dispatchEvent(new CustomEvent("cart:update"));
-          return next;
-        }
-      }
-    } catch {}
-    return lock;
-  }
-  // INSERT ↑↑↑
-
-
-
-
+  
   // ---- layout resolution ----
   let mode = null; // 'list' | 'table'
   let R = {};
