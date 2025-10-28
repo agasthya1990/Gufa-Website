@@ -6,44 +6,55 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
 
   <style>
+    :root { --gap: 24px; }
     body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 0; }
     header { display:flex; align-items:center; gap:12px; padding:12px 16px; border-bottom:1px solid #eee; }
     header .cart-badge-wrap { margin-left:auto; }
-    main.checkout { display:grid; grid-template-columns: 1fr 320px; gap:24px; padding:16px; }
+    main.checkout { display:grid; grid-template-columns: 1fr 360px; gap:var(--gap); padding:16px; }
     @media (max-width: 900px) { main.checkout { grid-template-columns: 1fr; } }
 
+    /* Left list: remove image column; strong, tidy typography */
     #cart-items { list-style:none; padding:0; margin:0; }
-    .cart-row { display:grid; grid-template-columns: 64px 1fr auto; gap:10px; padding:12px 0; border-bottom:1px solid #eee; }
-    .grouped .addon-list { padding:6px 0 0 74px; display:grid; row-gap:6px; }
-    .addon-row { display:flex; justify-content:space-between; align-items:center; }
-    .addon-label.muted { color:#666; }
+    .cart-row { display:grid; grid-template-columns: 1fr auto; gap:12px; padding:12px 0; border-bottom:1px solid #eee; }
+    .cart-title { margin:0 0 4px; font-size:16px; font-weight:700; letter-spacing:.2px; }
+    .cart-sub { margin:0; color:#444; font-size:13px; }
     .row-right { display:flex; gap:10px; align-items:center; }
     .stepper { display:flex; gap:6px; align-items:center; }
     .stepper.sm button { width:24px; height:24px; }
     .stepper button { width:28px; height:28px; }
-    .line-subtotal { min-width:72px; text-align:right; }
-    .card-thumb { width:64px; height:64px; object-fit:cover; border-radius:8px; background:#f5f5f5; }
-    .cart-title { margin:0 0 4px; font-size:16px; }
-    .cart-sub { margin:0; color:#666; font-size:13px; }
+    .line-subtotal { min-width:80px; text-align:right; font-variant-numeric: tabular-nums; }
     .remove-link { background:none; border:1px solid #ddd; padding:6px 10px; border-radius:8px; }
     .empty { color:#777; padding:10px 0; }
 
-    aside.cart-right { border:1px solid #eee; border-radius:12px; padding:12px; height:max-content; }
-    .totals { display:grid; row-gap:6px; margin-top:8px; }
+    /* Add-ons under base item, robust spacing on all screens */
+    .grouped .addon-list { margin-top:6px; padding-left:0; display:grid; row-gap:8px; }
+    .addon-row { display:grid; grid-template-columns: 1fr auto; align-items:center; column-gap:12px; }
+    .addon-label.muted { color:#555; font-size:13px; }
+
+    /* Right invoice */
+    aside.cart-right { border:1px solid #eee; border-radius:12px; padding:14px; height:max-content; position:sticky; top:12px; }
+    .muted { color:#666; }
+    .pilltitle { font-weight:700; margin:6px 0 4px; }
+    .inv-list { display:grid; row-gap:6px; margin-bottom:10px; }
+    .inv-row { display:flex; justify-content:space-between; align-items:baseline; }
+    .inv-row small { color:#666; }
+    .totals { display:grid; row-gap:8px; margin-top:6px; }
     .total-row { display:flex; justify-content:space-between; }
     .total-row.promo-row { color:#b00020; }
-    #proceed-btn { margin-top:10px; width:100%; padding:10px 12px; border-radius:10px; border:none; background:#111; color:#fff; }
+    .total-row strong { font-weight:700; }
+    #proceed-btn { margin-top:12px; width:100%; padding:12px 12px; border-radius:10px; border:none; background:#111; color:#fff; }
     #proceed-btn:disabled { opacity:0.5; }
-    .muted { color:#666; }
+
+    /* Promo input: exactly ~2cm wide field + button */
+    .promo-wrap { display:flex; gap:8px; align-items:center; margin:6px 0 2px; }
+    #promo-input { inline-size:2cm; max-inline-size:2cm; padding:6px 8px; border:1px solid #ccc; border-radius:8px; }
+    #promo-apply { padding:6px 10px; border-radius:8px; border:1px solid #111; background:#111; color:#fff; }
   </style>
 
   <!-- HYDRATE FROM ?cart= → single-key FLAT 'gufa_cart' (accepts flat or {items:{}} input) -->
   <script>
   (function () {
-    function fromBase64Url(s) {
-      s = s.replace(/-/g, '+').replace(/_/g, '/'); while (s.length % 4) s += '=';
-      return atob(s);
-    }
+    function fromBase64Url(s) { s = s.replace(/-/g, '+').replace(/_/g, '/'); while (s.length % 4) s += '='; return atob(s); }
     const qs = new URLSearchParams(location.search);
     const blob = qs.get('cart');
     if (blob && !localStorage.getItem('gufa_cart')) {
@@ -65,11 +76,17 @@
         items:'#cart-items',
         empty:'#cart-empty',
         count:'#cart-items-count',
-        addonsNote:'#addons-note',
+        // addonsNote removed intentionally (no mini-invoice)
         subtotal:'#subtotal-amt',
         servicetax:'#servicetax-amt',
         total:'#total-amt',
-        proceed:'#proceed-btn'
+        proceed:'#proceed-btn',
+        invFood:'#inv-food',        // NEW: Food Items block
+        invAddons:'#inv-addons',    // NEW: Add-ons block
+        promoLbl:'#promo-label',    // NEW: Promotion label (right pane)
+        promoAmt:'#promo-amt',      // NEW: Promotion amount
+        promoInput:'#promo-input',  // NEW: 2cm input
+        promoApply:'#promo-apply'   // NEW: button
       },
       table: { body:'#cartBody', total:'#cartTotal' } // optional fallback
     };
@@ -86,12 +103,26 @@
     <section class="cart-left">
       <ul id="cart-items"></ul>
       <div id="cart-empty" class="empty">Your cart is empty.</div>
-      <div id="addons-note" class="muted" style="margin-top:8px;"></div>
     </section>
 
     <aside class="cart-right">
       <div id="cart-items-count" class="muted">(0 items)</div>
+
+      <!-- Invoice breakdown -->
+      <div class="pilltitle">Food Items</div>
+      <div id="inv-food" class="inv-list"></div>
+
+      <div class="pilltitle">Add-ons</div>
+      <div id="inv-addons" class="inv-list"></div>
+
+      <!-- Promo entry + line -->
+      <div class="promo-wrap">
+        <input id="promo-input" placeholder="Code"/>
+        <button id="promo-apply">Apply</button>
+      </div>
+
       <div class="totals">
+        <div class="total-row promo-row"><span id="promo-label">Promotion () — Not Eligible</span><span id="promo-amt">− ₹0</span></div>
         <div class="total-row"><span>Subtotal</span><span id="subtotal-amt">₹0</span></div>
         <div class="total-row"><span>Service Tax</span><span id="servicetax-amt">₹0</span></div>
         <div class="total-row" style="font-weight:700;"><span>Total</span><span id="total-amt">₹0</span></div>
@@ -99,19 +130,15 @@
       <button id="proceed-btn" disabled>Proceed</button>
     </aside>
   </main>
-<script>
-  (function () {
-    const a = document.getElementById('back-link');
-    if (!a) return;
-    a.href = new URL('../', location.href).toString();
-  })();
-</script>
+  <script>
+    (function () {
+      const a = document.getElementById('back-link');
+      if (!a) return;
+      a.href = new URL('../', location.href).toString();
+    })();
+  </script>
   <!-- Load order: store first, then cart UI -->
   <script src="./cart.store.js"></script>
   <script src="./app.cart.js"></script>
-  
 </body>
 </html>
-
-
-
