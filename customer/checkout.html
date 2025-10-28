@@ -123,15 +123,15 @@
         <button id="promo-apply">Apply Coupon</button>
       </div>
 
-      <div class="totals">
-        <div class="total-row">
-          <span id="promo-label">Promotion (): none</span>
-          <!-- amount intentionally not shown -->
-        </div>
-        <div class="total-row"><span>Subtotal</span><span id="subtotal-amt">₹0</span></div>
-        <div class="total-row"><span>Service Tax (5%)</span><span id="servicetax-amt">₹0</span></div>
-        <div class="total-row" style="font-weight:700;"><span>Total</span><span id="total-amt">₹0</span></div>
-      </div>
+ <div class="totals">
+  <div class="total-row"><span>Subtotal</span><span id="subtotal-amt">₹0</span></div>
+  <div class="total-row">
+    <span id="promo-label">Promotion (): none</span>
+    <span id="promo-amt">− ₹0</span>
+  </div>
+  <div class="total-row"><span>Service Tax (5%)</span><span id="servicetax-amt">₹0</span></div>
+  <div class="total-row" style="font-weight:700;"><span>Total</span><span id="total-amt">₹0</span></div>
+</div>
 
       <button id="proceed-btn" disabled>Proceed</button>
     </aside>
@@ -150,4 +150,5 @@
   <script src="./app.cart.js"></script>
 </body>
 </html>
+
 
