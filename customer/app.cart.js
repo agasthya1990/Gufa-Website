@@ -558,7 +558,41 @@ for (const [key, it] of entries()) {
   return { discount:0, reason:null };
 }
 
-  
+  // === debug exports (no-op for customers) ===
+window.CartDebug = window.CartDebug || {};
+window.CartDebug.computeDiscount = computeDiscount;
+
+// simple wrapper that assembles inputs the same way the renderer does
+window.CartDebug.eval = function () {
+  const lock = JSON.parse(localStorage.getItem('gufa_coupon') || 'null');
+  const mode = (localStorage.getItem('gufa_mode') || 'delivery').toLowerCase();
+
+  // base subtotal (non-addons only), same logic as computeSplits()
+  let baseSubtotal = 0;
+  const bag = (window?.Cart?.get?.() || JSON.parse(localStorage.getItem('gufa_cart') || '{}'));
+  for (const [k, v] of Object.entries(bag)) {
+    const parts = String(k).split(':');
+    if (parts.length < 3) baseSubtotal += (Number(v.price) || 0) * (Number(v.qty) || 0);
+  }
+
+  // final ids used for eligibility (after banner/list preference)
+  const scope = lock?.scope || {};
+  let ids = (
+    Array.isArray(scope?.eligibleItemIds) ? scope.eligibleItemIds :
+    Array.isArray(scope?.eligibleIds)     ? scope.eligibleIds :
+    Array.isArray(scope?.itemIds)         ? scope.itemIds :
+    []
+  ).map(s => String(s).toLowerCase());
+
+  if (scope.bannerId && (window.BANNERS instanceof Map)) {
+    const b = window.BANNERS.get(String(scope.bannerId)) || window.BANNERS.get(`coupon:${String(scope.couponId||'')}`);
+    if (Array.isArray(b) && b.length) ids = b.map(s => String(s).toLowerCase());
+  }
+
+  const out = computeDiscount(lock, baseSubtotal, mode);
+  return { lock, mode, baseSubtotal, ids, out };
+};
+
   // ---- layout resolution ----
   let mode = null; // 'list' | 'table'
   let R = {};
