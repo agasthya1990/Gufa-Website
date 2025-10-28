@@ -1,20 +1,27 @@
-// app.cart.js — promotions: first-come/first-served (non-stackable), strict eligibility,
-// add-on auto-remove with base, promo amount as its own totals row, Delivery/Dining aware.
+// app.cart.js — Robust Cart with strict Promotions, FCFS (non-stackable), Mode gating,
+// Add-on steppers + auto-prune, Promo totals row, and Delivery Address form.
+// Refactor-friendly: clear seams for minOrder & usageLimit coming from Admin/promotions.js.
+
 ;(function(){
-  /* ========== Money helpers ========== */
+  /* ===================== Money & utils ===================== */
   const INR = (v) => "₹" + Math.round(Number(v)||0).toLocaleString("en-IN");
   const SERVICE_TAX_RATE = 0.05;
   const clamp0 = (n) => Math.max(0, Number(n)||0);
-  const taxOn  = (amt) => clamp0(amt) * SERVICE_TAX_RATE;
+  const taxOn = (amt) => clamp0(amt) * SERVICE_TAX_RATE;
 
-  /* ========== Mode ========== */
-  function activeMode() {
+  const COUPON_KEY = "gufa_coupon";
+  const ADDR_KEY   = "gufa:deliveryAddress";
+
+  const isUUID = (s) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s||"");
+
+  /* ===================== Mode ===================== */
+  function activeMode(){
     const raw = (localStorage.getItem("gufa:serviceMode") || localStorage.getItem("gufa_mode") || "delivery").toLowerCase();
     return raw === "dining" ? "dining" : "delivery";
   }
 
-  /* ========== Cart access ========== */
-  function entries() {
+  /* ===================== Cart I/O ===================== */
+  function entries(){
     try {
       const store = window?.Cart?.get?.();
       if (store && typeof store === "object") return Object.entries(store);
@@ -30,37 +37,31 @@
     } catch { return []; }
   }
   const itemCount = () => entries().reduce((n, [,it]) => n + (Number(it?.qty)||0), 0);
+  const isAddonKey = (key) => String(key).split(":").length >= 3;
+  const baseKeyOf  = (key) => String(key).split(":").slice(0,2).join(":");
 
-  /* ========== Base vs Add-ons ========== */
-  function splitBaseVsAddons() {
-    let base = 0, add = 0;
-    for (const [key, it] of entries()) {
-      const isAddon = String(key).split(":").length >= 3;
+  function splitBaseVsAddons(){
+    let base=0, add=0;
+    for (const [key, it] of entries()){
       const line = clamp0(it.price) * clamp0(it.qty);
-      if (isAddon) add += line; else base += line;
+      if (isAddonKey(key)) add += line; else base += line;
     }
     return { base, add };
   }
 
-  function baseKeyOf(key){ return String(key).split(":").slice(0,2).join(":"); }
-  function isAddonKey(key){ return String(key).split(":").length >= 3; }
-
-  /* ========== Promo lock & catalogs ========== */
-  const COUPON_KEY = "gufa_coupon";
+  /* ===================== Global Catalogs ===================== */
   if (!(window.COUPONS instanceof Map)) window.COUPONS = new Map();
   if (!window.BANNERS) window.BANNERS = new Map(); // Map preferred; Array tolerated
 
+  /* ===================== Coupon Lock ===================== */
   const getLock = () => { try { return JSON.parse(localStorage.getItem(COUPON_KEY) || "null"); } catch { return null; } };
   const setLock = (obj) => { try { obj ? localStorage.setItem(COUPON_KEY, JSON.stringify(obj)) : localStorage.removeItem(COUPON_KEY); } catch {} };
 
-  // Show only the true code; never invent defaults.
-  function displayCode(locked) {
+  function displayCode(locked){
     try {
       if (!locked) return "";
       const raw = String(locked.code || "").trim();
-      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(raw);
-      if (raw && !isUuid) return raw.toUpperCase();
-
+      if (raw && !isUUID(raw)) return raw.toUpperCase();
       const cid = String(locked?.scope?.couponId || "").trim();
       if (cid && (window.COUPONS instanceof Map)) {
         const meta = window.COUPONS.get(cid);
@@ -70,50 +71,23 @@
     } catch { return ""; }
   }
 
-  /* ========== Eligibility & gating ========== */
-  function eligibleIdsFromBanners(scope) {
-    const out = new Set();
-    if (!scope) return out;
-
-    const bid = String(scope.bannerId||"").trim();
-    const cid = String(scope.couponId||"").trim();
-
-    if (window.BANNERS instanceof Map) {
-      const arr = window.BANNERS.get(bid) || window.BANNERS.get(`coupon:${cid}`);
-      if (Array.isArray(arr)) arr.forEach(x => out.add(String(x).toLowerCase()));
-      return out;
+  /* ===================== Promotions Discipline ===================== */
+  // Hooks for future admin fields:
+  // - minOrder: number  (already supported)
+  // - usageLimit: number, usedCount: number (supported via checkUsageAvailable)
+  function checkUsageAvailable(meta){
+    // Future ready: if admin tracks usedCount per customer/user, plug it here.
+    // For now, if usageLimit exists on meta and is 0 or less, treat as exhausted.
+    if (!meta) return true;
+    if (typeof meta.usageLimit === "number" && meta.usageLimit <= 0) return false;
+    // If meta.usedCount >= usageLimit → not available
+    if (typeof meta.usageLimit === "number" && typeof meta.usedCount === "number") {
+      return meta.usedCount < meta.usageLimit;
     }
-    if (Array.isArray(window.BANNERS)) {
-      const found = window.BANNERS.find(b => String(b?.id||"").trim() === bid);
-      const arr = found?.items || found?.eligibleItemIds || found?.itemIds || [];
-      if (Array.isArray(arr)) arr.forEach(x => out.add(String(x).toLowerCase()));
-      if (!out.size && cid) {
-        const byCoupon = window.BANNERS.find(b => Array.isArray(b?.linkedCouponIds) && b.linkedCouponIds.includes(cid));
-        const carr = byCoupon?.items || byCoupon?.eligibleItemIds || byCoupon?.itemIds || [];
-        if (Array.isArray(carr)) carr.forEach(x => out.add(String(x).toLowerCase()));
-      }
-    }
-    return out;
+    return true;
   }
 
-  // explicit eligibleItemIds > banner-derived list > empty (strict)
-  function resolveEligibilitySet(locked) {
-    const scope = locked?.scope || {};
-    const explicit = (
-      Array.isArray(scope.eligibleItemIds) ? scope.eligibleItemIds :
-      Array.isArray(scope.eligibleIds)     ? scope.eligibleIds     :
-      Array.isArray(scope.itemIds)         ? scope.itemIds         :
-      []
-    ).map(s => String(s).toLowerCase());
-    if (explicit.length) return new Set(explicit);
-
-    const byBanner = eligibleIdsFromBanners(scope);
-    if (byBanner.size) return byBanner;
-
-    return new Set();
-  }
-
-  function modeAllowed(locked) {
+  function modeAllowed(locked){
     const m = activeMode();
     const v = locked?.valid;
     if (v && typeof v === "object" && (m in v)) return !!v[m];
@@ -123,37 +97,80 @@
     return true;
   }
 
-  /* ========== First-come/First-served promo (non-stackable) ========== */
-  // Determine the first base item (by iteration order) that maps to any coupon via BANNERS lists.
+  function eligibleIdsFromBanners(scope){
+    const out = new Set();
+    if (!scope) return out;
+    const bid = String(scope.bannerId||"").trim();
+    const cid = String(scope.couponId||"").trim();
+
+    if (window.BANNERS instanceof Map){
+      const arr = window.BANNERS.get(bid) || window.BANNERS.get(`coupon:${cid}`);
+      if (Array.isArray(arr)) arr.forEach(x=>out.add(String(x).toLowerCase()));
+      return out;
+    }
+    if (Array.isArray(window.BANNERS)){
+      const found = window.BANNERS.find(b => String(b?.id||"").trim() === bid);
+      const arr = found?.items || found?.eligibleItemIds || found?.itemIds || [];
+      if (Array.isArray(arr)) arr.forEach(x=>out.add(String(x).toLowerCase()));
+      if (!out.size && cid) {
+        const byCoupon = window.BANNERS.find(b => Array.isArray(b?.linkedCouponIds) && b.linkedCouponIds.includes(cid));
+        const carr = byCoupon?.items || byCoupon?.eligibleItemIds || byCoupon?.itemIds || [];
+        if (Array.isArray(carr)) carr.forEach(x=>out.add(String(x).toLowerCase()));
+      }
+    }
+    return out;
+  }
+
+  // explicit eligibleItemIds > banner-derived > empty (strict)
+  function resolveEligibilitySet(locked){
+    const scope = locked?.scope || {};
+    const explicit = (
+      Array.isArray(scope.eligibleItemIds) ? scope.eligibleItemIds :
+      Array.isArray(scope.eligibleIds)     ? scope.eligibleIds     :
+      Array.isArray(scope.itemIds)         ? scope.itemIds         :
+      []
+    ).map(s=>String(s).toLowerCase());
+    if (explicit.length) return new Set(explicit);
+
+    const byBanner = eligibleIdsFromBanners(scope);
+    if (byBanner.size) return byBanner;
+
+    return new Set();
+  }
+
+  // FCFS: pick the first base item in the cart that matches any coupon eligibility,
+  // and use that coupon exclusively (non-stackable).
   function findFirstApplicableCouponForCart(){
     const es = entries();
     if (!es.length) return null;
+    if (!(window.COUPONS instanceof Map)) return null;
 
-    // Build quick map: couponId -> eligible set
+    // Build couponId -> eligible set
     const couponEligible = new Map();
-    if (window.COUPONS instanceof Map) {
-      for (const [couponId] of window.COUPONS) {
-        const set = eligibleIdsFromBanners({ couponId });
-        if (set.size) couponEligible.set(String(couponId), set);
-      }
+    for (const [cid, meta] of window.COUPONS){
+      if (!checkUsageAvailable(meta)) continue; // respect (future) usage limits
+      const set = eligibleIdsFromBanners({ couponId: cid });
+      if (set.size) couponEligible.set(String(cid), set);
     }
 
-    for (const [key, it] of es) {
+    for (const [key, it] of es){
       const parts = String(key).split(":");
       if (parts.length >= 3) continue; // skip add-ons
       const itemId  = String(it?.id ?? parts[0]).toLowerCase();
       const baseKey = parts.slice(0,2).join(":").toLowerCase();
-      // scan coupons in defined order
-      for (const [cid, set] of couponEligible) {
-        if (set.has(itemId) || set.has(baseKey) || Array.from(set).some(x => !x.includes(":") && baseKey.startsWith(x + ":"))) {
+
+      for (const [cid, set] of couponEligible){
+        if (set.has(itemId) || set.has(baseKey) || Array.from(set).some(x => !x.includes(":") && baseKey.startsWith(x + ":"))){
           const meta = window.COUPONS.get(cid) || {};
+          // Prepare a full lock payload
           return {
-            scope: { couponId: cid, bannerId: undefined, eligibleItemIds: Array.from(set) },
+            scope: { couponId: cid, eligibleItemIds: Array.from(set) },
             type:  String(meta?.type || "flat").toLowerCase(),
             value: Number(meta?.value || 0),
             minOrder: Number(meta?.minOrder || 0),
             valid: meta?.targets ? { delivery: !!meta.targets.delivery, dining: !!meta.targets.dining } : undefined,
             code: meta?.code ? String(meta.code).toUpperCase() : undefined,
+            // future: usageLimit/usedCount could be mirrored into the lock if desired
           };
         }
       }
@@ -161,40 +178,64 @@
     return null;
   }
 
-  // Enforce FCFS lock: if there is no lock, or the current lock’s couponId/code doesn’t match the first applicable,
-  // switch to the first applicable. Non-stackable: single promo only.
-  function enforceFirstComeLock(){
-    const current = getLock();
-    const fcfs = findFirstApplicableCouponForCart();
-    if (!fcfs) { return; }
-    const curCid  = String(current?.scope?.couponId || "");
-    const newCid  = String(fcfs?.scope?.couponId || "");
-    const curCode = String(current?.code || "").toUpperCase();
-    const newCode = String(fcfs?.code || "").toUpperCase();
-
-    if (!current || (newCid && curCid !== newCid) || (newCode && curCode !== newCode)) {
-      setLock(fcfs);
+  function clearLockIfNoLongerApplicable(){
+    const lock = getLock();
+    if (!lock) return;
+    // If no eligible items for this lock remain, clear it.
+    const elig = resolveEligibilitySet(lock);
+    if (!elig.size){
+      setLock(null);
+      return;
     }
+    // If the cart no longer contains any of the eligible IDs as base lines, clear it.
+    let any = false;
+    for (const [key, it] of entries()){
+      if (isAddonKey(key)) continue;
+      const parts = String(key).toLowerCase().split(":");
+      const itemId  = String(it?.id ?? parts[0]);
+      const baseKey = parts.slice(0,2).join(":");
+      if (elig.has(itemId) || elig.has(baseKey) || Array.from(elig).some(x => !x.includes(":") && baseKey.startsWith(x + ":"))){
+        any = true; break;
+      }
+    }
+    if (!any) setLock(null);
   }
 
-  /* ========== Discount (eligible base only) ========== */
-  function computeDiscount(locked, baseSubtotal) {
+  function enforceFirstComeLock(){
+    const current = getLock();
+    // Priority: if current still valid & applicable, keep it (no stacking).
+    clearLockIfNoLongerApplicable();
+    const kept = getLock();
+    if (kept) return;
+
+    // Otherwise, pick first eligible coupon from cart contents.
+    const fcfs = findFirstApplicableCouponForCart();
+    if (fcfs) setLock(fcfs);
+  }
+
+  /* ===================== Discount computation ===================== */
+  function computeDiscount(locked, baseSubtotal){
     if (!locked) return { discount:0 };
+
+    // Mode gate
     if (!modeAllowed(locked)) return { discount:0 };
 
+    // Admin minOrder (present/future)
     const minOrder = Number(locked?.minOrder || 0);
     if (minOrder > 0 && baseSubtotal < minOrder) return { discount:0 };
 
+    // Eligibility set (strict)
     const elig = resolveEligibilitySet(locked);
     if (!elig.size) return { discount:0 };
 
+    // Eligible base subtotal only
     let eligibleBase = 0;
-    for (const [key, it] of entries()) {
+    for (const [key, it] of entries()){
+      if (isAddonKey(key)) continue;
       const parts = String(key).split(":");
-      if (parts.length >= 3) continue; // skip add-ons
       const itemId  = String(it?.id ?? parts[0]).toLowerCase();
-      const baseK   = parts.slice(0,2).join(":").toLowerCase();
-      if (elig.has(itemId) || elig.has(baseK) || Array.from(elig).some(x => !x.includes(":") && baseK.startsWith(x + ":"))) {
+      const baseKey = parts.slice(0,2).join(":").toLowerCase();
+      if (elig.has(itemId) || elig.has(baseKey) || Array.from(elig).some(x => !x.includes(":") && baseKey.startsWith(x + ":"))){
         eligibleBase += clamp0(it.price) * clamp0(it.qty);
       }
     }
@@ -207,13 +248,13 @@
     return { discount:0 };
   }
 
-  /* ========== Grouping for left list ========== */
-  function buildGroups() {
-    const gs = new Map(); // baseKey -> { base:{key,it}, addons:[{key,it,name}] }
-    for (const [key, it] of entries()) {
+  /* ===================== Grouping & rows ===================== */
+  function buildGroups(){
+    const gs = new Map(); // baseKey -> { base, addons[] }
+    for (const [key, it] of entries()){
       const parts = String(key).split(":");
-      const bKey = parts.slice(0,2).join(":");  // itemId:variant
-      const addonName = parts[2];               // third part means addon
+      const bKey = parts.slice(0,2).join(":");
+      const addonName = parts[2];
       if (!gs.has(bKey)) gs.set(bKey, { base:null, addons:[] });
       if (addonName) {
         const name = (it?.addons?.[0]?.name) || addonName;
@@ -225,7 +266,6 @@
     return gs;
   }
 
-  /* ========== Add-on auto-remove helpers ========== */
   function removeAllAddonsOf(baseKey){
     const bag = window?.Cart?.get?.() || {};
     for (const k of Object.keys(bag)) {
@@ -235,8 +275,7 @@
     }
   }
 
-  // === Add-on row with steppers ===
-  function addonRow(baseKey, add) {
+  function addonRow(baseKey, add){
     const { key, it, name } = add;
     const row = document.createElement("div");
     row.className = "addon-row";
@@ -285,7 +324,7 @@
     return row;
   }
 
-  function baseRow(baseKey, it) {
+  function baseRow(baseKey, it){
     const li = document.createElement("li");
     li.className = "cart-row grouped";
     li.dataset.key = baseKey;
@@ -321,7 +360,7 @@
       const prev = (Number(window.Cart.get()?.[baseKey]?.qty)||0);
       const next = Math.max(0, prev - 1);
       window.Cart.setQty(baseKey, next, it);
-      if (next === 0) removeAllAddonsOf(baseKey); // auto-remove add-ons
+      if (next === 0) removeAllAddonsOf(baseKey);
       window.dispatchEvent(new CustomEvent("cart:update"));
     });
 
@@ -330,7 +369,7 @@
     remove.textContent = "Remove";
     remove.addEventListener("click", () => {
       window.Cart.setQty(baseKey, 0);
-      removeAllAddonsOf(baseKey); // auto-remove add-ons
+      removeAllAddonsOf(baseKey);
       window.dispatchEvent(new CustomEvent("cart:update"));
     });
 
@@ -340,7 +379,7 @@
     return li;
   }
 
-  /* ========== Layout ========== */
+  /* ===================== Layout & Invoice ===================== */
   let R = {};
   function resolveLayout(){
     const CFG = window.CART_UI?.list || {};
@@ -355,24 +394,25 @@
       invFood:    document.querySelector(CFG.invFood || null),
       invAddons:  document.querySelector(CFG.invAddons || null),
       promoLbl:   document.querySelector(CFG.promoLbl || null),
-      promoAmt:   document.querySelector(CFG.promoAmt || null), // right-column amount
+      promoAmt:   document.querySelector(CFG.promoAmt || null),
       promoInput: document.querySelector(CFG.promoInput || null),
       promoApply: document.querySelector(CFG.promoApply || null),
       badge:      document.querySelector('#cart-count'),
+      // Delivery form container (created dynamically if missing)
+      deliveryHost: document.querySelector('#delivery-form') || null,
     };
-    if (!R.items) console.warn("[cart] Missing layout anchors — checkout.html");
     return !!R.items;
   }
 
-  function renderInvoiceLists(groups) {
+  function renderInvoiceLists(groups){
     const food = [], adds = [];
-    for (const [, g] of groups) {
-      if (g.base) {
+    for (const [, g] of groups){
+      if (g.base){
         const it = g.base.it || {};
         const qty = clamp0(it.qty);
         if (qty > 0) food.push(`<div class="inv-row"><div>${it.name || ""} × ${qty}</div><strong>${INR(clamp0(it.price) * qty)}</strong></div>`);
       }
-      for (const a of g.addons) {
+      for (const a of g.addons){
         const it = a.it || {};
         const qty = clamp0(it.qty);
         if (qty > 0) adds.push(`<div class="inv-row"><div>${a.name || ""} × ${qty}</div><strong>${INR(clamp0(it.price) * qty)}</strong></div>`);
@@ -382,11 +422,74 @@
     if (R.invAddons) R.invAddons.innerHTML = adds.length ? adds.join("") : `<div class="muted">None</div>`;
   }
 
-  /* ========== Render ========== */
+  /* ===================== Delivery Address form (mode = delivery) ===================== */
+  function getAddress(){ try { return JSON.parse(localStorage.getItem(ADDR_KEY) || "null"); } catch { return null; } }
+  function setAddress(obj){ try { obj ? localStorage.setItem(ADDR_KEY, JSON.stringify(obj)) : localStorage.removeItem(ADDR_KEY); } catch {} }
+
+  function ensureDeliveryForm(){
+    if (activeMode() !== "delivery") { if (R.deliveryHost) R.deliveryHost.remove(); return; }
+    if (!R.deliveryHost) {
+      const aside = document.querySelector("aside.cart-right") || document.body;
+      const wrap = document.createElement("div");
+      wrap.id = "delivery-form";
+      wrap.style.marginTop = "12px";
+      wrap.innerHTML = `
+        <div class="pilltitle">Delivery Address</div>
+        <div class="inv-list" id="delivery-fields">
+          <input id="addr-name" placeholder="Full name"/>
+          <input id="addr-phone" placeholder="Phone"/>
+          <input id="addr-line1" placeholder="Address line 1"/>
+          <input id="addr-line2" placeholder="Address line 2 (optional)"/>
+          <input id="addr-area"  placeholder="Area / Locality"/>
+          <input id="addr-pin"   placeholder="Pincode"/>
+          <textarea id="addr-notes" placeholder="Delivery instructions (optional)"></textarea>
+          <button id="addr-save" style="padding:10px;border:1px solid #111;background:#111;color:#fff;border-radius:8px;">Save Address</button>
+        </div>
+      `;
+      aside.appendChild(wrap);
+      R.deliveryHost = wrap;
+      wireAddressForm();
+    } else {
+      wireAddressForm();
+    }
+  }
+
+  function wireAddressForm(){
+    const saved = getAddress() || {};
+    const $ = (id) => R.deliveryHost.querySelector(id);
+    const name=$('#addr-name'), phone=$('#addr-phone'), l1=$('#addr-line1'), l2=$('#addr-line2'),
+          area=$('#addr-area'), pin=$('#addr-pin'), notes=$('#addr-notes'), save=$('#addr-save');
+    if (name && !name.value)  name.value  = saved.name  || "";
+    if (phone && !phone.value) phone.value= saved.phone || "";
+    if (l1 && !l1.value)      l1.value    = saved.line1 || "";
+    if (l2 && !l2.value)      l2.value    = saved.line2 || "";
+    if (area && !area.value)  area.value  = saved.area  || "";
+    if (pin && !pin.value)    pin.value   = saved.pin   || "";
+    if (notes && !notes.value)notes.value = saved.notes || "";
+
+    if (save && !save._wired){
+      save._wired = true;
+      save.addEventListener("click", ()=>{
+        const obj = {
+          name: name?.value?.trim() || "",
+          phone: phone?.value?.trim() || "",
+          line1: l1?.value?.trim() || "",
+          line2: l2?.value?.trim() || "",
+          area:  area?.value?.trim() || "",
+          pin:   pin?.value?.trim() || "",
+          notes: notes?.value?.trim() || ""
+        };
+        setAddress(obj);
+        window.dispatchEvent(new CustomEvent("cart:update"));
+      }, false);
+    }
+  }
+
+  /* ===================== Render ===================== */
   function render(){
     if (!R.items && !resolveLayout()) return;
 
-    // Enforce FCFS promo (non-stackable) before computing totals
+    // Enforce non-stackable, FCFS promo choice before totals.
     enforceFirstComeLock();
 
     const n = itemCount();
@@ -397,18 +500,18 @@
     if (R.items)   R.items.hidden      = n === 0;
 
     // Left list
-    if (R.items) {
+    if (R.items){
       R.items.innerHTML = "";
       const gs = buildGroups();
-      for (const [, g] of gs) {
-        if (!g.base && g.addons.length) {
-          // synthesize base shell so add-ons anchor correctly
+      for (const [, g] of gs){
+        if (!g.base && g.addons.length){
+          // synthesize shell if only add-ons exist for a baseKey
           const first = g.addons[0];
           g.base = { key: first.key.split(":").slice(0,2).join(":"), it: { ...(first.it||{}), qty: 0 } };
         }
-        if (g.base) {
+        if (g.base){
           const row = baseRow(g.base.key, g.base.it);
-          if (g.addons.length) {
+          if (g.addons.length){
             const list = document.createElement("div");
             list.className = "addon-list";
             g.addons.sort((a,b)=>a.name.localeCompare(b.name)).forEach(a => list.appendChild(addonRow(g.base.key, a)));
@@ -425,28 +528,31 @@
     const { discount } = computeDiscount(locked, base);
     const preTax = clamp0(base + add - discount);
     const tax    = taxOn(preTax);
-    const total  = preTax + tax;
+    const grand  = preTax + tax;
 
     renderInvoiceLists(buildGroups());
 
     if (R.subtotal)   R.subtotal.textContent   = INR(base + add);
     if (R.servicetax) R.servicetax.textContent = INR(tax);
-    if (R.total)      R.total.textContent      = INR(total);
+    if (R.total)      R.total.textContent      = INR(grand);
 
-    // Promo label (left) + amount (right column)
+    // Promo totals row (left label + right amount)
     const codeText = locked ? displayCode(locked) : "";
     if (R.promoLbl) R.promoLbl.textContent = codeText ? `Promotion (${codeText}):` : `Promotion (): none`;
-    if (R.promoAmt) R.promoAmt.textContent = codeText ? `− ${INR(discount)}` : `− ${INR(0)}`;
+    if (R.promoAmt) R.promoAmt.textContent = `− ${INR(codeText ? discount : 0)}`;
 
-    // Apply Coupon (manual) — do NOT auto-fill input from any lock
-    if (R.promoApply && !R.promoApply._wired) {
+    // Delivery address section (mode = delivery only)
+    ensureDeliveryForm();
+
+    // Manual Apply Coupon (no auto-fill from lock)
+    if (R.promoApply && !R.promoApply._wired){
       R.promoApply._wired = true;
-      R.promoApply.addEventListener("click", () => {
-        const code = (R.promoInput?.value||"").trim().toUpperCase();
+      R.promoApply.addEventListener("click", ()=>{
+        const code = (R.promoInput?.value || "").trim().toUpperCase();
         if (!code) {
           setLock(null);
         } else {
-          // Keep scope if present; user-entered code overrides FCFS
+          // User-entered code overrides FCFS, keep any scope (e.g., eligibleItemIds) if present
           const prev = getLock() || {};
           const scope = prev.scope || {};
           setLock({ ...prev, code, scope });
@@ -456,7 +562,7 @@
     }
   }
 
-  /* ========== Boot & subscriptions ========== */
+  /* ===================== Boot & subscriptions ===================== */
   function boot(){
     resolveLayout();
     render();
@@ -465,7 +571,7 @@
     window.addEventListener("serviceMode:changed", render, false);
     window.addEventListener("storage", (e) => {
       if (!e) return;
-      if (e.key === "gufa_cart" || e.key === COUPON_KEY) render();
+      if (e.key === "gufa_cart" || e.key === COUPON_KEY || e.key === ADDR_KEY) render();
     }, false);
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState === "visible") render();
@@ -478,7 +584,7 @@
     boot();
   }
 
-  /* ========== Debug helper (kept) ========== */
+  /* ===================== Debug helper ===================== */
   window.CartDebug = window.CartDebug || {};
   window.CartDebug.eval = function(){
     const lock = getLock();
