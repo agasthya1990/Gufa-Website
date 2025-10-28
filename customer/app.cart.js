@@ -280,15 +280,6 @@ function enforceFirstComeLock(){
   if (test.discount > 0) setLock(fcfs);
 }
 
-// Auto-recalc (handles async hydration / race). Tries a few times quickly.
-function schedulePromoRecalc(retries = 2, delay = 180) {
-  if (retries <= 0) return;
-  setTimeout(() => {
-    enforceFirstComeLock();
-    window.dispatchEvent(new CustomEvent("cart:update"));
-    schedulePromoRecalc(retries - 1, delay);
-  }, delay);
-}
 
 
   /* ===================== Discount computation ===================== */
@@ -576,8 +567,7 @@ return { discount: Math.max(0, Math.round(d)) };
 
     // Enforce non-stackable, FCFS promo choice before totals.
     enforceFirstComeLock();
-    schedulePromoRecalc(1, 120);
-
+    
     const n = itemCount();
     if (R.badge)   R.badge.textContent = String(n);
     if (R.count)   R.count.textContent = `(${n} ${n===1?"item":"items"})`;
@@ -653,22 +643,29 @@ R.promoApply.addEventListener("click", ()=>{
     return;
   }
 
-  // Must be a known code; only unknown codes are rejected immediately
+  // Try to resolve code -> coupon
   const found = findCouponByCode(code);
   if (!found) {
     showPromoError("Invalid or Ineligible Coupon Code");
     return;
   }
 
-  // Build a lock and accept it immediately (even if banners/eligibility aren’t hydrated yet)
+  // Build a full lock from coupon meta + eligibility
   const fullLock = buildLockFromMeta(found.cid, found.meta);
+
+  // Validate against current cart/mode/minOrder/eligibility
+  const { base } = splitBaseVsAddons();
+  const probe = computeDiscount(fullLock, base);
+  if (!probe.discount || probe.discount <= 0) {
+    showPromoError("Invalid or Ineligible Coupon Code");
+    return;
+  }
+
+  // It’s valid: set as the active lock and clear any error
   setLock(fullLock);
   showPromoError("");
-
-  // Immediate re-eval + quick retries so deduction appears once data is ready
-  enforceFirstComeLock();
+  enforceFirstComeLock(); // ensure non-stackable discipline & immediate deduction
   window.dispatchEvent(new CustomEvent("cart:update"));
-  schedulePromoRecalc(2, 150);
 }, false);
  }
 }
