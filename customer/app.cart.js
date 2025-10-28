@@ -612,10 +612,8 @@ if (R.promoAmt) {
 }
 // Clear any lingering error whenever a valid non-zero discount is active
 if (discount > 0) showPromoError("");
-}
 
-
-    // Delivery address section (mode = delivery only)
+  // Delivery address section (mode = delivery only)
     ensureDeliveryForm();
 
     // Manual Apply Coupon (no auto-fill from lock)
