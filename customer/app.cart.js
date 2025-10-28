@@ -32,7 +32,8 @@
   }
 
 if (!(window.COUPONS instanceof Map)) window.COUPONS = new Map();
-if (!Array.isArray(window.BANNERS)) window.BANNERS = [];
+if (!(window.BANNERS instanceof Map)) window.BANNERS = new Map();
+
 
 // hydrate COUPONS for the locked coupon only (checkout-local)
   
@@ -112,6 +113,7 @@ async function hydrateCouponsForLockedOnce() {
 }
 
   // hydrate BANNERS for the locked banner only (checkout-local)
+  
 async function hydrateBannerItemsForLockedOnce() {
   try {
     if (!(window.BANNERS instanceof Map)) window.BANNERS = new Map();
@@ -739,7 +741,8 @@ for (const [key, it] of entries()) {
       }
     }
 
-    // --- PROMOTION & TAX (Base-only discount; add-ons excluded) ---
+    // --- PROMOTION & TAX (Base-only discount; add-ons excluded) ---//
+    
 const { baseSubtotal, addonSubtotal } = computeSplits();
 let locked = getLockedCoupon();
 if (locked && (!locked.type || (locked.value ?? null) === null)) {
@@ -747,11 +750,11 @@ if (locked && (!locked.type || (locked.value ?? null) === null)) {
 }
   hydrateBannerItemsForLockedOnce();
   hydrateCouponsForLockedOnce();
+    
 const modeNow = activeMode();
 const { discount, reason } = computeDiscount(locked, baseSubtotal, modeNow);
 
     if (reason === "scope") console.debug("[promo] scope mismatch:", { eligible: (locked?.scope?.eligibleItemIds ?? locked?.scope?.eligibleIds ?? locked?.eligibleItemIds ?? locked?.eligibleIds), cartKeys: Object.keys(window.Cart?.get?.()||{}) });
-
 
     const preTax = Math.max(0, baseSubtotal + addonSubtotal - discount);
     const tax = taxOn(preTax);
