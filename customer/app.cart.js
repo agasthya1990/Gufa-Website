@@ -1,18 +1,18 @@
-// app.cart.js — strict promo sync, Delivery/Dining aware, no image rendering, no auto-fill for banner coupons
+// app.cart.js — full rewrite: strict promo sync, Delivery/Dining aware, add-on steppers, promo amount beside label
 ;(function(){
-  /* ===== Currency & math ===== */
+  /* ========== Money helpers ========== */
   const INR = (v) => "₹" + Math.round(Number(v)||0).toLocaleString("en-IN");
   const SERVICE_TAX_RATE = 0.05;
   const clamp0 = (n) => Math.max(0, Number(n)||0);
   const taxOn  = (amt) => clamp0(amt) * SERVICE_TAX_RATE;
 
-  /* ===== Mode ===== */
+  /* ========== Mode ========== */
   function activeMode() {
     const raw = (localStorage.getItem("gufa:serviceMode") || localStorage.getItem("gufa_mode") || "delivery").toLowerCase();
     return raw === "dining" ? "dining" : "delivery";
   }
 
-  /* ===== Cart I/O ===== */
+  /* ========== Cart access ========== */
   function entries() {
     try {
       const store = window?.Cart?.get?.();
@@ -28,7 +28,7 @@
       return Object.entries(bag || {});
     } catch { return []; }
   }
-  const countItems = () => entries().reduce((n, [,it]) => n + (Number(it?.qty)||0), 0);
+  const itemCount = () => entries().reduce((n, [,it]) => n + (Number(it?.qty)||0), 0);
 
   function splitBaseVsAddons() {
     let base = 0, add = 0;
@@ -40,7 +40,7 @@
     return { base, add };
   }
 
-  /* ===== Promo lock + catalogs ===== */
+  /* ========== Promo lock & catalogs ========== */
   const COUPON_KEY = "gufa_coupon";
   if (!(window.COUPONS instanceof Map)) window.COUPONS = new Map();
   if (!window.BANNERS) window.BANNERS = new Map(); // Map preferred; Array tolerated
@@ -48,20 +48,28 @@
   const getLock = () => { try { return JSON.parse(localStorage.getItem(COUPON_KEY) || "null"); } catch { return null; } };
   const setLock = (obj) => { try { obj ? localStorage.setItem(COUPON_KEY, JSON.stringify(obj)) : localStorage.removeItem(COUPON_KEY); } catch {} };
 
+  // Strict code display: never invent/fallback to arbitrary strings; no DIWALI20 surprise.
   function displayCode(locked) {
     try {
-      const raw = String(locked?.code || "").trim();
-      if (raw && !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(raw)) return raw.toUpperCase();
-      const cid = String(locked?.scope?.couponId||"").trim();
-      const meta = (window.COUPONS instanceof Map) ? window.COUPONS.get(cid) : null;
-      return (meta?.code ? String(meta.code).toUpperCase() : (raw || cid.toUpperCase()));
-    } catch { return String(locked?.code||"").toUpperCase(); }
+      if (!locked) return "";
+      const raw = String(locked.code || "").trim();
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(raw);
+      if (raw && !isUuid) return raw.toUpperCase();
+
+      const cid = String(locked?.scope?.couponId || "").trim();
+      if (cid && (window.COUPONS instanceof Map)) {
+        const meta = window.COUPONS.get(cid);
+        if (meta?.code) return String(meta.code).toUpperCase();
+      }
+      return "";
+    } catch { return ""; }
   }
 
-  /* ===== Eligibility ===== */
+  /* ========== Eligibility & gating ========== */
   function eligibleIdsFromBanners(scope) {
     const out = new Set();
     if (!scope) return out;
+
     const bid = String(scope.bannerId||"").trim();
     const cid = String(scope.couponId||"").trim();
 
@@ -83,6 +91,7 @@
     return out;
   }
 
+  // explicit eligibleItemIds > banner-derived list > empty (strict: empty means no discount)
   function resolveEligibilitySet(locked) {
     const scope = locked?.scope || {};
     const explicit = (
@@ -92,25 +101,28 @@
       []
     ).map(s => String(s).toLowerCase());
     if (explicit.length) return new Set(explicit);
+
     const byBanner = eligibleIdsFromBanners(scope);
     if (byBanner.size) return byBanner;
-    return new Set(); // strict: no list ⇒ no discount
+
+    return new Set();
   }
 
   function modeAllowed(locked) {
     const m = activeMode();
-    const t = locked?.valid;
-    if (t && typeof t === "object" && (m in t)) return !!t[m];
+    const v = locked?.valid;
+    if (v && typeof v === "object" && (m in v)) return !!v[m];
     const cid = String(locked?.scope?.couponId||"");
     const meta = (window.COUPONS instanceof Map) ? window.COUPONS.get(cid) : null;
     if (meta && meta.targets && (m in meta.targets)) return !!meta.targets[m];
     return true;
   }
 
-  /* ===== Discount core (percent/flat; base-only) ===== */
+  // Discount ONLY on eligible base items; percent or flat; cap flat by eligible base
   function computeDiscount(locked, baseSubtotal) {
     if (!locked) return { discount:0 };
     if (!modeAllowed(locked)) return { discount:0 };
+
     const minOrder = Number(locked?.minOrder || 0);
     if (minOrder > 0 && baseSubtotal < minOrder) return { discount:0 };
 
@@ -120,7 +132,7 @@
     let eligibleBase = 0;
     for (const [key, it] of entries()) {
       const parts = String(key).split(":");
-      if (parts.length >= 3) continue; // add-ons excluded
+      if (parts.length >= 3) continue; // skip add-ons
       const itemId  = String(it?.id ?? parts[0]).toLowerCase();
       const baseKey = parts.slice(0,2).join(":").toLowerCase();
       if (elig.has(itemId) || elig.has(baseKey) || Array.from(elig).some(x => !x.includes(":") && baseKey.startsWith(x + ":"))) {
@@ -136,13 +148,13 @@
     return { discount:0 };
   }
 
-  /* ===== Left list (no images) ===== */
+  /* ========== Grouping for left list ========== */
   function buildGroups() {
-    const gs = new Map(); // baseKey -> { base, addons[] }
+    const gs = new Map(); // baseKey -> { base:{key,it}, addons:[{key,it,name}] }
     for (const [key, it] of entries()) {
       const parts = String(key).split(":");
-      const baseKey = parts.slice(0,2).join(":");
-      const addonName = parts[2];
+      const baseKey = parts.slice(0,2).join(":");  // itemId:variant
+      const addonName = parts[2];                  // third part means addon
       if (!gs.has(baseKey)) gs.set(baseKey, { base:null, addons:[] });
       if (addonName) {
         const name = (it?.addons?.[0]?.name) || addonName;
@@ -154,17 +166,53 @@
     return gs;
   }
 
+  // === Add-on row with steppers (restored) ===
   function addonRow(baseKey, add) {
     const { key, it, name } = add;
     const row = document.createElement("div");
     row.className = "addon-row";
+
     const label = document.createElement("div");
-    label.className = "addon-label"; // stronger styling via CSS
+    label.className = "addon-label muted";
     label.textContent = `+ ${name}`;
+
+    const right = document.createElement("div");
+    right.style.display = "flex";
+    right.style.alignItems = "center";
+    right.style.gap = "10px";
+
+    const stepper = document.createElement("div");
+    stepper.className = "stepper sm";
+    const minus = document.createElement("button"); minus.textContent = "–";
+    const out   = document.createElement("output");  out.textContent = String(it.qty || 0);
+    const plus  = document.createElement("button");  plus.textContent = "+";
+    stepper.append(minus, out, plus);
+
     const lineSub = document.createElement("div");
     lineSub.className = "line-subtotal";
-    lineSub.textContent = INR(clamp0(it.price) * clamp0(it.qty));
-    row.append(label, lineSub);
+    const computeLine = () => INR(clamp0(it.price) * clamp0((window.Cart?.get?.()[key]?.qty || 0)));
+    lineSub.textContent = computeLine();
+
+    plus.addEventListener("click", () => {
+      const cur = Number(window.Cart?.get?.()[key]?.qty || 0);
+      const next = cur + 1;
+      window.Cart.setQty(key, next, it);
+      out.textContent = String(next);
+      lineSub.textContent = computeLine();
+      window.dispatchEvent(new CustomEvent("cart:update"));
+    });
+
+    minus.addEventListener("click", () => {
+      const cur = Number(window.Cart?.get?.()[key]?.qty || 0);
+      const next = Math.max(0, cur - 1);
+      window.Cart.setQty(key, next, it);
+      out.textContent = String(next);
+      lineSub.textContent = computeLine();
+      window.dispatchEvent(new CustomEvent("cart:update"));
+    });
+
+    right.append(stepper, lineSub);
+    row.append(label, right);
     return row;
   }
 
@@ -198,17 +246,22 @@
     plus.addEventListener("click", () => {
       const next = (Number(window.Cart.get()?.[baseKey]?.qty)||0) + 1;
       window.Cart.setQty(baseKey, next, it);
+      window.dispatchEvent(new CustomEvent("cart:update"));
     });
     minus.addEventListener("click", () => {
       const prev = (Number(window.Cart.get()?.[baseKey]?.qty)||0);
       const next = Math.max(0, prev - 1);
       window.Cart.setQty(baseKey, next, it);
+      window.dispatchEvent(new CustomEvent("cart:update"));
     });
 
     const remove = document.createElement("button");
     remove.className = "remove-link";
     remove.textContent = "Remove";
-    remove.addEventListener("click", () => window.Cart.setQty(baseKey, 0));
+    remove.addEventListener("click", () => {
+      window.Cart.setQty(baseKey, 0);
+      window.dispatchEvent(new CustomEvent("cart:update"));
+    });
 
     mid.append(title, sub);
     right.append(stepper, lineSub, remove);
@@ -216,7 +269,7 @@
     return li;
   }
 
-  /* ===== Layout anchors ===== */
+  /* ========== Layout ========== */
   let R = {};
   function resolveLayout(){
     const CFG = window.CART_UI?.list || {};
@@ -231,49 +284,43 @@
       invFood:    document.querySelector(CFG.invFood || null),
       invAddons:  document.querySelector(CFG.invAddons || null),
       promoLbl:   document.querySelector(CFG.promoLbl || null),
-      promoAmt:   document.querySelector(CFG.promoAmt || null),
+      promoAmt:   document.querySelector(CFG.promoAmt || null), // kept for backward compatibility
       promoInput: document.querySelector(CFG.promoInput || null),
       promoApply: document.querySelector(CFG.promoApply || null),
-      countTop:   document.querySelector('#cart-count'),
+      badge:      document.querySelector('#cart-count'),
     };
-    if (!R.items) {
-      console.warn("[cart] Missing layout anchors — check checkout.html");
-    }
+    if (!R.items) console.warn("[cart] Missing layout anchors — check checkout.html");
     return !!R.items;
   }
 
-  function renderInvoiceLists(gs) {
+  function renderInvoiceLists(groups) {
     const food = [], adds = [];
-    for (const [, g] of gs) {
+    for (const [, g] of groups) {
       if (g.base) {
         const it = g.base.it || {};
         const qty = clamp0(it.qty);
-        if (qty > 0) {
-          food.push(`<div class="inv-row"><div>${it.name || ""} × ${qty}</div><strong>${INR(clamp0(it.price) * qty)}</strong></div>`);
-        }
+        if (qty > 0) food.push(`<div class="inv-row"><div>${it.name || ""} × ${qty}</div><strong>${INR(clamp0(it.price) * qty)}</strong></div>`);
       }
       for (const a of g.addons) {
         const it = a.it || {};
         const qty = clamp0(it.qty);
-        if (qty > 0) {
-          adds.push(`<div class="inv-row"><div>${a.name || ""} × ${qty}</div><strong>${INR(clamp0(it.price) * qty)}</strong></div>`);
-        }
+        if (qty > 0) adds.push(`<div class="inv-row"><div>${a.name || ""} × ${qty}</div><strong>${INR(clamp0(it.price) * qty)}</strong></div>`);
       }
     }
     if (R.invFood)   R.invFood.innerHTML   = food.length ? food.join("") : `<div class="muted">None</div>`;
     if (R.invAddons) R.invAddons.innerHTML = adds.length ? adds.join("") : `<div class="muted">None</div>`;
   }
 
-  /* ===== Render ===== */
+  /* ========== Render ========== */
   function render(){
     if (!R.items && !resolveLayout()) return;
 
-    const n = countItems();
-    if (R.countTop) R.countTop.textContent = String(n);
-    if (R.count)    R.count.textContent    = `(${n} ${n===1?"item":"items"})`;
-    if (R.proceed)  R.proceed.disabled     = n === 0;
-    if (R.empty)    R.empty.hidden         = n > 0;
-    if (R.items)    R.items.hidden         = n === 0;
+    const n = itemCount();
+    if (R.badge)   R.badge.textContent = String(n);
+    if (R.count)   R.count.textContent = `(${n} ${n===1?"item":"items"})`;
+    if (R.proceed) R.proceed.disabled  = n === 0;
+    if (R.empty)   R.empty.hidden      = n > 0;
+    if (R.items)   R.items.hidden      = n === 0;
 
     // Left list
     if (R.items) {
@@ -281,7 +328,7 @@
       const gs = buildGroups();
       for (const [, g] of gs) {
         if (!g.base && g.addons.length) {
-          // Only add-ons present for a baseKey → create a shell so add-ons anchor correctly
+          // If only add-ons exist for a baseKey, synthesize a base shell so add-ons anchor correctly
           const first = g.addons[0];
           g.base = { key: first.key.split(":").slice(0,2).join(":"), it: { ...(first.it||{}), qty: 0 } };
         }
@@ -298,32 +345,30 @@
       }
     }
 
-    // Totals & promo
+    // Totals
     const { base, add } = splitBaseVsAddons();
     const locked = getLock();
     const { discount } = computeDiscount(locked, base);
     const preTax = clamp0(base + add - discount);
     const tax    = taxOn(preTax);
-    const grand  = preTax + tax;
+    const total  = preTax + tax;
 
     renderInvoiceLists(buildGroups());
 
     if (R.subtotal)   R.subtotal.textContent   = INR(base + add);
     if (R.servicetax) R.servicetax.textContent = INR(tax);
-    if (R.total)      R.total.textContent      = INR(grand);
+    if (R.total)      R.total.textContent      = INR(total);
 
-    // Label rules (no "Not Eligible" strings):
-    // - no code: "Promotion (): none"
-    // - with code: "Promotion (CODE):"
+    // Promo label shows the amount BESIDE the code (as requested)
     const codeText = locked ? displayCode(locked) : "";
-    const label = codeText ? `Promotion (${codeText}):` : `Promotion (): none`;
-    if (R.promoLbl) R.promoLbl.textContent = label;
+    let labelText  = "Promotion (): none";
+    if (codeText) labelText = `Promotion (${codeText}): − ${INR(discount)}`;
+    if (R.promoLbl) R.promoLbl.textContent = labelText;
 
-    // Amount always visible (percent or flat): − ₹X (₹0 if not applicable)
+    // For backward compatibility (if #promo-amt exists we mirror there too)
     if (R.promoAmt) R.promoAmt.textContent = `− ${INR(discount)}`;
 
-    // Apply Coupon: DO NOT auto-fill input from banner lock
-    // (We intentionally do NOT set R.promoInput.value from locked)
+    // Apply Coupon button — DO NOT auto-fill the input from a banner lock
     if (R.promoApply && !R.promoApply._wired) {
       R.promoApply._wired = true;
       R.promoApply.addEventListener("click", () => {
@@ -331,19 +376,22 @@
         if (!code) {
           setLock(null);
         } else {
+          // Keep scope (bannerId/couponId/eligibleItemIds) if already present
           const prev = getLock() || {};
-          const scope = prev.scope || {}; // keep scope if it exists
+          const scope = prev.scope || {};
           setLock({ ...prev, code, scope });
         }
         window.dispatchEvent(new CustomEvent("cart:update"));
       }, false);
     }
+    // Intentionally NOT setting R.promoInput.value from lock (per your rule)
   }
 
-  /* ===== Boot ===== */
+  /* ========== Boot & subscriptions ========== */
   function boot(){
     resolveLayout();
     render();
+
     window.addEventListener("cart:update", render, false);
     window.addEventListener("serviceMode:changed", render, false);
     window.addEventListener("storage", (e) => {
@@ -361,7 +409,7 @@
     boot();
   }
 
-  /* ===== Debug ===== */
+  /* ========== Debug helper (kept) ========== */
   window.CartDebug = window.CartDebug || {};
   window.CartDebug.eval = function(){
     const lock = getLock();
