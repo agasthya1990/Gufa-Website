@@ -33,6 +33,83 @@
 
 if (!(window.COUPONS instanceof Map)) window.COUPONS = new Map();
 if (!Array.isArray(window.BANNERS)) window.BANNERS = [];
+
+// hydrate COUPONS for the locked coupon only (checkout-local)
+async function hydrateCouponsForLockedOnce() {
+  try {
+    // already hydrated or no lock?
+    if ((window.COUPONS instanceof Map) && window.COUPONS.size > 0) return;
+    const locked = JSON.parse(localStorage.getItem("gufa_coupon") || "null");
+    const cid = String(locked?.scope?.couponId || "").trim();
+    const code = String(locked?.code || "").toUpperCase().trim();
+    if (!cid && !code) return;
+
+    // if db not ready, poll briefly then give up silently
+    async function waitForDb(ms=2000) {
+      const t0 = Date.now();
+      while (!window.db && Date.now() - t0 < ms) {
+        await new Promise(r => setTimeout(r, 50));
+      }
+      return !!window.db;
+    }
+    const dbReady = await waitForDb();
+    if (!dbReady) return;
+
+    // Prefer fetch by id; else by code
+    const mod = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js");
+    const { getDoc, doc, getDocs, query, where, limit, collection } = mod;
+
+    let meta = null, id = cid;
+
+    if (cid) {
+      const snap = await getDoc(doc(window.db, "promotions", cid));
+      if (snap?.exists()) {
+        meta = { id: snap.id, ...snap.data() };
+      }
+    }
+    if (!meta && code) {
+      const q = query(collection(window.db, "promotions"), where("code", "==", code), limit(1));
+      const qs = await getDocs(q);
+      if (!qs.empty) {
+        const s = qs.docs[0];
+        meta = { id: s.id, ...s.data() };
+        id = s.id;
+      }
+    }
+    if (!meta) return;
+
+    // normalize and store into COUPONS
+    const norm = {
+      code: String(meta.code || code || id).toUpperCase(),
+      type: meta.type || "",
+      value: Number(meta.value || 0),
+      minOrder: Number(meta.minOrder || 0),
+      targets: (typeof meta.targets === "object" && meta.targets) ? meta.targets : { delivery: true, dining: true },
+    };
+    window.COUPONS.set(id, norm);
+
+    // if lock lacks fields, enrich it lightly and notify
+    let changed = false;
+    const next = { ...(locked||{}) };
+    next.code = norm.code || next.code;
+    if (!next.type)   { next.type   = norm.type;   changed = true; }
+    if (next.value == null) { next.value = norm.value; changed = true; }
+    if (!next.minOrder && norm.minOrder) { next.minOrder = norm.minOrder; changed = true; }
+    if (!next.valid && norm.targets) {
+      next.valid = {
+        delivery: ("delivery" in norm.targets) ? !!norm.targets.delivery : true,
+        dining:   ("dining"   in norm.targets) ? !!norm.targets.dining   : true
+      };
+      changed = true;
+    }
+    if (changed) {
+      try { localStorage.setItem("gufa_coupon", JSON.stringify(next)); } catch {}
+    }
+
+    window.dispatchEvent(new CustomEvent("cart:update"));
+  } catch {}
+}
+
   
   function displayCodeFromLock(locked){
     try {
@@ -606,6 +683,7 @@ let locked = getLockedCoupon();
 if (locked && (!locked.type || (locked.value ?? null) === null)) {
   enrichLockedCoupon(locked);
 }
+  hydrateCouponsForLockedOnce();
 const modeNow = activeMode();
 const { discount, reason } = computeDiscount(locked, baseSubtotal, modeNow);
 
