@@ -37,20 +37,20 @@
     aside.cart-right { border:1px solid #eee; border-radius:12px; padding:14px; height:max-content; position:sticky; top:12px; }
     .muted { color:#666; }
     .pilltitle { font-weight:700; margin:6px 0 4px; }
+    .inv-header { font-weight:800; margin:0 0 8px; font-size:18px; }
     .inv-list { display:grid; row-gap:6px; margin-bottom:10px; }
     .inv-row { display:flex; justify-content:space-between; align-items:baseline; }
     .inv-row small { color:#666; }
 
     .totals { display:grid; row-gap:8px; margin-top:6px; }
     .total-row { display:flex; justify-content:space-between; }
-    .total-row.promo-row { color:#b00020; }
     .total-row strong { font-weight:700; }
     #proceed-btn { margin-top:12px; width:100%; padding:12px 12px; border-radius:10px; border:none; background:#111; color:#fff; }
     #proceed-btn:disabled { opacity:0.5; }
 
-    /* Promo input: ≈2cm field + Apply */
+    /* Promo input: ≈3cm field + Apply Coupon */
     .promo-wrap { display:flex; gap:8px; align-items:center; margin:6px 0 2px; }
-    #promo-input { inline-size:2cm; max-inline-size:2cm; padding:6px 8px; border:1px solid #ccc; border-radius:8px; }
+    #promo-input { inline-size:3cm; max-inline-size:3cm; padding:6px 8px; border:1px solid #ccc; border-radius:8px; }
     #promo-apply { padding:6px 10px; border-radius:8px; border:1px solid #111; background:#111; color:#fff; }
   </style>
 
@@ -78,7 +78,7 @@
       list: {
         items:'#cart-items',
         empty:'#cart-empty',
-        count:'#cart-items-count',
+        /* count removed per request */
         subtotal:'#subtotal-amt',
         servicetax:'#servicetax-amt',
         total:'#total-amt',
@@ -86,7 +86,7 @@
         invFood:'#inv-food',
         invAddons:'#inv-addons',
         promoLbl:'#promo-label',
-        promoAmt:'#promo-amt',
+        /* promoAmt omitted per request */
         promoInput:'#promo-input',
         promoApply:'#promo-apply'
       },
@@ -108,7 +108,7 @@
     </section>
 
     <aside class="cart-right">
-      <div id="cart-items-count" class="muted">(0 items)</div>
+      <div class="inv-header">Billing Invoice</div>
 
       <!-- Invoice breakdown -->
       <div class="pilltitle">Food Items</div>
@@ -120,16 +120,16 @@
       <!-- Promo entry + line -->
       <div class="promo-wrap">
         <input id="promo-input" placeholder="Code"/>
-        <button id="promo-apply">Apply</button>
+        <button id="promo-apply">Apply Coupon</button>
       </div>
 
       <div class="totals">
-        <div class="total-row promo-row">
-          <span id="promo-label">Promotion () — Not Eligible</span>
-          <span id="promo-amt">− ₹0</span>
+        <div class="total-row">
+          <span id="promo-label">Promotion (): none</span>
+          <!-- amount intentionally not shown -->
         </div>
         <div class="total-row"><span>Subtotal</span><span id="subtotal-amt">₹0</span></div>
-        <div class="total-row"><span>Service Tax</span><span id="servicetax-amt">₹0</span></div>
+        <div class="total-row"><span>Service Tax (5%)</span><span id="servicetax-amt">₹0</span></div>
         <div class="total-row" style="font-weight:700;"><span>Total</span><span id="total-amt">₹0</span></div>
       </div>
 
