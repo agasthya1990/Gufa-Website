@@ -280,6 +280,15 @@ function enforceFirstComeLock(){
   if (test.discount > 0) setLock(fcfs);
 }
 
+// Auto-recalc (handles async hydration / race). Tries a few times quickly.
+function schedulePromoRecalc(retries = 2, delay = 180) {
+  if (retries <= 0) return;
+  setTimeout(() => {
+    enforceFirstComeLock();
+    window.dispatchEvent(new CustomEvent("cart:update"));
+    schedulePromoRecalc(retries - 1, delay);
+  }, delay);
+}
 
 
   /* ===================== Discount computation ===================== */
@@ -567,6 +576,7 @@ return { discount: Math.max(0, Math.round(d)) };
 
     // Enforce non-stackable, FCFS promo choice before totals.
     enforceFirstComeLock();
+    schedulePromoRecalc(1, 120);
 
     const n = itemCount();
     if (R.badge)   R.badge.textContent = String(n);
@@ -634,39 +644,32 @@ if (discount > 0) showPromoError("");
     // Manual Apply Coupon (no auto-fill from lock)
 if (R.promoApply && !R.promoApply._wired){
   R.promoApply._wired = true;
-  R.promoApply.addEventListener("click", ()=>{
-    const code = (R.promoInput?.value || "").trim().toUpperCase();
+R.promoApply.addEventListener("click", ()=>{
+  const code = (R.promoInput?.value || "").trim().toUpperCase();
 
-    // If input is empty, DO NOTHING (don’t clear a valid existing lock by mistake)
-    if (!code) {
-      showPromoError(""); // clear any prior error
-      return;
-    }
+  // If input is empty, DO NOTHING (don’t clear a valid existing lock by mistake)
+  if (!code) {
+    showPromoError(""); // clear any prior error
+    return;
+  }
 
-    // Try to resolve code -> coupon
-    const found = findCouponByCode(code);
-    if (!found) {
-      showPromoError("Invalid or Ineligible Coupon Code");
-      return;
-    }
+  // Must be a known code; only unknown codes are rejected immediately
+  const found = findCouponByCode(code);
+  if (!found) {
+    showPromoError("Invalid or Ineligible Coupon Code");
+    return;
+  }
 
-    // Build a full lock from coupon meta + eligibility
-    const fullLock = buildLockFromMeta(found.cid, found.meta);
+  // Build a lock and accept it immediately (even if banners/eligibility aren’t hydrated yet)
+  const fullLock = buildLockFromMeta(found.cid, found.meta);
+  setLock(fullLock);
+  showPromoError("");
 
-    // Validate against current cart/mode/minOrder/eligibility
-    const { base } = splitBaseVsAddons();
-    const probe = computeDiscount(fullLock, base);
-    if (!probe.discount || probe.discount <= 0) {
-      showPromoError("Invalid or Ineligible Coupon Code");
-      return;
-    }
-
-    // It’s valid: set as the active lock and clear any error
-    setLock(fullLock);
-    showPromoError("");
-    enforceFirstComeLock(); // ensure non-stackable discipline & immediate deduction
-    window.dispatchEvent(new CustomEvent("cart:update"));
-  }, false);
+  // Immediate re-eval + quick retries so deduction appears once data is ready
+  enforceFirstComeLock();
+  window.dispatchEvent(new CustomEvent("cart:update"));
+  schedulePromoRecalc(2, 150);
+}, false);
  }
 }
 
