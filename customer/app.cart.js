@@ -8,13 +8,13 @@
   const taxOn = (amount) => Math.max(0, (Number(amount) || 0) * SERVICE_TAX_RATE);
 
   // ---- mode + coupon helpers ----
-  function activeMode() {
-    const api = window?.GUFA?.serviceMode?.get;
-    if (typeof api === "function") return api() === "dining" ? "dining" : "delivery";
-    const raw = localStorage.getItem("gufa:serviceMode") ?? localStorage.getItem("gufa_mode") ?? "delivery";
-    const m = String(raw).toLowerCase();
-    return m === "dining" ? "dining" : "delivery";
-  }
+function activeMode() {
+  const api = window?.GUFA?.serviceMode?.get;
+  if (typeof api === "function") return api() === "dining" ? "dining" : "delivery";
+  const raw = localStorage.getItem("gufa_mode") ?? localStorage.getItem("gufa:serviceMode") ?? "delivery";
+  const m = String(raw).toLowerCase();
+  return m === "dining" ? "dining" : "delivery";
+}
 
   function couponValidForCurrentMode(locked) {
     try {
@@ -137,6 +137,73 @@ function computeDiscount(lock, baseSubtotal, mode) {
   return { discount:0, reason:null };
 }
 
+  // INSERT ↓↓↓
+  async function enrichLockedCoupon(lock) {
+    try {
+      if (!lock || (lock.type && (lock.value ?? null) !== null)) return lock;
+
+      // Prefer couponId in scope; fallback to lock.code if it looks like an id
+      const cid = String(
+        lock?.scope?.couponId ||
+        (/^[0-9a-f-]{20,}$/i.test(String(lock?.code||"")) ? lock.code : "")
+      );
+
+      // 1) Try COUPONS map (fast path from menu hydrate)
+      if (cid && (window.COUPONS instanceof Map)) {
+        const meta = window.COUPONS.get(cid);
+        if (meta) {
+          const next = {
+            ...lock,
+            code: String(meta.code || lock.code || cid).toUpperCase(),
+            type: meta.type ?? lock.type ?? "",
+            value: Number(meta.value ?? lock.value ?? 0),
+            minOrder: Number(meta.minOrder ?? lock.minOrder ?? 0),
+            valid: (function(){
+              const t = meta.targets || {};
+              return {
+                delivery: ("delivery" in t) ? !!t.delivery : true,
+                dining:   ("dining"   in t) ? !!t.dining   : true
+              };
+            })()
+          };
+          if (JSON.stringify(next) !== JSON.stringify(lock)) {
+            try { localStorage.setItem("gufa_coupon", JSON.stringify(next)); } catch {}
+            window.dispatchEvent(new CustomEvent("cart:update"));
+            return next;
+          }
+          return lock;
+        }
+      }
+
+      // 2) Fallback: Firestore one-shot (only if db present)
+      if (cid && window.db) {
+        const { getDoc, doc } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js");
+        const snap = await getDoc(doc(window.db, "promotions", cid));
+        if (snap.exists()) {
+          const d = snap.data() || {};
+          const next = {
+            ...lock,
+            code: String(d.code || lock.code || cid).toUpperCase(),
+            type: d.type ?? lock.type ?? "",
+            value: Number(d.value ?? lock.value ?? 0),
+            minOrder: Number(d.minOrder ?? lock.minOrder ?? 0),
+            valid: (function(){
+              const t = d.targets || {};
+              return {
+                delivery: ("delivery" in t) ? !!t.delivery : true,
+                dining:   ("dining"   in t) ? !!t.dining   : true
+              };
+            })()
+          };
+          try { localStorage.setItem("gufa_coupon", JSON.stringify(next)); } catch {}
+          window.dispatchEvent(new CustomEvent("cart:update"));
+          return next;
+        }
+      }
+    } catch {}
+    return lock;
+  }
+  // INSERT ↑↑↑
 
 
 
@@ -345,7 +412,10 @@ function computeDiscount(lock, baseSubtotal, mode) {
 
     // --- PROMOTION & TAX (Base-only discount; add-ons excluded) ---
     const { baseSubtotal, addonSubtotal } = computeSplits();
-    const locked = getLockedCoupon();
+    let locked = getLockedCoupon();
+    if (locked && (!locked.type || (locked.value ?? null) === null)) { 
+   enrichLockedCoupon(locked); 
+    }
     const modeNow = activeMode();
     const { discount, reason } = computeDiscount(locked, baseSubtotal, modeNow);
     if (reason === "scope") console.debug("[promo] scope mismatch:", { eligible: (locked?.scope?.eligibleItemIds ?? locked?.scope?.eligibleIds ?? locked?.eligibleItemIds ?? locked?.eligibleIds), cartKeys: Object.keys(window.Cart?.get?.()||{}) });
