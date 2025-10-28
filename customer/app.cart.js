@@ -113,19 +113,19 @@ async function hydrateCouponsForLockedOnce() {
 }
 
   // hydrate BANNERS for the locked banner only (checkout-local)
-  
+
 async function hydrateBannerItemsForLockedOnce() {
   try {
     if (!(window.BANNERS instanceof Map)) window.BANNERS = new Map();
 
     const locked = JSON.parse(localStorage.getItem("gufa_coupon") || "null");
     const bid = String(locked?.scope?.bannerId || "").trim();
-    if (!bid) return;
+    const cid = String(locked?.scope?.couponId || "").trim();
+    if (!bid && !cid) return;
 
     // if already hydrated with a non-empty list, skip
-    const already = window.BANNERS.get(bid);
+    const already = window.BANNERS.get(bid || `coupon:${cid}`);
     if (Array.isArray(already) && already.length) return;
-    if (already && already.size && Array.from(already).length) return;
 
     // wait briefly for Firestore init
     async function waitForDb(ms=2000) {
@@ -138,25 +138,45 @@ async function hydrateBannerItemsForLockedOnce() {
     const ready = await waitForDb();
     if (!ready) return;
 
-    // fetch banner doc by id; be tolerant to field naming
-    const { getDoc, doc } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js");
-    const snap = await getDoc(doc(window.db, "banners", bid));
-    if (!snap?.exists()) return;
+    const mod = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js");
+    const { getDoc, doc, getDocs, query, where, collection, limit } = mod;
 
-    const d = snap.data() || {};
-    const list =
-      Array.isArray(d.itemIds)      ? d.itemIds :
-      Array.isArray(d.items)        ? d.items :
-      Array.isArray(d.menuItemIds)  ? d.menuItemIds :
-      [];
+    let list = [];
 
-    // store as simple lowercased array for easy matching
-    const lc = list.map(x => String(x).toLowerCase().trim());
-    window.BANNERS.set(bid, lc);
+    // A) Try banners/{bid}.itemIds (or items/menuItemIds) if we have a banner id
+    if (bid) {
+      const snap = await getDoc(doc(window.db, "banners", bid));
+      if (snap?.exists()) {
+        const d = snap.data() || {};
+        const ids =
+          Array.isArray(d.itemIds)     ? d.itemIds :
+          Array.isArray(d.items)       ? d.items :
+          Array.isArray(d.menuItemIds) ? d.menuItemIds :
+          [];
+        list = ids.map(x => String(x).toLowerCase().trim());
+      }
+    }
 
-    // if lock had no eligible list, you may optionally enrich it for transparency
+    // B) If list still empty, derive from items linked to the couponId (menu does this)
+    if ((!list || !list.length) && cid) {
+      const q = query(collection(window.db, "items"), where("promotions", "array-contains", cid), limit(300));
+      const qs = await getDocs(q);
+      const ids = [];
+      qs?.forEach(docSnap => {
+        const v = docSnap.data() || {};
+        const id = String(v.id || docSnap.id);
+        if (id) ids.push(id);
+      });
+      list = ids.map(x => String(x).toLowerCase().trim());
+    }
+
+    // Persist into BANNERS map
+    const key = bid || `coupon:${cid}`;
+    window.BANNERS.set(key, list);
+
+    // If lock had no eligible list, enrich it for transparency (optional)
     if (!Array.isArray(locked?.scope?.eligibleItemIds) || !locked.scope.eligibleItemIds.length) {
-      const next = { ...(locked||{}) , scope: { ...(locked?.scope||{}), eligibleItemIds: list } };
+      const next = { ...(locked||{}), scope: { ...(locked?.scope||{}), eligibleItemIds: list } };
       try { localStorage.setItem("gufa_coupon", JSON.stringify(next)); } catch {}
     }
 
