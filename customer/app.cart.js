@@ -58,18 +58,64 @@
   const setLock = (obj) => { try { obj ? localStorage.setItem(COUPON_KEY, JSON.stringify(obj)) : localStorage.removeItem(COUPON_KEY); } catch {} };
 
   function displayCode(locked){
-    try {
-      if (!locked) return "";
-      const raw = String(locked.code || "").trim();
-      if (raw && !isUUID(raw)) return raw.toUpperCase();
-      const cid = String(locked?.scope?.couponId || "").trim();
-      if (cid && (window.COUPONS instanceof Map)) {
-        const meta = window.COUPONS.get(cid);
-        if (meta?.code) return String(meta.code).toUpperCase();
-      }
-      return "";
-    } catch { return ""; }
+  try {
+    if (!locked) return "";
+    const raw = String(locked.code || "").trim();
+    if (raw && !isUUID(raw)) return raw.toUpperCase();
+    const cid = String(locked?.scope?.couponId || "").trim();
+    if (cid && (window.COUPONS instanceof Map)) {
+      const meta = window.COUPONS.get(cid);
+      if (meta?.code) return String(meta.code).toUpperCase();
+    }
+    return "";
+  } catch { return ""; }
+}
+
+// --- Helpers: resolve code -> coupon, build lock, and error host ---
+function findCouponByCode(codeUpp) {
+  if (!(window.COUPONS instanceof Map)) return null;
+  for (const [cid, meta] of window.COUPONS) {
+    const mcode = (meta?.code || "").toString().trim().toUpperCase();
+    if (mcode && mcode === codeUpp) return { cid: String(cid), meta };
   }
+  return null;
+}
+
+function buildLockFromMeta(cid, meta) {
+  // Eligible set from banners by coupon
+  const elig = eligibleIdsFromBanners({ couponId: cid });
+  return {
+    scope: { couponId: cid, eligibleItemIds: Array.from(elig) },
+    type:  String(meta?.type || "flat").toLowerCase(),
+    value: Number(meta?.value || 0),
+    minOrder: Number(meta?.minOrder || 0),
+    valid: meta?.targets ? { delivery: !!meta.targets.delivery, dining: !!meta.targets.dining } : undefined,
+    code: (meta?.code ? String(meta.code).toUpperCase() : undefined),
+  };
+}
+
+// Create/find a small error line under the input (single-line, red, compact)
+function ensurePromoErrorHost() {
+  if (!R || !R.promoInput) return null;
+  const parent = R.promoInput.parentElement || R.promoInput.closest(".inv-list") || R.promoInput.closest("form") || R.promoInput;
+  let node = parent.querySelector("#promo-error");
+  if (!node) {
+    node = document.createElement("div");
+    node.id = "promo-error";
+    node.style.color = "#B00020";
+    node.style.fontSize = "12px";
+    node.style.marginTop = "6px";
+    node.style.lineHeight = "1.2";
+    node.style.minHeight = "14px";
+    parent.appendChild(node);
+  }
+  return node;
+}
+
+function showPromoError(msg) {
+  const host = ensurePromoErrorHost();
+  if (host) host.textContent = msg || "";
+}
 
   /* ===================== Promotions Discipline ===================== */
   // Hooks for future admin fields:
@@ -221,6 +267,7 @@ function enforceFirstComeLock(){
   const test = computeDiscount(fcfs, base);
   if (test.discount > 0) setLock(fcfs);
 }
+
 
 
   /* ===================== Discount computation ===================== */
@@ -497,6 +544,8 @@ return { discount: Math.max(0, Math.round(d)) };
     }
   }
 
+
+  
   /* ===================== Render ===================== */
   function render(){
     if (!R.items && !resolveLayout()) return;
@@ -549,17 +598,20 @@ return { discount: Math.max(0, Math.round(d)) };
     if (R.total)      R.total.textContent      = INR(grand);
 
     // Promo totals row (left label + right amount)
-    const codeText = locked ? displayCode(locked) : "";
+const codeText = locked ? displayCode(locked) : "";
 if (R.promoLbl) {
   if (discount > 0) {
-    const tag = codeText || "APPLIED";        // show a neutral tag if meta lacks a printable code
+    const tag = codeText || "APPLIED";
     R.promoLbl.textContent = `Promotion (${tag}):`;
   } else {
     R.promoLbl.textContent = `Promotion (): none`;
   }
 }
 if (R.promoAmt) {
-  R.promoAmt.textContent = `− ${INR(discount)}`; // always mirror the real deduction
+  R.promoAmt.textContent = `− ${INR(discount)}`;
+}
+// Clear any lingering error whenever a valid non-zero discount is active
+if (discount > 0) showPromoError("");
 }
 
 
@@ -567,22 +619,42 @@ if (R.promoAmt) {
     ensureDeliveryForm();
 
     // Manual Apply Coupon (no auto-fill from lock)
-    if (R.promoApply && !R.promoApply._wired){
-      R.promoApply._wired = true;
-      R.promoApply.addEventListener("click", ()=>{
-        const code = (R.promoInput?.value || "").trim().toUpperCase();
-        if (!code) {
-          setLock(null);
-        } else {
-          // User-entered code overrides FCFS, keep any scope (e.g., eligibleItemIds) if present
-          const prev = getLock() || {};
-          const scope = prev.scope || {};
-          setLock({ ...prev, code, scope });
-        }
-        window.dispatchEvent(new CustomEvent("cart:update"));
-      }, false);
+if (R.promoApply && !R.promoApply._wired){
+  R.promoApply._wired = true;
+  R.promoApply.addEventListener("click", ()=>{
+    const code = (R.promoInput?.value || "").trim().toUpperCase();
+
+    // If input is empty, DO NOTHING (don’t clear a valid existing lock by mistake)
+    if (!code) {
+      showPromoError(""); // clear any prior error
+      return;
     }
-  }
+
+    // Try to resolve code -> coupon
+    const found = findCouponByCode(code);
+    if (!found) {
+      showPromoError("Invalid or Ineligible Coupon Code");
+      return;
+    }
+
+    // Build a full lock from coupon meta + eligibility
+    const fullLock = buildLockFromMeta(found.cid, found.meta);
+
+    // Validate against current cart/mode/minOrder/eligibility
+    const { base } = splitBaseVsAddons();
+    const probe = computeDiscount(fullLock, base);
+    if (!probe.discount || probe.discount <= 0) {
+      showPromoError("Invalid or Ineligible Coupon Code");
+      return;
+    }
+
+    // It’s valid: set as the active lock and clear any error
+    setLock(fullLock);
+    showPromoError("");
+    window.dispatchEvent(new CustomEvent("cart:update"));
+  }, false);
+ }
+}
 
   /* ===================== Boot & subscriptions ===================== */
   function boot(){
