@@ -84,7 +84,52 @@
   }
 })();
 
+/* ========== ensure coupons exist on Checkout even if Menu never ran ========== */
+async function ensureCouponsReady() {
+  // 1) Already hydrated? done.
+  if (window.COUPONS instanceof Map && window.COUPONS.size > 0) return true;
 
+  // 2) Try localStorage snapshot (a second time in case another tab just wrote it)
+  try {
+    if (!(window.COUPONS instanceof Map)) window.COUPONS = new Map();
+    if (window.COUPONS.size === 0) {
+      const dump = JSON.parse(localStorage.getItem("gufa:COUPONS") || "[]");
+      if (Array.isArray(dump) && dump.length) {
+        dump.forEach(([cid, meta]) => window.COUPONS.set(String(cid), meta || {}));
+        window.dispatchEvent(new CustomEvent("cart:update"));
+        return true;
+      }
+    }
+  } catch {}
+
+  // 3) Last resort: load /promotions.js (or your coupons bundle) dynamically on Checkout
+  //    This makes Checkout self-sufficient (no prior Menu visit required).
+  try {
+    // prevent duplicate loads
+    if (document.getElementById("coupons-loader")) return false;
+    await new Promise((resolve, reject) => {
+      const s = document.createElement("script");
+      s.id = "coupons-loader";
+      s.async = true;
+      s.src = "/promotions.js";   // <-- adjust if your build paths differ
+      s.onload = () => {
+        try {
+          // If promotions.js populated window.COUPONS (Map or plain object), normalize to Map
+          const src = (window.COUPONS instanceof Map) ? window.COUPONS : (window.COUPONS || {});
+          const map = (src instanceof Map) ? src : new Map(Object.entries(src || {}));
+          window.COUPONS = map;
+        } catch {}
+        window.dispatchEvent(new CustomEvent("cart:update"));
+        resolve();
+      };
+      s.onerror = reject;
+      document.head.appendChild(s);
+    });
+    return (window.COUPONS instanceof Map) && window.COUPONS.size > 0;
+  } catch {
+    return false;
+  }
+}
 
   /* ===================== Coupon Lock ===================== */
   const getLock = () => { try { return JSON.parse(localStorage.getItem(COUPON_KEY) || "null"); } catch { return null; } };
@@ -112,6 +157,25 @@ function findCouponByCode(codeUpp) {
   for (const [cid, meta] of window.COUPONS) {
     const mcode = (meta?.code || "").toString().trim().toUpperCase();
     if (mcode && mcode === codeUpp) return { cid: String(cid), meta };
+  }
+  return null;
+}
+
+// Accept either Coupon ID or CODE (admin may read out the ID on a call)
+function findCouponByIdOrCode(input) {
+  const needle = String(input || "").trim().toUpperCase();
+  if (!needle || !(window.COUPONS instanceof Map)) return null;
+
+  // 1) direct ID match (key)
+  if (window.COUPONS.has(needle) || window.COUPONS.has(needle.toLowerCase())) {
+    const meta = window.COUPONS.get(needle) || window.COUPONS.get(needle.toLowerCase());
+    return { cid: needle, meta };
+  }
+
+  // 2) meta.code match
+  for (const [cid, meta] of window.COUPONS) {
+    const mcode = (meta?.code || "").toString().trim().toUpperCase();
+    if (mcode && mcode === needle) return { cid: String(cid), meta };
   }
   return null;
 }
@@ -666,42 +730,43 @@ if (discount > 0) showPromoError("");
   // Delivery address section (mode = delivery only)
     ensureDeliveryForm();
 
-    // Manual Apply Coupon (no auto-fill from lock)
+// Manual Apply Coupon (no auto-fill from lock)
 if (R.promoApply && !R.promoApply._wired){
   R.promoApply._wired = true;
-R.promoApply.addEventListener("click", ()=>{
-  const code = (R.promoInput?.value || "").trim().toUpperCase();
+  R.promoApply.addEventListener("click", async ()=>{
+    const raw = (R.promoInput?.value || "").trim();
+    const inp = raw.toUpperCase();
 
-  // If input is empty, DO NOTHING (don’t clear a valid existing lock by mistake)
-  if (!code) {
-    showPromoError(""); // clear any prior error
-    return;
-  }
+    // 0) empty input: do nothing (keep a good lock intact)
+    if (!inp) { showPromoError(""); return; }
 
-  // Try to resolve code -> coupon
-  const found = findCouponByCode(code);
-  if (!found) {
-    showPromoError("Invalid or Ineligible Coupon Code");
-    return;
-  }
+    // 1) Ensure we actually have coupons available on Checkout
+    const ok = await ensureCouponsReady();
 
-  // Build a full lock from coupon meta + eligibility
-  const fullLock = buildLockFromMeta(found.cid, found.meta);
+    // 2) Resolve by ID or CODE (admin might give the ID)
+    const found = findCouponByIdOrCode(inp) || findCouponByCode(inp);
+    if (!found) {
+      showPromoError(ok ? "Invalid or Ineligible Coupon Code" : "Coupon data not available");
+      return;
+    }
 
-  // Validate against current cart/mode/minOrder/eligibility
-  const { base } = splitBaseVsAddons();
-  const probe = computeDiscount(fullLock, base);
-  if (!probe.discount || probe.discount <= 0) {
-    showPromoError("Invalid or Ineligible Coupon Code");
-    return;
-  }
+    // 3) Build the lock (your function already falls back to current cart items if no banner/explicit list)
+    const fullLock = buildLockFromMeta(found.cid, found.meta);
 
-  // It’s valid: set as the active lock and clear any error
-  setLock(fullLock);
-  showPromoError("");
-  enforceFirstComeLock(); // ensure non-stackable discipline & immediate deduction
-  window.dispatchEvent(new CustomEvent("cart:update"));
-}, false);
+    // 4) Validate against *current* cart: allow if it yields > 0 now
+    const { base } = splitBaseVsAddons();
+    const probe = computeDiscount(fullLock, base);
+    if (!probe.discount || probe.discount <= 0) {
+      showPromoError("Invalid or Ineligible Coupon Code");
+      return;
+    }
+
+    // 5) Apply instantly (non-stackable FCFS is enforced at top of render)
+    setLock(fullLock);
+    showPromoError("");
+    enforceFirstComeLock();
+    window.dispatchEvent(new CustomEvent("cart:update"));
+  }, false);
  }
 }
 
