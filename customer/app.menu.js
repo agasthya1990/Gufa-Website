@@ -132,6 +132,32 @@ function updateAllMiniCartBadges(){
 if (!(window.COUPONS instanceof Map)) window.COUPONS = new Map();
 if (!Array.isArray(window.BANNERS)) window.BANNERS = [];
 
+// —— Persist a lightweight coupons snapshot for checkout hydration ——//
+
+(function persistCouponsSnapshot(){
+  try {
+    // Store only when we actually have some coupons
+    if (window.COUPONS instanceof Map && window.COUPONS.size > 0) {
+      const dump = Array.from(window.COUPONS.entries());
+      localStorage.setItem("gufa:COUPONS", JSON.stringify(dump));
+    }
+  } catch {}
+})();
+
+// Also refresh the snapshot whenever a banner-driven lock happens
+// (this path guarantees coupons meta existed during banner view)
+const _origLock = window.lockCouponForActiveBannerIfNeeded;
+window.lockCouponForActiveBannerIfNeeded = function(...args){
+  try {
+    if (window.COUPONS instanceof Map && window.COUPONS.size > 0) {
+      const dump = Array.from(window.COUPONS.entries());
+      localStorage.setItem("gufa:COUPONS", JSON.stringify(dump));
+    }
+  } catch {}
+  return _origLock?.apply(this, args);
+};
+
+
 
 // ===== Global Sync =====
 let lastCartUpdate = 0;
