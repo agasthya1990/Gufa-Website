@@ -152,90 +152,17 @@
     }
   }
 
-  
-/* ============================================================
- 🧩 Patch A.2 — Hydrate COUPONS for Checkout (Apply Coupon fix)
- ============================================================ */
-(function hydrateCouponsFromLocalStorage() {
-  try {
-    if (!(window.COUPONS instanceof Map)) window.COUPONS = new Map();
-
-    // Only rehydrate if currently empty
-    if (window.COUPONS.size === 0) {
-      const dump = JSON.parse(localStorage.getItem("gufa:COUPONS") || "[]");
-      if (Array.isArray(dump)) {
-        let added = 0;
-        dump.forEach(([cid, meta]) => {
-          if (!cid) return;
-          if (!window.COUPONS.has(String(cid))) {
-            window.COUPONS.set(String(cid), meta || {});
-            added++;
-          }
-        });
-        if (added > 0) {
-          // Tell the page “coupons are ready” — no timers, just one immediate re-render
-          window.dispatchEvent(new CustomEvent("cart:update"));
-        }
-        // console.info(`[hydrateCouponsFromLocalStorage] rehydrated: ${added}`);
-      }
-    }
-  } catch (err) {
-    console.warn("[hydrateCouponsFromLocalStorage] failed:", err);
-  }
-})();
-
-/* ========== ensure coupons exist on Checkout even if Menu never ran ========== */
+/* ========== ensure coupons exist on Checkout (Firestore-only) ========== */
 async function ensureCouponsReady() {
-  // 1) Already hydrated? done.
   if (window.COUPONS instanceof Map && window.COUPONS.size > 0) return true;
-
-  // 2) Try localStorage snapshot (a second time in case another tab just wrote it)
   try {
-    if (!(window.COUPONS instanceof Map)) window.COUPONS = new Map();
-    if (window.COUPONS.size === 0) {
-      const dump = JSON.parse(localStorage.getItem("gufa:COUPONS") || "[]");
-      if (Array.isArray(dump) && dump.length) {
-        dump.forEach(([cid, meta]) => window.COUPONS.set(String(cid), meta || {}));
-        window.dispatchEvent(new CustomEvent("cart:update"));
-        return true;
-      }
-    }
-  } catch {}
-
-  // 3) Last resort: load /promotions.js (or your coupons bundle) dynamically on Checkout
-  //    This makes Checkout self-sufficient (no prior Menu visit required).
-  try {
-    // prevent duplicate loads
-    if (document.getElementById("coupons-loader")) return false;
-    await new Promise((resolve, reject) => {
-      const s = document.createElement("script");
-      s.id = "coupons-loader";
-      s.async = true;
-      s.src = "/admin/promotions.js";   // <-- adjust if your build paths differ
-            s.onload = () => {
-        try {
-          // Normalize to Map
-          const src = (window.COUPONS instanceof Map) ? window.COUPONS : (window.COUPONS || {});
-          const map = (src instanceof Map) ? src : new Map(Object.entries(src || {}));
-          window.COUPONS = map;
-
-          // Persist lightweight snapshot for future tabs/pages
-          try {
-            const dump = Array.from(window.COUPONS.entries());
-            if (dump.length) localStorage.setItem("gufa:COUPONS", JSON.stringify(dump));
-          } catch {}
-        } catch {}
-        window.dispatchEvent(new CustomEvent("cart:update"));
-        resolve();
-      };
-      s.onerror = reject;
-      document.head.appendChild(s);
-    });
-    return (window.COUPONS instanceof Map) && window.COUPONS.size > 0;
+    const ok = await hydrateCouponsFromFirestoreOnce();
+    return !!ok;
   } catch {
     return false;
   }
 }
+
 
   /* ===================== Coupon Lock ===================== */
   const getLock = () => { try { return JSON.parse(localStorage.getItem(COUPON_KEY) || "null"); } catch { return null; } };
@@ -462,8 +389,12 @@ function findFirstApplicableCouponForCart(){
         any = true; break;
       }
     }
-    if (!any) setLock(null);
+    if (!any) {
+  setLock(null);
+  // trigger instant recompute so FCFS can pick the next coupon in the same frame
+  window.dispatchEvent(new CustomEvent("cart:update"));
   }
+} <--- //probably an extra syntax
 
 function enforceFirstComeLock(){
   // If there’s a current lock but it’s no longer applicable, clear it first.
@@ -850,6 +781,9 @@ if (R.promoApply && !R.promoApply._wired){
     // 1) Ensure we actually have coupons available on Checkout
     const ok = await ensureCouponsReady();
 
+        // Ensure hydration is truly complete before resolving (guards early clicks)
+    await ensureCouponsReady();
+
     // 2) Resolve by ID or CODE (admin might give the ID)
     const found = findCouponByIdOrCode(inp) || findCouponByCode(inp);
     if (!found) {
@@ -881,21 +815,18 @@ if (R.promoApply && !R.promoApply._wired){
 async function boot(){
   resolveLayout();
 
-  // 1) Try inline JSON first (if present in HTML)
+  // 1) Inline JSON first (if present in HTML)
   const inlined = hydrateCouponsFromInlineJson();
 
-  // 2) If still empty, hydrate from Firestore (public read of /promotions)
-  let hydrated = false;
+  // 2) If still empty, hydrate from Firestore
   if (!inlined) {
-    try { hydrated = await hydrateCouponsFromFirestoreOnce(); } catch {}
-  }
-
-  // 3) If still empty, fall back to snapshot and the legacy script loader
-  if (!inlined && !hydrated) {
     try { await ensureCouponsReady(); } catch {}
   }
 
-  // 4) First paint after coupons are ready → Apply + FCFS same-frame
+  // 3) Final guard to ensure coupons exist before first paint
+  await ensureCouponsReady();
+
+  // 4) First paint — now Apply & FCFS are deterministic
   render();
 
     // Normal reactive paints
