@@ -150,39 +150,42 @@
   <script src="./cart.store.js"></script>
   <script src="/admin/firease.js"></script>
   <script>
-    (function () {
-      // If your /admin/firease.js attaches firebase compat:
-      // window.firebase.firestore() returns the db.
-      // If it exposes a global db already, keep it.
-      try {
-        if (!window.db) {
-          if (window.firebase && window.firebase.firestore) {
-            window.db = window.firebase.firestore();
-          }
-        }
-      } catch (e) {}
-    })();
-    
-    window.CART_UI = window.CART_UI || {};
-    window.CART_UI.list = Object.assign({
-      items:      "#cart-items",
-      empty:      "#cart-empty",
-      count:      "#cart-count-text",
-      subtotal:   "#inv-subtotal",
-      servicetax: "#inv-servicetax",
-      total:      "#inv-total",
-      proceed:    "#btn-proceed",
-      invFood:    "#inv-food",
-      invAddons:  "#inv-addons",
-      promoLbl:   "#inv-promo-label",
-      promoAmt:   "#inv-promo-amount",
-      promoInput: "#promo-input",
-      promoApply: "#promo-apply"
-    }, window.CART_UI.list || {});
-  </script>
+  (function () {
+    try {
+      if (!window.db && window.firebase && window.firebase.firestore) {
+        window.db = window.firebase.firestore();
+      }
+    } catch (e) {}
+  })();
+
+  // IMPORTANT: keep selectors that actually exist in this HTML.
+  window.CART_UI = window.CART_UI || {};
+  window.CART_UI.list = Object.assign({
+    items:      "#cart-items",
+    empty:      "#cart-empty",
+    // no 'count' element in this layout
+    subtotal:   "#subtotal-amt",
+    servicetax: "#servicetax-amt",
+    total:      "#total-amt",
+    proceed:    "#proceed-btn",
+    invFood:    "#inv-food",
+    invAddons:  "#inv-addons",
+    promoLbl:   "#promo-label",
+    promoAmt:   "#promo-amt",
+    promoInput: "#promo-input",
+    promoApply: "#promo-apply"
+  }, window.CART_UI.list || {});
+</script>
+  
+  <script>
+  // Remove any stale local snapshot so Firestore/inline data is the single source of truth
+  try { localStorage.removeItem("gufa:COUPONS"); } catch (e) {}
+</script>
+
   <script src="./app.cart.js"></script>
 </body>
 </html>
+
 
 
 
