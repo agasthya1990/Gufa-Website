@@ -307,18 +307,9 @@ function enforceFirstComeLock(){
   if (test.discount > 0) setLock(fcfs);
 }
 
-/* ========== INSERT: quick race-guard for promo hydration ========== */
-function schedulePromoRecalc(retries = 1, delay = 120) {
-  if (retries <= 0) return;
-  setTimeout(() => {
-    enforceFirstComeLock();
-    window.dispatchEvent(new CustomEvent("cart:update"));
-    schedulePromoRecalc(retries - 1, delay);
-  }, delay);
-}
-
 /* ===================== Discount computation ===================== */
 function computeDiscount(locked, baseSubtotal){
+
 
     if (!locked) return { discount:0 };
 
@@ -601,7 +592,7 @@ return { discount: Math.max(0, Math.round(d)) };
 function render(){
   if (!R.items && !resolveLayout()) return;
   enforceFirstComeLock();
-  schedulePromoRecalc(1, 120);
+ 
 
     
     const n = itemCount();
