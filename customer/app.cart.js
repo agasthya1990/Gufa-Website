@@ -15,10 +15,11 @@
   const isUUID = (s) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s||"");
 
   /* ===================== Mode ===================== */
-  function activeMode(){
-    const raw = (localStorage.getItem("gufa:serviceMode") || localStorage.getItem("gufa_mode") || "delivery").toLowerCase();
-    return raw === "dining" ? "dining" : "delivery";
-  }
+function activeMode(){
+  const m = String(localStorage.getItem("gufa_mode") || "delivery").toLowerCase();
+  return m === "dining" ? "dining" : "delivery";
+}
+
 
   /* ===================== Cart I/O ===================== */
   function entries(){
@@ -833,9 +834,12 @@ async function boot(){
     window.addEventListener("cart:update", render, false);
     window.addEventListener("serviceMode:changed", render, false);
     window.addEventListener("storage", (e) => {
-      if (!e) return;
-      if (e.key === "gufa_cart" || e.key === COUPON_KEY || e.key === ADDR_KEY) render();
-    }, false);
+  if (!e) return;
+  if (e.key === "gufa_cart" || e.key === COUPON_KEY || e.key === ADDR_KEY || e.key === "gufa_mode") {
+    render();
+  }
+}, false);
+
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState === "visible") render();
     }, false);
