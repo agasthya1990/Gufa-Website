@@ -148,27 +148,42 @@
 
   <!-- Load order: store first, then cart UI -->
   <script src="./cart.store.js"></script>
-  <script id="promo-data" type="application/json">
-  {
-    "coupons": [
-      [
-        "COUPON-50PCT", 
-        { "code":"SAVE50", "type":"percent", "value":50, "minOrder":299, "targets":{ "delivery":true, "dining":false } }
-      ],
-      [
-        "FLAT-30", 
-        { "code":"FLAT30", "type":"flat", "value":30, "minOrder":0, "targets":{ "delivery":true, "dining":true } }
-      ]
-    ],
-    "banners": [
-      ["coupon:COUPON-50PCT", ["paneer-tikka:reg","veg-biryani:reg","veg-burger:reg"]],
-      ["coupon:FLAT-30",      ["margherita:reg","garlic-bread:reg"]]
-    ]
-  }
+  <script src="/admin/firease.js"></script>
+  <script>
+    (function () {
+      // If your /admin/firease.js attaches firebase compat:
+      // window.firebase.firestore() returns the db.
+      // If it exposes a global db already, keep it.
+      try {
+        if (!window.db) {
+          if (window.firebase && window.firebase.firestore) {
+            window.db = window.firebase.firestore();
+          }
+        }
+      } catch (e) {}
+    })();
+    
+    window.CART_UI = window.CART_UI || {};
+    window.CART_UI.list = Object.assign({
+      items:      "#cart-items",
+      empty:      "#cart-empty",
+      count:      "#cart-count-text",
+      subtotal:   "#inv-subtotal",
+      servicetax: "#inv-servicetax",
+      total:      "#inv-total",
+      proceed:    "#btn-proceed",
+      invFood:    "#inv-food",
+      invAddons:  "#inv-addons",
+      promoLbl:   "#inv-promo-label",
+      promoAmt:   "#inv-promo-amount",
+      promoInput: "#promo-input",
+      promoApply: "#promo-apply"
+    }, window.CART_UI.list || {});
   </script>
   <script src="./app.cart.js"></script>
 </body>
 </html>
+
 
 
 
