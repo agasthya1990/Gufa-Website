@@ -112,12 +112,18 @@ async function ensureCouponsReady() {
       s.id = "coupons-loader";
       s.async = true;
       s.src = "/promotions.js";   // <-- adjust if your build paths differ
-      s.onload = () => {
+            s.onload = () => {
         try {
-          // If promotions.js populated window.COUPONS (Map or plain object), normalize to Map
+          // Normalize to Map
           const src = (window.COUPONS instanceof Map) ? window.COUPONS : (window.COUPONS || {});
           const map = (src instanceof Map) ? src : new Map(Object.entries(src || {}));
           window.COUPONS = map;
+
+          // Persist lightweight snapshot for future tabs/pages
+          try {
+            const dump = Array.from(window.COUPONS.entries());
+            if (dump.length) localStorage.setItem("gufa:COUPONS", JSON.stringify(dump));
+          } catch {}
         } catch {}
         window.dispatchEvent(new CustomEvent("cart:update"));
         resolve();
@@ -771,10 +777,17 @@ if (R.promoApply && !R.promoApply._wired){
 }
 
   /* ===================== Boot & subscriptions ===================== */
-  function boot(){
+  /* ===================== Boot & subscriptions ===================== */
+  async function boot(){
     resolveLayout();
+
+    // Ensure coupons exist on Checkout even if Menu was never visited
+    try { await ensureCouponsReady(); } catch {}
+
+    // First paint after coupons are ready → Apply + FCFS work same-frame
     render();
 
+    // Normal reactive paints
     window.addEventListener("cart:update", render, false);
     window.addEventListener("serviceMode:changed", render, false);
     window.addEventListener("storage", (e) => {
@@ -787,10 +800,11 @@ if (R.promoApply && !R.promoApply._wired){
     window.addEventListener("pageshow", (ev) => { if (ev && ev.persisted) render(); }, false);
   }
   if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", boot, { once:true });
+    document.addEventListener("DOMContentLoaded", () => { boot(); }, { once:true });
   } else {
     boot();
   }
+
 
   /* ===================== Debug helper ===================== */
   window.CartDebug = window.CartDebug || {};
