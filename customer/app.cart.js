@@ -53,6 +53,31 @@
   if (!(window.COUPONS instanceof Map)) window.COUPONS = new Map();
   if (!window.BANNERS) window.BANNERS = new Map(); // Map preferred; Array tolerated
 
+  /* ============================================================
+   🧩 Patch A.2 — Hydrate COUPONS for Checkout (Apply Coupon fix)
+   ============================================================ */
+  
+(function hydrateCouponsFromLocalStorage() {
+  try {
+    if (!(window.COUPONS instanceof Map)) window.COUPONS = new Map();
+
+    // Only rehydrate if currently empty
+    if (window.COUPONS.size === 0) {
+      const dump = JSON.parse(localStorage.getItem("gufa:COUPONS") || "[]");
+      if (Array.isArray(dump)) {
+        dump.forEach(([cid, meta]) => {
+          if (!cid) return;
+          window.COUPONS.set(String(cid), meta || {});
+        });
+        console.info(`[hydrateCouponsFromLocalStorage] Rehydrated ${window.COUPONS.size} coupons`);
+      }
+    }
+  } catch (err) {
+    console.warn("[hydrateCouponsFromLocalStorage] failed:", err);
+  }
+})();
+
+
   /* ===================== Coupon Lock ===================== */
   const getLock = () => { try { return JSON.parse(localStorage.getItem(COUPON_KEY) || "null"); } catch { return null; } };
   const setLock = (obj) => { try { obj ? localStorage.setItem(COUPON_KEY, JSON.stringify(obj)) : localStorage.removeItem(COUPON_KEY); } catch {} };
@@ -71,6 +96,8 @@
   } catch { return ""; }
 }
 
+
+  
 // --- Helpers: resolve code -> coupon, build lock, and error host ---
 function findCouponByCode(codeUpp) {
   if (!(window.COUPONS instanceof Map)) return null;
@@ -562,11 +589,11 @@ return { discount: Math.max(0, Math.round(d)) };
 
   
   /* ===================== Render ===================== */
-  function render(){
-    if (!R.items && !resolveLayout()) return;
+function render(){
+  if (!R.items && !resolveLayout()) return;
+  enforceFirstComeLock();
+  schedulePromoRecalc(1, 120);
 
-    // Enforce non-stackable, FCFS promo choice before totals.
-    enforceFirstComeLock();
     
     const n = itemCount();
     if (R.badge)   R.badge.textContent = String(n);
