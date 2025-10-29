@@ -148,9 +148,28 @@
 
   <!-- Load order: store first, then cart UI -->
   <script src="./cart.store.js"></script>
+  <script id="promo-data" type="application/json">
+  {
+    "coupons": [
+      [
+        "COUPON-50PCT", 
+        { "code":"SAVE50", "type":"percent", "value":50, "minOrder":299, "targets":{ "delivery":true, "dining":false } }
+      ],
+      [
+        "FLAT-30", 
+        { "code":"FLAT30", "type":"flat", "value":30, "minOrder":0, "targets":{ "delivery":true, "dining":true } }
+      ]
+    ],
+    "banners": [
+      ["coupon:COUPON-50PCT", ["paneer-tikka:reg","veg-biryani:reg","veg-burger:reg"]],
+      ["coupon:FLAT-30",      ["margherita:reg","garlic-bread:reg"]]
+    ]
+  }
+  </script>
   <script src="./app.cart.js"></script>
 </body>
 </html>
+
 
 
 
