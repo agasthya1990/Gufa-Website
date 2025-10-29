@@ -53,7 +53,66 @@
   if (!(window.COUPONS instanceof Map)) window.COUPONS = new Map();
   if (!window.BANNERS) window.BANNERS = new Map(); // Map preferred; Array tolerated
 
-  /* ===== INSERT: hydrate from inline JSON (#promo-data) before any promo logic ===== */
+
+  /* ===================== Global Catalogs ===================== */
+  if (!(window.COUPONS instanceof Map)) window.COUPONS = new Map();
+  if (!window.BANNERS) window.BANNERS = new Map(); // Map preferred; Array tolerated
+
+  /* ===== INSERT: read-only Firestore hydrate for promotions ===== */
+  async function hydrateCouponsFromFirestoreOnce() {
+    try {
+      // Already hydrated? skip
+      if (window.COUPONS instanceof Map && window.COUPONS.size > 0) return false;
+
+      // db comes from /admin/firease.js (shimmed to window.db in checkout.html)
+      const db = window.db;
+      if (!db || !db.collection) return false;
+
+      // Fetch only active promotions; you can add 'published' or date windows later
+      const snap = await db.collection("promotions").where("active", "==", true).get();
+      if (!snap || snap.empty) return false;
+
+      if (!(window.COUPONS instanceof Map)) window.COUPONS = new Map();
+      let added = 0;
+
+      snap.forEach(doc => {
+        const d = doc.data() || {};
+        // Only coupons (ignore any non-coupon docs)
+        const kind = String(d.kind || "coupon").toLowerCase();
+        if (kind !== "coupon") return;
+
+        const targetsRaw = d.channels || d.targets || {};
+        const meta = {
+          code:      d.code ? String(d.code) : undefined,
+          type:      String(d.type || "flat").toLowerCase(), // 'percent' | 'flat'
+          value:     Number(d.value || 0),
+          minOrder:  Number(d.minOrder || 0),
+          targets:   { delivery: !!targetsRaw.delivery, dining: !!targetsRaw.dining },
+          // optional fields if you later add them
+          eligibleItemIds: Array.isArray(d.eligibleItemIds) ? d.eligibleItemIds : undefined,
+          usageLimit: d.usageLimit ?? undefined,
+          usedCount:  d.usedCount  ?? undefined
+        };
+
+        window.COUPONS.set(String(doc.id), meta);
+        added++;
+      });
+
+      if (added > 0) {
+        try {
+          localStorage.setItem("gufa:COUPONS", JSON.stringify(Array.from(window.COUPONS.entries())));
+        } catch {}
+        window.dispatchEvent(new CustomEvent("cart:update"));
+        return true;
+      }
+      return false;
+    } catch (err) {
+      console.warn("[Firestore promo hydrate] failed:", err);
+      return false;
+    }
+  }
+    
+  /* ===== Hydrate from inline JSON (#promo-data) before any promo logic ===== */
   (function hydrateCouponsFromInlineJson(){
     try {
       // Skip if coupons already exist
@@ -820,15 +879,25 @@ if (R.promoApply && !R.promoApply._wired){
 }
 
   /* ===================== Boot & subscriptions ===================== */
-  /* ===================== Boot & subscriptions ===================== */
-  async function boot(){
-    resolveLayout();
+async function boot(){
+  resolveLayout();
 
-    // Ensure coupons exist on Checkout even if Menu was never visited
+  // 1) Try inline JSON first (if present in HTML)
+  const inlined = hydrateCouponsFromInlineJson();
+
+  // 2) If still empty, hydrate from Firestore (public read of /promotions)
+  let hydrated = false;
+  if (!inlined) {
+    try { hydrated = await hydrateCouponsFromFirestoreOnce(); } catch {}
+  }
+
+  // 3) If still empty, fall back to snapshot and the legacy script loader
+  if (!inlined && !hydrated) {
     try { await ensureCouponsReady(); } catch {}
+  }
 
-    // First paint after coupons are ready → Apply + FCFS work same-frame
-    render();
+  // 4) First paint after coupons are ready → Apply + FCFS same-frame
+  render();
 
     // Normal reactive paints
     window.addEventListener("cart:update", render, false);
