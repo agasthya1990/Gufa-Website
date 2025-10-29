@@ -53,10 +53,9 @@
   if (!(window.COUPONS instanceof Map)) window.COUPONS = new Map();
   if (!window.BANNERS) window.BANNERS = new Map(); // Map preferred; Array tolerated
 
-  /* ============================================================
-   🧩 Patch A.2 — Hydrate COUPONS for Checkout (Apply Coupon fix)
-   ============================================================ */
-  
+/* ============================================================
+ 🧩 Patch A.2 — Hydrate COUPONS for Checkout (Apply Coupon fix)
+ ============================================================ */
 (function hydrateCouponsFromLocalStorage() {
   try {
     if (!(window.COUPONS instanceof Map)) window.COUPONS = new Map();
@@ -65,17 +64,26 @@
     if (window.COUPONS.size === 0) {
       const dump = JSON.parse(localStorage.getItem("gufa:COUPONS") || "[]");
       if (Array.isArray(dump)) {
+        let added = 0;
         dump.forEach(([cid, meta]) => {
           if (!cid) return;
-          window.COUPONS.set(String(cid), meta || {});
+          if (!window.COUPONS.has(String(cid))) {
+            window.COUPONS.set(String(cid), meta || {});
+            added++;
+          }
         });
-        console.info(`[hydrateCouponsFromLocalStorage] Rehydrated ${window.COUPONS.size} coupons`);
+        if (added > 0) {
+          // Tell the page “coupons are ready” — no timers, just one immediate re-render
+          window.dispatchEvent(new CustomEvent("cart:update"));
+        }
+        // console.info(`[hydrateCouponsFromLocalStorage] rehydrated: ${added}`);
       }
     }
   } catch (err) {
     console.warn("[hydrateCouponsFromLocalStorage] failed:", err);
   }
 })();
+
 
 
   /* ===================== Coupon Lock ===================== */
