@@ -394,7 +394,7 @@ function findFirstApplicableCouponForCart(){
   // trigger instant recompute so FCFS can pick the next coupon in the same frame
   window.dispatchEvent(new CustomEvent("cart:update"));
   }
-} <--- //probably an extra syntax
+
 
 function enforceFirstComeLock(){
   // If there’s a current lock but it’s no longer applicable, clear it first.
