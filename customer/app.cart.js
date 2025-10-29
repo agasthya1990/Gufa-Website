@@ -53,6 +53,48 @@
   if (!(window.COUPONS instanceof Map)) window.COUPONS = new Map();
   if (!window.BANNERS) window.BANNERS = new Map(); // Map preferred; Array tolerated
 
+  /* ===== INSERT: hydrate from inline JSON (#promo-data) before any promo logic ===== */
+  (function hydrateCouponsFromInlineJson(){
+    try {
+      // Skip if coupons already exist
+      if (window.COUPONS instanceof Map && window.COUPONS.size > 0) return;
+
+      const tag = document.getElementById("promo-data");
+      if (!tag) return; // nothing embedded on this page
+
+      const data = JSON.parse(tag.textContent || tag.innerText || "null");
+      if (!data || typeof data !== "object") return;
+
+      // Normalize coupons
+      if (!(window.COUPONS instanceof Map)) window.COUPONS = new Map();
+      if (Array.isArray(data.coupons)) {
+        for (const [cid, meta] of data.coupons) {
+          if (!cid) continue;
+          window.COUPONS.set(String(cid), meta || {});
+        }
+      }
+
+      // Normalize banners to Map
+      if (!(window.BANNERS instanceof Map)) window.BANNERS = new Map();
+      if (Array.isArray(data.banners)) {
+        for (const [key, arr] of data.banners) {
+          window.BANNERS.set(String(key), Array.isArray(arr) ? arr : []);
+        }
+      }
+
+      // Persist a lightweight snapshot for future tabs/pages
+      try {
+        const dump = Array.from(window.COUPONS.entries());
+        if (dump.length) localStorage.setItem("gufa:COUPONS", JSON.stringify(dump));
+      } catch {}
+
+      // One immediate repaint (no timers)
+      window.dispatchEvent(new CustomEvent("cart:update"));
+    } catch (e) {
+      console.warn("[inline promo hydrate] failed:", e);
+    }
+  })();
+  
 /* ============================================================
  🧩 Patch A.2 — Hydrate COUPONS for Checkout (Apply Coupon fix)
  ============================================================ */
@@ -111,7 +153,7 @@ async function ensureCouponsReady() {
       const s = document.createElement("script");
       s.id = "coupons-loader";
       s.async = true;
-      s.src = "/promotions.js";   // <-- adjust if your build paths differ
+      s.src = "/admin/promotions.js";   // <-- adjust if your build paths differ
             s.onload = () => {
         try {
           // Normalize to Map
