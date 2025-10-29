@@ -49,14 +49,10 @@
     return { base, add };
   }
 
-  /* ===================== Global Catalogs ===================== */
+    /* ===================== Global Catalogs ===================== */
   if (!(window.COUPONS instanceof Map)) window.COUPONS = new Map();
   if (!window.BANNERS) window.BANNERS = new Map(); // Map preferred; Array tolerated
 
-
-  /* ===================== Global Catalogs ===================== */
-  if (!(window.COUPONS instanceof Map)) window.COUPONS = new Map();
-  if (!window.BANNERS) window.BANNERS = new Map(); // Map preferred; Array tolerated
 
   /* ===== INSERT: read-only Firestore hydrate for promotions ===== */
   async function hydrateCouponsFromFirestoreOnce() {
@@ -113,16 +109,16 @@
   }
     
   /* ===== Hydrate from inline JSON (#promo-data) before any promo logic ===== */
-  (function hydrateCouponsFromInlineJson(){
+  function hydrateCouponsFromInlineJson(){
     try {
       // Skip if coupons already exist
-      if (window.COUPONS instanceof Map && window.COUPONS.size > 0) return;
+      if (window.COUPONS instanceof Map && window.COUPONS.size > 0) return false;
 
       const tag = document.getElementById("promo-data");
-      if (!tag) return; // nothing embedded on this page
+      if (!tag) return false; // nothing embedded on this page
 
       const data = JSON.parse(tag.textContent || tag.innerText || "null");
-      if (!data || typeof data !== "object") return;
+      if (!data || typeof data !== "object") return false;
 
       // Normalize coupons
       if (!(window.COUPONS instanceof Map)) window.COUPONS = new Map();
@@ -149,10 +145,13 @@
 
       // One immediate repaint (no timers)
       window.dispatchEvent(new CustomEvent("cart:update"));
+      return true;
     } catch (e) {
       console.warn("[inline promo hydrate] failed:", e);
+      return false;
     }
-  })();
+  }
+
   
 /* ============================================================
  🧩 Patch A.2 — Hydrate COUPONS for Checkout (Apply Coupon fix)
