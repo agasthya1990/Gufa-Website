@@ -183,6 +183,7 @@ async function ensureCouponsReady() {
   const getLock = () => { try { return JSON.parse(localStorage.getItem(COUPON_KEY) || "null"); } catch { return null; } };
   const setLock = (obj) => { try { obj ? localStorage.setItem(COUPON_KEY, JSON.stringify(obj)) : localStorage.removeItem(COUPON_KEY); } catch {} };
 
+
   function displayCode(locked){
   try {
     if (!locked) return "";
