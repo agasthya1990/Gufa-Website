@@ -444,25 +444,35 @@ try {
   }
   if (!bag || typeof bag !== "object") bag = {};
 
-  // Apply this key
-  if (next <= 0) {
-    delete bag[key];
-  } else {
-    const prev = bag[key] || {};
-    bag[key] = {
-      id: found.id,
-      name: found.name,
-      variant: variantKey,
-      price: Number(price) || Number(prev.price) || 0,
-      thumb: prev.thumb || "",
-      qty: next
-    };
-  }
+if (next <= 0) {
+  delete bag[key];
+  try { localStorage.removeItem("gufa:prov:" + key); } catch {}
+} else {
+  const prev = bag[key] || {};
+  bag[key] = {
+    id: found.id,
+    name: found.name,
+    variant: variantKey,
+    price: Number(price) || Number(prev.price) || 0,
+    thumb: prev.thumb || "",
+    qty: next
+  };
+}
 
-  localStorage.setItem(LS_KEY, JSON.stringify(bag));
-  // keep the event detail compatible (nested shape expected by some listeners)
-  window.dispatchEvent(new CustomEvent("cart:update", { detail: { cart: { items: bag } } }));
+
+localStorage.setItem(LS_KEY, JSON.stringify(bag));
+window.dispatchEvent(new CustomEvent("cart:update", { detail: { cart: { items: bag } } }));
+
+// Tag provenance if user is currently in a banner list (no helpers needed)
+try {
+  const inBanner = (typeof view !== "undefined" && view === "list")
+                && (typeof listKind !== "undefined" && listKind === "banner")
+                && (typeof ACTIVE_BANNER !== "undefined" && ACTIVE_BANNER && ACTIVE_BANNER.id);
+  if (next > 0 && inBanner) {
+    localStorage.setItem("gufa:prov:" + key, "banner:" + ACTIVE_BANNER.id);
+  }
 } catch {}
+
 
 
   if (next > 0) {
