@@ -330,6 +330,26 @@ function showPromoError(msg) {
     return new Set();
   }
 
+// Provenance: did this base line come from the currently locked banner/coupon?
+function hasBannerProvenance(baseKey) {
+  try {
+    // Current persisted lock (if any)
+    const lock = getLock && getLock();
+    if (!lock) return false;
+
+    // Build the eligibility set the banner/coupon declared
+    const eligible = resolveEligibilitySet(lock); // Set of item ids (lowercased)
+    if (!(eligible instanceof Set) || eligible.size === 0) return false;
+
+    // baseKey looks like "<itemId>:<variant>"
+    const itemId = String(baseKey || "").split(":")[0].toLowerCase();
+    return eligible.has(itemId);
+  } catch {
+    return false;
+  }
+}
+
+  
   // FCFS: pick the first base item in the cart that matches any coupon eligibility,
   // and use that coupon exclusively (non-stackable).
 function findFirstApplicableCouponForCart(){
