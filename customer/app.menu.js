@@ -145,20 +145,6 @@ if (!Array.isArray(window.BANNERS)) window.BANNERS = [];
   } catch {}
 })();
 
-// Also refresh the snapshot whenever a banner-driven lock happens
-// (this path guarantees coupons meta existed during banner view)
-const _origLock = window.lockCouponForActiveBannerIfNeeded;
-window.lockCouponForActiveBannerIfNeeded = function (...args) {
-  try {
-    if (window.COUPONS instanceof Map && window.COUPONS.size > 0) {
-      const dump = Array.from(window.COUPONS.entries());
-      localStorage.setItem("gufa:COUPONS", JSON.stringify(dump));
-    }
-  } catch {}
-  return typeof _origLock === "function" ? _origLock.apply(this, args) : undefined;
-};
-
-
 
 
 
@@ -1023,9 +1009,18 @@ function lockCouponForActiveBannerIfNeeded(addedItemId) {
     source: "banner:" + ACTIVE_BANNER.id
   };
 
+  // Ensure checkout can resolve coupons without a refetch
+  try {
+    if (window.COUPONS instanceof Map && window.COUPONS.size > 0) {
+      const dump = Array.from(window.COUPONS.entries());
+      localStorage.setItem("gufa:COUPONS", JSON.stringify(dump));
+    }
+  } catch {}
+
   try { localStorage.setItem("gufa_coupon", JSON.stringify(payload)); } catch {}
   window.dispatchEvent(new CustomEvent("cart:update"));
 }
+  
 // expose (some older code calls it via window.*)
 window.lockCouponForActiveBannerIfNeeded = lockCouponForActiveBannerIfNeeded;
 
@@ -1182,8 +1177,14 @@ try {
         });
       }
     });
+    
     COUPONS = m;
     window.COUPONS = m; // ← mirror globally
+    try {
+      const dump = Array.from(m.entries());
+      localStorage.setItem("gufa:COUPONS", JSON.stringify(dump));
+    } catch {}
+
 
     // Backfill lock with meta/code if needed and refresh cart
     
