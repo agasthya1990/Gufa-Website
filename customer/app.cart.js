@@ -50,6 +50,119 @@ function safeRender(fn){
   try { fn(); } catch (e) { console.warn("[cart] render suppressed:", e); }
 }
 
+// === Coupon helpers (apply-by-code + next-eligible) ===
+function findCouponByCodeOrId(input){
+  const raw = String(input || "").trim();
+  if (!raw) return null;
+
+  // Try direct id hit
+  if ((window.COUPONS instanceof Map) && window.COUPONS.has(raw)) {
+    const meta = window.COUPONS.get(raw);
+    return { id: raw, meta };
+  }
+
+  // Try code match (case-insensitive)
+  if (window.COUPONS instanceof Map) {
+    const hit = Array.from(window.COUPONS.entries()).find(([,m]) =>
+      String(m?.code || "").toLowerCase() === raw.toLowerCase()
+    );
+    if (hit) return { id: hit[0], meta: hit[1] };
+  }
+  return null;
+}
+
+function computeEligibleItemIdsForCoupon(couponId){
+  try {
+    const id = String(couponId || "");
+    const all = (window.ITEMS || []);
+    // items list may use promotions | coupons | couponIds
+    return all.filter((it) => {
+      const ids = Array.isArray(it.promotions) ? it.promotions
+                : Array.isArray(it.coupons)    ? it.coupons
+                : Array.isArray(it.couponIds)  ? it.couponIds
+                : [];
+      return ids.map(String).includes(id);
+    }).map(it => String(it.id));
+  } catch { return []; }
+}
+
+function writeCouponLockFromMeta(couponId, meta){
+  if (!couponId || !meta) return false;
+
+  // mode gating
+  const m = (String(localStorage.getItem("gufa_mode") || "delivery").toLowerCase() === "dining") ? "dining" : "delivery";
+  const t = meta.targets || {};
+  const allowed = (m === "delivery") ? !!t.delivery : !!t.dining;
+  if (!allowed) return false;
+
+  // eligible items (fallback to full scan when scope absent)
+  const eligibleItemIds = Array.isArray(meta.eligibleItemIds) && meta.eligibleItemIds.length
+    ? meta.eligibleItemIds.map(String)
+    : computeEligibleItemIdsForCoupon(couponId);
+
+  const payload = {
+    code:  String(meta.code || couponId).toUpperCase(),
+    type:  String(meta.type || ""),
+    value: Number(meta.value || 0),
+    valid: { delivery: !!(t.delivery ?? true), dining: !!(t.dining ?? true) },
+    scope: { couponId: String(couponId), eligibleItemIds },
+    lockedAt: Date.now(),
+    source: "apply:manual"
+  };
+
+  try { localStorage.setItem("gufa_coupon", JSON.stringify(payload)); } catch {}
+  try { window.dispatchEvent(new CustomEvent("cart:update", { detail: { coupon: payload } })); } catch {}
+  return true;
+}
+
+function wireApplyCouponUI(){
+  const UI = resolveLayout();
+  const input = UI.promoInput;
+  const btn   = UI.promoApply;
+  if (!btn || !input) return;
+
+  const apply = () => {
+    const query = input.value;
+    const found = findCouponByCodeOrId(query);
+    if (!found || !found.meta || found.meta.active === false) {
+      // Minimal UX: reflect error in label line; totals will stay unchanged
+      if (UI.promoLbl) UI.promoLbl.textContent = "Promotion (): invalid or inactive";
+      return;
+    }
+    const ok = writeCouponLockFromMeta(found.id, found.meta);
+
+    // If nothing in cart qualifies yet, stash a hint for Menu to highlight next eligible item
+    try {
+      const ids = computeEligibleItemIdsForCoupon(found.id);
+      const hasEligibleInCart = (function(){
+        const bag = window?.Cart?.get?.() || {};
+        return Object.keys(bag).some(k => {
+          const baseId = String(k).split(":")[0];
+          return ids.includes(baseId) && Number(bag[k]?.qty || 0) > 0;
+        });
+      })();
+      if (!hasEligibleInCart && ids.length) {
+        localStorage.setItem("gufa:nextEligibleItem", ids[0]);
+      }
+    } catch {}
+
+    // Repaint will be triggered via cart:update; keep a tiny UX touch here
+    if (ok && UI.promoLbl) {
+      const c = found.meta.code || found.id;
+      UI.promoLbl.textContent = `Promotion (${String(c).toUpperCase()})`;
+    }
+  };
+
+  btn.addEventListener("click", apply);
+  input.addEventListener("keydown", (e) => { if (e.key === "Enter") apply(); });
+}
+
+// Boot the wire-up after DOM is ready
+document.addEventListener("DOMContentLoaded", () => {
+  try { wireApplyCouponUI(); } catch {}
+});
+
+
 ;(function(){
   // ---- crash guards (no feature changes) ----
   // Ensure global catalogs exist even if menu didn’t hydrate yet
