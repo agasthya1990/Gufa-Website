@@ -83,16 +83,6 @@ function nudgeBaseSteppers(itemId){
   });
 }
 
-
-// ===== Header Cart =====
-function updateCartLink(){
-  const total = getCartEntries().reduce((n, [, it]) => n + (Number(it.qty)||0), 0);
-  const el = document.getElementById("cartLink");
-  if (el) el.textContent = `Cart (${total})`;
-}
-
-
-
 // ===== Mini-cart Badge =====
 function updateItemMiniCartBadge(itemId, rock=false){
   const card = document.querySelector(`.menu-item[data-id="${itemId}"]`);
@@ -144,18 +134,16 @@ if (!Array.isArray(window.BANNERS)) window.BANNERS = [];
   } catch {}
 })();
 
-// Also refresh the snapshot whenever a banner-driven lock happens
-// (this path guarantees coupons meta existed during banner view)
-const _origLock = window.lockCouponForActiveBannerIfNeeded;
-window.lockCouponForActiveBannerIfNeeded = function(...args){
+// Keep coupon snapshot fresh without touching the locker function
+window.addEventListener("cart:update", () => {
   try {
     if (window.COUPONS instanceof Map && window.COUPONS.size > 0) {
       const dump = Array.from(window.COUPONS.entries());
       localStorage.setItem("gufa:COUPONS", JSON.stringify(dump));
     }
   } catch {}
-  return _origLock?.apply(this, args);
-};
+});
+
 
 
 
@@ -238,7 +226,10 @@ window.addEventListener("cart:update", () => {
       .filter(it => Array.isArray(it.promotions) && it.promotions.map(String).includes(String(couponId)))
       .map(it => String(it.id));
 
-    if (!eligibleItemIds.includes(String(addedItemId))) return;
+    // Guard: auto-lock allowed only if item was placed from banner context
+const provenance = localStorage.getItem("gufa:prov:" + addedItemId);
+if (!provenance || !provenance.startsWith("banner:")) return;
+
 
     const meta = (window.COUPONS instanceof Map) ? window.COUPONS.get(String(couponId)) : null;
     const targets = (meta && meta.targets) ? meta.targets : { delivery: true, dining: true };
@@ -466,9 +457,8 @@ window.dispatchEvent(new CustomEvent("cart:update", { detail: { cart: { items: b
 
 // Tag provenance if user is currently in a banner list (no helpers needed)
 try {
-  const inBanner = (typeof view !== "undefined" && view === "list")
-                && (typeof listKind !== "undefined" && listKind === "banner")
-                && (typeof ACTIVE_BANNER !== "undefined" && ACTIVE_BANNER && ACTIVE_BANNER.id);
+const inBanner = (view === "list") && (listKind === "banner") && (ACTIVE_BANNER && ACTIVE_BANNER.id);
+
   if (next > 0 && inBanner) {
     localStorage.setItem("gufa:prov:" + key, "banner:" + ACTIVE_BANNER.id);
   }
