@@ -177,14 +177,16 @@
   }, window.CART_UI.list || {});
 </script>
   
-  <script>
-  // Remove any stale local snapshot so Firestore/inline data is the single source of truth
+<script>
   try { localStorage.removeItem("gufa:COUPONS"); } catch (e) {}
+  if (!localStorage.getItem("gufa_mode")) localStorage.setItem("gufa_mode", "delivery");
 </script>
+
 
   <script src="./app.cart.js"></script>
 </body>
 </html>
+
 
 
 
