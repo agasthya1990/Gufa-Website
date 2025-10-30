@@ -461,7 +461,7 @@ if (next <= 0) {
 
 localStorage.setItem(LS_KEY, JSON.stringify(bag));
 window.dispatchEvent(new CustomEvent("cart:update", { detail: { cart: { items: bag } } }));
-  }
+  
 } catch {}
 
 
@@ -1104,8 +1104,6 @@ function decorateBannerDealBadges(){
     card.appendChild(badge);
   });
 }
-
-
 
   
 
