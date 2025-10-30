@@ -150,7 +150,7 @@
 
 <!-- Use the modular SDK you already ship and adapt it for app.cart.js -->
 <script type="module">
-  import { db as mdb } from "./firebase.js";
+  import { db as mdb } from "/admin/firebase.js";
   import { collection, query, where, getDocs } 
     from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
@@ -209,6 +209,7 @@
   <script src="./app.cart.js"></script>
 </body>
 </html>
+
 
 
 
