@@ -2,6 +2,19 @@
 // Add-on steppers + auto-prune, Promo totals row, and Delivery Address form.
 // Refactor-friendly: clear seams for minOrder & usageLimit coming from Admin/promotions.js.
 
+let lastSnapshotAt = 0;
+function persistCartSnapshotThrottled() {
+  const now = Date.now();
+  if (now - lastSnapshotAt < 1000) return; // 1s debounce
+  lastSnapshotAt = now;
+  try {
+    const cart = window?.Cart?.get?.() || {};
+    localStorage.setItem("gufa_cart", JSON.stringify(cart));
+  } catch {}
+}
+window.addEventListener("cart:update", persistCartSnapshotThrottled);
+
+
 // ---- crash guards (no feature changes) ----
 // 1) Ensure we have a deterministic UI selector map that matches checkout.html
 (function ensureCartUIMap(){
@@ -649,8 +662,24 @@ function computeDiscount(locked, baseSubtotal){
     if (minOrder > 0 && baseSubtotal < minOrder) return { discount:0 };
 
     // Eligibility set (strict)
-    const elig = resolveEligibilitySet(locked);
-    if (!elig.size) return { discount:0 };
+let elig = resolveEligibilitySet(locked);
+
+// Manual-apply fallback: if no eligibility could be derived, allow any base line in cart
+if (!elig.size && String(locked?.source||"") === "manual") {
+  try {
+    const bases = [];
+    for (const [key, it] of entries()) {
+      if (isAddonKey(key)) continue;
+      const parts  = String(key).split(":");
+      const itemId = String(it?.id ?? parts[0]).toLowerCase();
+      bases.push(itemId);
+    }
+    if (bases.length) elig = new Set(bases);
+  } catch {}
+}
+
+if (!elig.size) return { discount:0 };
+
 
 // Eligible base subtotal only
 let eligibleBase = 0;
@@ -985,6 +1014,49 @@ if (R.promoAmt) {
 // Clear any lingering error whenever a valid non-zero discount is active
 if (discount > 0) showPromoError("");
 
+// --- Next-eligible hint (for manual apply with no qualifying lines yet) ---
+(function showNextEligibleHint(){
+  try {
+    const targetId = localStorage.getItem("gufa:nextEligibleItem");
+    // If no breadcrumb, remove any old hint and bail
+    if (!targetId) { const n = document.getElementById("next-eligible"); if (n) n.remove(); return; }
+
+    const hasAnyEligibleBaseNow = (function(){
+      const bag = window?.Cart?.get?.() || {};
+      for (const [k, it] of Object.entries(bag)) {
+        // base keys look like "<itemId>:<variant>"
+        const parts  = String(k).split(":");
+        if (parts.length < 2) continue; // skip add-ons or malformed
+        const baseId = String(it?.id || parts[0]).toLowerCase();
+        if (baseId === String(targetId).toLowerCase() && Number(it?.qty||0) > 0) return true;
+      }
+      return false;
+    })();
+
+    // If discount is active or the qualifying item is now present, clear the hint
+    if (discount > 0 || hasAnyEligibleBaseNow) {
+      localStorage.removeItem("gufa:nextEligibleItem");
+      const n = document.getElementById("next-eligible"); if (n) n.remove();
+      return;
+    }
+
+    // Create/refresh the hint node under the promo input
+    const parent = (R.promoInput?.parentElement) || document.querySelector(".promo-wrap") || document.querySelector("aside.cart-right");
+    if (!parent) return;
+    let node = document.getElementById("next-eligible");
+    if (!node) {
+      node = document.createElement("div");
+      node.id = "next-eligible";
+      node.style.fontSize = "12px";
+      node.style.marginTop = "6px";
+      node.style.color = "#444";
+      parent.appendChild(node);
+    }
+    node.textContent = "Tip: add one eligible item to activate your coupon.";
+  } catch {}
+})();
+
+  
   // Delivery address section (mode = delivery only)
     ensureDeliveryForm();
 
