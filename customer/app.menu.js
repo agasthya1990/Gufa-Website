@@ -1,7 +1,7 @@
 // app.menu.js — align menu cards with the real Cart store and folder paths (no UI changes)
+
 // Cart store is now always pre-loaded via index.html (before this script),
 // so no dynamic injection needed — just verify readiness.
-
 (function ensureCartReady(){
   if (!window.Cart || typeof window.Cart.setQty !== "function") {
     console.warn("[gufa] Cart API not initialized before menu.js");
@@ -83,6 +83,16 @@ function nudgeBaseSteppers(itemId){
   });
 }
 
+
+// ===== Header Cart =====
+function updateCartLink(){
+  const total = getCartEntries().reduce((n, [, it]) => n + (Number(it.qty)||0), 0);
+  const el = document.getElementById("cartLink");
+  if (el) el.textContent = `Cart (${total})`;
+}
+
+
+
 // ===== Mini-cart Badge =====
 function updateItemMiniCartBadge(itemId, rock=false){
   const card = document.querySelector(`.menu-item[data-id="${itemId}"]`);
@@ -134,16 +144,18 @@ if (!Array.isArray(window.BANNERS)) window.BANNERS = [];
   } catch {}
 })();
 
-// Keep coupon snapshot fresh without touching the locker function
-window.addEventListener("cart:update", () => {
+// Also refresh the snapshot whenever a banner-driven lock happens
+// (this path guarantees coupons meta existed during banner view)
+const _origLock = window.lockCouponForActiveBannerIfNeeded;
+window.lockCouponForActiveBannerIfNeeded = function(...args){
   try {
     if (window.COUPONS instanceof Map && window.COUPONS.size > 0) {
       const dump = Array.from(window.COUPONS.entries());
       localStorage.setItem("gufa:COUPONS", JSON.stringify(dump));
     }
   } catch {}
-});
-
+  return _origLock?.apply(this, args);
+};
 
 
 
@@ -185,8 +197,7 @@ window.addEventListener("cart:update", () => {
   let listId = "";       // selected id
   let listLabel = "";
   let searchQuery = "";
-  let ACTIVE_BANNER = null;
-  
+
   // --- Mode helpers (persist + broadcast) ---
   window.getActiveMode = function () {
     const m = String(localStorage.getItem("gufa_mode") || "delivery").toLowerCase();
@@ -226,21 +237,7 @@ window.addEventListener("cart:update", () => {
       .filter(it => Array.isArray(it.promotions) && it.promotions.map(String).includes(String(couponId)))
       .map(it => String(it.id));
 
-    // Guard: auto-lock allowed only if item was placed from banner context
-// Accept either exact item-level or any per-variant provenance
-let prov = localStorage.getItem("gufa:prov:" + addedItemId);
-if (!prov) {
-  for (let i = 0; i < localStorage.length; i++) {
-    const k = localStorage.key(i);
-    if (k && k.startsWith("gufa:prov:" + addedItemId + ":")) {
-      prov = localStorage.getItem(k);
-      break;
-    }
-  }
-}
-if (!prov || !prov.startsWith("banner:")) return;
-
-
+    if (!eligibleItemIds.includes(String(addedItemId))) return;
 
     const meta = (window.COUPONS instanceof Map) ? window.COUPONS.get(String(couponId)) : null;
     const targets = (meta && meta.targets) ? meta.targets : { delivery: true, dining: true };
@@ -449,7 +446,6 @@ try {
 
 if (next <= 0) {
   delete bag[key];
-  try { localStorage.removeItem("gufa:prov:" + key); } catch {}
 } else {
   const prev = bag[key] || {};
   bag[key] = {
@@ -465,16 +461,8 @@ if (next <= 0) {
 
 localStorage.setItem(LS_KEY, JSON.stringify(bag));
 window.dispatchEvent(new CustomEvent("cart:update", { detail: { cart: { items: bag } } }));
-
-// Tag provenance if user is currently in a banner list (no helpers needed)
-try {
-const inBanner = (view === "list") && (listKind === "banner") && (ACTIVE_BANNER && ACTIVE_BANNER.id);
-
-  if (next > 0 && inBanner) {
-    localStorage.setItem("gufa:prov:" + key, "banner:" + ACTIVE_BANNER.id);
   }
 } catch {}
-
 
 
   if (next > 0) {
@@ -734,18 +722,19 @@ function itemsForList(){
     } else if (listKind === "category") {
       const c = CATEGORIES.find(x=>x.id===listId) || {id:listId, label:listId};
       arr = arr.filter(it=>categoryMatch(it, c));
+      
 } else if (listKind === "banner") {
-  const hasActiveBanner = !!ACTIVE_BANNER;
+  const hasActiveBanner = (typeof ACTIVE_BANNER !== "undefined" && ACTIVE_BANNER);
   if (typeof itemMatchesBanner === "function" && hasActiveBanner) {
     arr = arr.filter(it => itemMatchesBanner(it, ACTIVE_BANNER));
   } else {
     arr = []; // fallback if helpers not ready
   }
 }
-}
+
+  }
   return arr;
 }
-
   
  function renderContentView(){
   if (!globalResults) return;
@@ -889,6 +878,7 @@ if (!host.dataset.bannerClicks){
 }
   
   /* ===== D2 — Banner → filtered items list (file-scope) ===== */
+let ACTIVE_BANNER = null;  // {id, title, linkedCouponIds, ...}
 
 /** true if an item has at least one coupon linked to this banner */
 function itemMatchesBanner(item, banner){
@@ -1699,19 +1689,13 @@ function initServiceMode(){
 
  /* ---------- Boot ---------- */
 async function boot(){
-  showHome();
+  showHome(); // renders tiles on load if sections present
   updateCartLink();
   initServiceMode();
-  try {
-    await listenAll();
-  } catch (err) {
-    console.error("[gufa] listenAll failed:", err);
-    // keep the UI responsive; at minimum, keep Home buckets visible
-    try { renderCourseBuckets?.(); renderCategoryBuckets?.(); } catch {}
-  }
+  await listenAll();
 }
-
 document.addEventListener("DOMContentLoaded", boot);
+
 
 // D1: re-filter banners when service mode changes
 window.addEventListener("serviceMode:changed", () => {
@@ -1720,20 +1704,9 @@ window.addEventListener("serviceMode:changed", () => {
 
 
 // Refresh UI when service mode switches (Delivery <-> Dining)
+// Auto-refresh the page when service mode switches (Delivery <-> Dining)
 // Customer UI only; avoid reloading /admin.
-  
 window.addEventListener("serviceMode:changed", () => {
-  // refresh deals strip (filters banners by mode)
-  try { renderDeals?.(); } catch {}
-
-  // if user is viewing a banner-filtered list, re-filter the items
-  try {
-    if (view === "list" && listKind === "banner") {
-      renderContentView?.();
-      try { decorateBannerDealBadges?.(); } catch {}
-    }
-  } catch {}
-
   // Don’t reload the Admin Panel.
   if (location.pathname.startsWith("/admin")) return;
 
@@ -1741,10 +1714,23 @@ window.addEventListener("serviceMode:changed", () => {
   if (window.__modeReloadPending) return;
   window.__modeReloadPending = true;
 
+window.addEventListener("serviceMode:changed", () => {
+  // refresh deals strip (filters banners by mode)
+  try { renderDeals?.(); } catch {}
+
+  // if user is viewing a banner-filtered list, re-filter the items
+  try {
+    if (typeof view !== "undefined" && view === "list" && typeof listKind !== "undefined" && listKind === "banner") {
+      renderContentView?.();
+    }
+  } catch {}
+});
+
+
+  
   // Small delay to allow any in-flight UI actions to settle.
   setTimeout(() => { try { location.reload(); } catch {} }, 120);
 });
-
 
 
 // Also refresh banner badges when service mode changes
@@ -1768,7 +1754,8 @@ window.addEventListener("cart:update", () => {
 });
 
 })();
- // Cross-origin checkout handoff: attach cart snapshot to the URL
+
+// Cross-origin checkout handoff: attach cart snapshot to the URL
 document.addEventListener('click', (e) => {
   const a = e.target.closest('a[href]');
   if (!a) return;
