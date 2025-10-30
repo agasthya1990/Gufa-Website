@@ -228,18 +228,6 @@ function buildLockFromMeta(cid, meta) {
     eligSet = eligibleIdsFromBanners({ couponId: cid });
   }
 
-  // 3) FINAL FALLBACK: if still empty (e.g., banners not hydrated yet),
-  //    use current cart base lines so a known valid code can apply immediately.
-  if (!eligSet.size) {
-    for (const [k, it] of entries()){
-      const p = String(k).split(":");
-      if (p.length >= 3) continue; // base only
-      const itemId  = String(it?.id ?? p[0]).toLowerCase();
-      const baseKey = p.slice(0,2).join(":").toLowerCase();
-      eligSet.add(itemId);
-      eligSet.add(baseKey);
-    }
-  }
 
   return {
     scope: { couponId: cid, eligibleItemIds: Array.from(eligSet) },
@@ -351,19 +339,23 @@ function findFirstApplicableCouponForCart(){
 
   const { base } = splitBaseVsAddons();
 
-  // Walk the cart in order (base lines only), and for each base line
-  // scan coupons to find the first that yields a positive discount now.
-  for (const [key] of es){
-    const parts = String(key).split(":");
-    if (parts.length >= 3) continue; // skip add-ons
+for (const [key] of es){
+  const parts = String(key).split(":");
+  if (parts.length >= 3) continue; // skip add-ons
 
-    for (const [cid, meta] of window.COUPONS){
-      if (!checkUsageAvailable(meta)) continue;
-      const lock = buildLockFromMeta(String(cid), meta);
-      const { discount } = computeDiscount(lock, base);
-      if (discount > 0) return lock; // FCFS over cart order
-    }
+  // Only consider base lines that were added from a banner list
+  const baseKey = parts.slice(0,2).join(":");
+  if (!hasBannerProvenance(baseKey)) continue;
+
+  for (const [cid, meta] of window.COUPONS){
+    if (!checkUsageAvailable(meta)) continue;
+    const lock = buildLockFromMeta(String(cid), meta);
+    // mark provenance of the lock as auto
+    lock.source = "auto";
+    const { discount } = computeDiscount(lock, base);
+    if (discount > 0) return lock; // FCFS over cart order among banner-origin items
   }
+}
   return null;
 }
 
@@ -462,6 +454,14 @@ return { discount: Math.max(0, Math.round(d)) };
     
   }
 
+function hasBannerProvenance(baseKey){
+  try {
+    const s = localStorage.getItem(`gufa:prov:${baseKey}`);
+    return typeof s === "string" && s.startsWith("banner:");
+  } catch { return false; }
+}
+
+  
   /* ===================== Grouping & rows ===================== */
   function buildGroups(){
     const gs = new Map(); // baseKey -> { base, addons[] }
@@ -805,11 +805,12 @@ if (R.promoApply && !R.promoApply._wired){
       return;
     }
 
-    // 5) Apply instantly (non-stackable FCFS is enforced at top of render)
-    setLock(fullLock);
-    showPromoError("");
-    enforceFirstComeLock();
-    window.dispatchEvent(new CustomEvent("cart:update"));
+// 5) Apply instantly (non-stackable FCFS is enforced at top of render)
+fullLock.source = "manual";
+setLock(fullLock);
+showPromoError("");
+enforceFirstComeLock();
+window.dispatchEvent(new CustomEvent("cart:update"));
   }, false);
  }
 }
