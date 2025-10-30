@@ -1751,8 +1751,7 @@ window.addEventListener("cart:update", () => {
 });
 
 })();
-
-// Cross-origin checkout handoff: attach cart snapshot to the URL
+ // Cross-origin checkout handoff: attach cart snapshot to the URL
 document.addEventListener('click', (e) => {
   const a = e.target.closest('a[href]');
   if (!a) return;
