@@ -204,6 +204,17 @@ window.addEventListener("cart:update", () => {
   window.dispatchEvent(new CustomEvent("serviceMode:changed", { detail: { mode: m } }));
 };
 
+/* Keep banners & badges fresh when service mode flips */
+window.addEventListener("serviceMode:changed", () => {
+  try {
+    // Re-filter and repaint the Today’s Deals rail
+    renderDeals();
+    // If currently inside a banner list, re-decorate badges to reflect mode gating
+    if (view === "list" && listKind === "banner") {
+      decorateBannerDealBadges?.();
+    }
+  } catch {}
+});
 
 
 
@@ -222,9 +233,10 @@ window.addEventListener("cart:update", () => {
     const [couponId] = Array.isArray(ACTIVE_BANNER.linkedCouponIds) ? ACTIVE_BANNER.linkedCouponIds : [];
     if (!couponId) return;
 
-    const eligibleItemIds = (ITEMS || [])
-      .filter(it => Array.isArray(it.promotions) && it.promotions.map(String).includes(String(couponId)))
-      .map(it => String(it.id));
+const eligibleItemIds = catalog
+  .filter(it => Array.isArray(it.promotions) && it.promotions.map(String).includes(String(couponId)))
+  .map(it => String(it.id));
+
 
     if (!eligibleItemIds.includes(String(addedItemId))) return;
 
@@ -468,9 +480,16 @@ setTimeout(() => {
     if (badge && cartQty !== next) badge.textContent = String(cartQty || next);
     updateItemMiniCartBadge(found.id);
     updateCartLink();
+
+    // if user had a breadcrumb from manual-apply on cart, clear it once the qualifying base is present
+    const target = localStorage.getItem("gufa:nextEligibleItem");
+    if (target && String(target).toLowerCase() === String(found.id).toLowerCase() && cartQty > 0) {
+      localStorage.removeItem("gufa:nextEligibleItem");
+    }
   } catch {}
 }, 50);
 }
+
 
 
 
@@ -789,6 +808,7 @@ function itemsForList(){
 let COUPONS = new Map();        // id -> { type: 'percent'|'flat', value, active }
 let BANNERS = [];               // [{ id, title, imageUrl, linkedCouponIds:[], targets:{delivery,dining}, active }]
 window.COUPONS = COUPONS;       // ← make it readable by app.cart.js
+window.BANNERS = BANNERS;
 backfillLockedCouponMeta(); 
 
   // --- Backfill the saved lock with human-readable coupon code/type/value once coupons are ready ---
@@ -837,8 +857,10 @@ function bannerMatchesMode(b){
 }
 
 function renderDeals(){
+  try { window.BANNERS = BANNERS; } catch {}
   const host = document.querySelector("#todays-deals .deals-body");
   if (!host) return;
+
 
   const list = (BANNERS || []).filter(b => b.active !== false && bannerMatchesMode(b));
   if (!list.length){ host.innerHTML = ""; return; }
@@ -910,6 +932,7 @@ function itemMatchesBanner(item, banner){
 /** Switch to list view showing only items matching the clicked banner */
 function openBannerList(banner){
   ACTIVE_BANNER = banner;
+  try { window.ACTIVE_BANNER = ACTIVE_BANNER; } catch {}
   view = "list";
   listKind = "banner";
   listId = banner.id;
@@ -957,8 +980,10 @@ function lockCouponForActiveBannerIfNeeded(addedItemId) {
   if (!(view === "list" && listKind === "banner" && ACTIVE_BANNER)) return;
   if (localStorage.getItem("gufa_coupon")) return;
 
-  const item = (window.ITEMS || []).find(x => String(x.id) === String(addedItemId));
-  if (!item) return;
+const catalog = (ITEMS && ITEMS.length ? ITEMS : (window.ITEMS || []));
+const item = catalog.find(x => String(x.id) === String(addedItemId));
+if (!item) return;
+
 
   // Item must currently match the open banner
   if (!itemMatchesBanner(item, ACTIVE_BANNER)) return;
