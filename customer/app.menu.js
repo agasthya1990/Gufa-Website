@@ -732,19 +732,18 @@ function itemsForList(){
     } else if (listKind === "category") {
       const c = CATEGORIES.find(x=>x.id===listId) || {id:listId, label:listId};
       arr = arr.filter(it=>categoryMatch(it, c));
-      
-} else if (listKind === "banner") {
-  const hasActiveBanner = (typeof ACTIVE_BANNER !== "undefined" && ACTIVE_BANNER);
-  if (typeof itemMatchesBanner === "function" && hasActiveBanner) {
-    arr = arr.filter(it => itemMatchesBanner(it, ACTIVE_BANNER));
-  } else {
-    arr = []; // fallback if helpers not ready
-  }
-}
-
+    } else if (listKind === "banner") {
+      const hasActiveBanner = (typeof ACTIVE_BANNER !== "undefined" && ACTIVE_BANNER);
+      if (typeof itemMatchesBanner === "function" && hasActiveBanner) {
+        arr = arr.filter(it => itemMatchesBanner(it, ACTIVE_BANNER));
+      } else {
+        arr = []; // fallback if helpers not ready
+      }
+    }
   }
   return arr;
 }
+
   
  function renderContentView(){
   if (!globalResults) return;
