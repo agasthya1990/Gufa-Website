@@ -2,6 +2,54 @@
 // Add-on steppers + auto-prune, Promo totals row, and Delivery Address form.
 // Refactor-friendly: clear seams for minOrder & usageLimit coming from Admin/promotions.js.
 
+// ---- crash guards (no feature changes) ----
+// 1) Ensure we have a deterministic UI selector map that matches checkout.html
+(function ensureCartUIMap(){
+  const defaults = {
+    items:      "#cart-items",
+    empty:      "#cart-empty",
+    subtotal:   "#subtotal-amt",
+    servicetax: "#servicetax-amt",
+    total:      "#total-amt",
+    proceed:    "#proceed-btn",
+    invFood:    "#inv-food",
+    invAddons:  "#inv-addons",
+    promoLbl:   "#promo-label",
+    promoAmt:   "#promo-amt",
+    promoInput: "#promo-input",
+    promoApply: "#promo-apply"
+  };
+  const root = (window.CART_UI && window.CART_UI.list) ? window.CART_UI.list : {};
+  window.CART_UI = window.CART_UI || {};
+  window.CART_UI.list = Object.assign({}, defaults, root); // any page overrides still win
+})();
+
+// 2) Resolve layout once and memoize element refs. Safe even if pieces are missing.
+function resolveLayout(){
+  const Q  = sel => document.querySelector(sel);
+  const UI = (window.CART_UI && window.CART_UI.list) || {};
+  const R = {
+    items:      Q(UI.items),
+    empty:      Q(UI.empty),
+    subtotal:   Q(UI.subtotal),
+    servicetax: Q(UI.servicetax),
+    total:      Q(UI.total),
+    proceed:    Q(UI.proceed),
+    invFood:    Q(UI.invFood),
+    invAddons:  Q(UI.invAddons),
+    promoLbl:   Q(UI.promoLbl),
+    promoAmt:   Q(UI.promoAmt),
+    promoInput: Q(UI.promoInput),
+    promoApply: Q(UI.promoApply)
+  };
+  return R;
+}
+
+// 3) Lightweight “no-crash” renderer wrapper
+function safeRender(fn){
+  try { fn(); } catch (e) { console.warn("[cart] render suppressed:", e); }
+}
+
 ;(function(){
   // ---- crash guards (no feature changes) ----
   // Ensure global catalogs exist even if menu didn’t hydrate yet
@@ -308,29 +356,52 @@ function showPromoError(msg) {
     return true;
   }
 
-  function eligibleIdsFromBanners(scope){
-    const out = new Set();
-    if (!scope) return out;
-    const bid = String(scope.bannerId||"").trim();
-    const cid = String(scope.couponId||"").trim();
+function eligibleIdsFromBanners(scope){
+  const out = new Set();
+  if (!scope) return out;
 
-    if (window.BANNERS instanceof Map){
-      const arr = window.BANNERS.get(bid) || window.BANNERS.get(`coupon:${cid}`);
-      if (Array.isArray(arr)) arr.forEach(x=>out.add(String(x).toLowerCase()));
-      return out;
+  const bid = String(scope.bannerId||"").trim();
+  const cid = String(scope.couponId||"").trim();
+
+  // Helper to add ids safely
+  const addAll = (arr) => {
+    if (!Array.isArray(arr)) return;
+    for (const x of arr) {
+      const s = String(x||"").trim();
+      if (s) out.add(s.toLowerCase());
     }
-    if (Array.isArray(window.BANNERS)){
-      const found = window.BANNERS.find(b => String(b?.id||"").trim() === bid);
-      const arr = found?.items || found?.eligibleItemIds || found?.itemIds || [];
-      if (Array.isArray(arr)) arr.forEach(x=>out.add(String(x).toLowerCase()));
-      if (!out.size && cid) {
-        const byCoupon = window.BANNERS.find(b => Array.isArray(b?.linkedCouponIds) && b.linkedCouponIds.includes(cid));
-        const carr = byCoupon?.items || byCoupon?.eligibleItemIds || byCoupon?.itemIds || [];
-        if (Array.isArray(carr)) carr.forEach(x=>out.add(String(x).toLowerCase()));
-      }
-    }
+  };
+
+  // Map form: key -> array of itemIds (or a keyed alias "coupon:<cid>")
+  if (window.BANNERS instanceof Map){
+    addAll(window.BANNERS.get(bid));
+    if (!out.size && cid) addAll(window.BANNERS.get(`coupon:${cid}`));
     return out;
   }
+
+  // Array form: [{ id, linkedCouponIds, items/eligibleItemIds/itemIds }]
+  if (Array.isArray(window.BANNERS)){
+    const banner = bid ? window.BANNERS.find(b => String(b?.id||"").trim() === bid) : null;
+    if (banner) {
+      // explicit items first
+      addAll(banner.items || banner.eligibleItemIds || banner.itemIds);
+      if (out.size) return out;
+      // no explicit items? then we accept banner linkage as eligibility scope;
+      // in strict mode, fallback is empty if no items listed—so keep it empty here.
+    }
+
+    // if only the couponId is known, look for a banner that links this coupon
+    if (!out.size && cid) {
+      const byCoupon = window.BANNERS.find(b =>
+        Array.isArray(b?.linkedCouponIds) &&
+        b.linkedCouponIds.map(String).some(x => x.trim() === cid)
+      );
+      addAll(byCoupon?.items || byCoupon?.eligibleItemIds || byCoupon?.itemIds);
+    }
+  }
+  return out;
+}
+
 
   // explicit eligibleItemIds > banner-derived > empty (strict)
   function resolveEligibilitySet(locked){
@@ -808,44 +879,36 @@ if (discount > 0) showPromoError("");
 if (R.promoApply && !R.promoApply._wired){
   R.promoApply._wired = true;
   R.promoApply.addEventListener("click", async ()=>{
+    // normalize user input once
     const raw = (R.promoInput?.value || "").trim();
-    const inp = raw.toUpperCase();
+    if (!raw) { showPromoError(""); return; }
+    const needle = raw.toUpperCase();
 
-    // 0) empty input: do nothing (keep a good lock intact)
-    if (!inp) { showPromoError(""); return; }
-
-    // 1) Ensure we actually have coupons available on Checkout
-    const ok = await ensureCouponsReady();
-
-        // Ensure hydration is truly complete before resolving (guards early clicks)
-    await ensureCouponsReady();
-
-    // 2) Resolve by ID or CODE (admin might give the ID)
-    const found = findCouponByIdOrCode(inp) || findCouponByCode(inp);
-    if (!found) {
-      showPromoError(ok ? "Invalid or Ineligible Coupon Code" : "Coupon data not available");
+    // hydrate once (was called twice)
+    const hydrated = await ensureCouponsReady();
+    if (!hydrated && !(window.COUPONS instanceof Map && window.COUPONS.size > 0)) {
+      showPromoError("Coupon data not available");
       return;
     }
 
-    // 3) Build the lock (your function already falls back to current cart items if no banner/explicit list)
+    // resolve by ID or CODE
+    const found = findCouponByIdOrCode(needle) || findCouponByCode(needle);
+    if (!found) { showPromoError("Invalid or Ineligible Coupon Code"); return; }
+
+    // construct lock & validate against current cart
     const fullLock = buildLockFromMeta(found.cid, found.meta);
-
-    // 4) Validate against *current* cart: allow if it yields > 0 now
     const { base } = splitBaseVsAddons();
-    const probe = computeDiscount(fullLock, base);
-    if (!probe.discount || probe.discount <= 0) {
-      showPromoError("Invalid or Ineligible Coupon Code");
-      return;
-    }
+    const { discount } = computeDiscount(fullLock, base);
+    if (!discount || discount <= 0) { showPromoError("Invalid or Ineligible Coupon Code"); return; }
 
-// 5) Apply instantly (non-stackable FCFS is enforced at top of render)
-fullLock.source = "manual";
-setLock(fullLock);
-showPromoError("");
-enforceFirstComeLock();
-window.dispatchEvent(new CustomEvent("cart:update"));
+    // apply (non-stackable FCFS is enforced by render/enforceFirstComeLock)
+    fullLock.source = "manual";
+    setLock(fullLock);
+    showPromoError("");
+    enforceFirstComeLock();
+    window.dispatchEvent(new CustomEvent("cart:update"));
   }, false);
- }
+}
 }
 
   /* ===================== Boot & subscriptions ===================== */
@@ -855,16 +918,14 @@ async function boot(){
   // 1) Inline JSON first (if present in HTML)
   const inlined = hydrateCouponsFromInlineJson();
 
-  // 2) If still empty, hydrate from Firestore
+  // 2) If still empty, hydrate from Firestore (once)
   if (!inlined) {
     try { await ensureCouponsReady(); } catch {}
   }
 
-  // 3) Final guard to ensure coupons exist before first paint
-  await ensureCouponsReady();
-
-  // 4) First paint — now Apply & FCFS are deterministic
+  // 3) First paint — Apply & FCFS are deterministic now
   render();
+
 
     // Normal reactive paints
     window.addEventListener("cart:update", render, false);
