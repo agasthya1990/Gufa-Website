@@ -373,12 +373,14 @@ function findFirstApplicableCouponForCart(){
   function clearLockIfNoLongerApplicable(){
     const lock = getLock();
     if (!lock) return;
-    // If no eligible items for this lock remain, clear it.
-    const elig = resolveEligibilitySet(lock);
-    if (!elig.size){
-      setLock(null);
-      return;
-    }
+// If no eligible items for this lock remain, clear it and trigger same-frame recompute.
+const elig = resolveEligibilitySet(lock);
+if (!elig.size){
+  setLock(null);
+  window.dispatchEvent(new CustomEvent("cart:update")); // ← ensures FCFS picks next promo immediately
+  return;
+}
+
     // If the cart no longer contains any of the eligible IDs as base lines, clear it.
     let any = false;
     for (const [key, it] of entries()){
