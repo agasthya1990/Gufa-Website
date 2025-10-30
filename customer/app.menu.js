@@ -12,8 +12,9 @@
 
 // ===== Cart Helpers =====
 function getCartEntries() {
-  try { return Object.entries(Cart.get() || {}); } catch { return []; }
+  try { return Object.entries(window?.Cart?.get?.() || {}); } catch { return []; }
 }
+
 
 function sumQtyByPrefix(prefix) {
   return getCartEntries().reduce((n, [k, it]) => n + (k.startsWith(prefix) ? (Number(it.qty)||0) : 0), 0);
@@ -147,15 +148,17 @@ if (!Array.isArray(window.BANNERS)) window.BANNERS = [];
 // Also refresh the snapshot whenever a banner-driven lock happens
 // (this path guarantees coupons meta existed during banner view)
 const _origLock = window.lockCouponForActiveBannerIfNeeded;
-window.lockCouponForActiveBannerIfNeeded = function(...args){
+window.lockCouponForActiveBannerIfNeeded = function (...args) {
   try {
     if (window.COUPONS instanceof Map && window.COUPONS.size > 0) {
       const dump = Array.from(window.COUPONS.entries());
       localStorage.setItem("gufa:COUPONS", JSON.stringify(dump));
     }
   } catch {}
-  return _origLock?.apply(this, args);
+  return typeof _origLock === "function" ? _origLock.apply(this, args) : undefined;
 };
+
+
 
 
 
