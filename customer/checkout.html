@@ -146,18 +146,41 @@
     })();
   </script>
 
-  <!-- Load order: store first, then cart UI -->
   <script src="./cart.store.js"></script>
-  <script src="/admin/firease.js"></script>
-  <script>
-  (function () {
-    try {
-      if (!window.db && window.firebase && window.firebase.firestore) {
-        window.db = window.firebase.firestore();
-      }
-    } catch (e) {}
-  })();
 
+<!-- Use the modular SDK you already ship and adapt it for app.cart.js -->
+<script type="module">
+  import { db as mdb } from "./firebase.js";
+  import { collection, query, where, getDocs } 
+    from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+  // Tiny compat-like shim so app.cart.js can keep calling v8-style APIs
+  window.db = {
+    collection(name) {
+      return {
+        where(field, op, val) {
+          return {
+            async get() {
+              const q = query(collection(mdb, name), where(field, op, val));
+              const snap = await getDocs(q);
+              // Provide a minimal v8-like surface
+              return {
+                empty: snap.empty,
+                forEach(cb) { snap.forEach(cb); }
+              };
+            }
+          };
+        }
+      };
+    }
+  };
+
+  // One-time defaults for deterministic gating
+  try { localStorage.removeItem("gufa:COUPONS"); } catch (e) {}
+  if (!localStorage.getItem("gufa_mode")) localStorage.setItem("gufa_mode", "delivery");
+</script>
+
+<script>
   // IMPORTANT: keep selectors that actually exist in this HTML.
   window.CART_UI = window.CART_UI || {};
   window.CART_UI.list = Object.assign({
@@ -186,6 +209,7 @@
   <script src="./app.cart.js"></script>
 </body>
 </html>
+
 
 
 
