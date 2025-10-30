@@ -1,7 +1,7 @@
 // app.menu.js — align menu cards with the real Cart store and folder paths (no UI changes)
-
 // Cart store is now always pre-loaded via index.html (before this script),
 // so no dynamic injection needed — just verify readiness.
+
 (function ensureCartReady(){
   if (!window.Cart || typeof window.Cart.setQty !== "function") {
     console.warn("[gufa] Cart API not initialized before menu.js");
@@ -227,8 +227,19 @@ window.addEventListener("cart:update", () => {
       .map(it => String(it.id));
 
     // Guard: auto-lock allowed only if item was placed from banner context
-const provenance = localStorage.getItem("gufa:prov:" + addedItemId);
-if (!provenance || !provenance.startsWith("banner:")) return;
+// Accept either exact item-level or any per-variant provenance
+let prov = localStorage.getItem("gufa:prov:" + addedItemId);
+if (!prov) {
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k && k.startsWith("gufa:prov:" + addedItemId + ":")) {
+      prov = localStorage.getItem(k);
+      break;
+    }
+  }
+}
+if (!prov || !prov.startsWith("banner:")) return;
+
 
 
     const meta = (window.COUPONS instanceof Map) ? window.COUPONS.get(String(couponId)) : null;
@@ -1688,13 +1699,19 @@ function initServiceMode(){
 
  /* ---------- Boot ---------- */
 async function boot(){
-  showHome(); // renders tiles on load if sections present
+  showHome();
   updateCartLink();
   initServiceMode();
-  await listenAll();
+  try {
+    await listenAll();
+  } catch (err) {
+    console.error("[gufa] listenAll failed:", err);
+    // keep the UI responsive; at minimum, keep Home buckets visible
+    try { renderCourseBuckets?.(); renderCategoryBuckets?.(); } catch {}
+  }
 }
-document.addEventListener("DOMContentLoaded", boot);
 
+document.addEventListener("DOMContentLoaded", boot);
 
 // D1: re-filter banners when service mode changes
 window.addEventListener("serviceMode:changed", () => {
