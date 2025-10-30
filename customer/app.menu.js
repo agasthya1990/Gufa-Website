@@ -197,7 +197,8 @@ window.addEventListener("cart:update", () => {
   let listId = "";       // selected id
   let listLabel = "";
   let searchQuery = "";
-
+  let ACTIVE_BANNER = null;
+  
   // --- Mode helpers (persist + broadcast) ---
   window.getActiveMode = function () {
     const m = String(localStorage.getItem("gufa_mode") || "delivery").toLowerCase();
@@ -732,15 +733,15 @@ function itemsForList(){
     } else if (listKind === "category") {
       const c = CATEGORIES.find(x=>x.id===listId) || {id:listId, label:listId};
       arr = arr.filter(it=>categoryMatch(it, c));
-    } else if (listKind === "banner") {
-      const hasActiveBanner = (typeof ACTIVE_BANNER !== "undefined" && ACTIVE_BANNER);
-      if (typeof itemMatchesBanner === "function" && hasActiveBanner) {
-        arr = arr.filter(it => itemMatchesBanner(it, ACTIVE_BANNER));
-      } else {
-        arr = []; // fallback if helpers not ready
-      }
-    }
+} else if (listKind === "banner") {
+  const hasActiveBanner = !!ACTIVE_BANNER;
+  if (typeof itemMatchesBanner === "function" && hasActiveBanner) {
+    arr = arr.filter(it => itemMatchesBanner(it, ACTIVE_BANNER));
+  } else {
+    arr = []; // fallback if helpers not ready
   }
+}
+}
   return arr;
 }
 
@@ -887,7 +888,6 @@ if (!host.dataset.bannerClicks){
 }
   
   /* ===== D2 — Banner → filtered items list (file-scope) ===== */
-let ACTIVE_BANNER = null;  // {id, title, linkedCouponIds, ...}
 
 /** true if an item has at least one coupon linked to this banner */
 function itemMatchesBanner(item, banner){
@@ -1713,9 +1713,20 @@ window.addEventListener("serviceMode:changed", () => {
 
 
 // Refresh UI when service mode switches (Delivery <-> Dining)
-// Auto-refresh the page when service mode switches (Delivery <-> Dining)
 // Customer UI only; avoid reloading /admin.
+  
 window.addEventListener("serviceMode:changed", () => {
+  // refresh deals strip (filters banners by mode)
+  try { renderDeals?.(); } catch {}
+
+  // if user is viewing a banner-filtered list, re-filter the items
+  try {
+    if (view === "list" && listKind === "banner") {
+      renderContentView?.();
+      try { decorateBannerDealBadges?.(); } catch {}
+    }
+  } catch {}
+
   // Don’t reload the Admin Panel.
   if (location.pathname.startsWith("/admin")) return;
 
@@ -1723,23 +1734,10 @@ window.addEventListener("serviceMode:changed", () => {
   if (window.__modeReloadPending) return;
   window.__modeReloadPending = true;
 
-window.addEventListener("serviceMode:changed", () => {
-  // refresh deals strip (filters banners by mode)
-  try { renderDeals?.(); } catch {}
-
-  // if user is viewing a banner-filtered list, re-filter the items
-  try {
-    if (typeof view !== "undefined" && view === "list" && typeof listKind !== "undefined" && listKind === "banner") {
-      renderContentView?.();
-    }
-  } catch {}
-});
-
-
-  
   // Small delay to allow any in-flight UI actions to settle.
   setTimeout(() => { try { location.reload(); } catch {} }, 120);
 });
+
 
 
 // Also refresh banner badges when service mode changes
