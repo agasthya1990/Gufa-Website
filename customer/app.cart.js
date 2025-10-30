@@ -454,14 +454,8 @@ return { discount: Math.max(0, Math.round(d)) };
     
   }
 
-function hasBannerProvenance(baseKey){
-  try {
-    const s = localStorage.getItem(`gufa:prov:${baseKey}`);
-    return typeof s === "string" && s.startsWith("banner:");
-  } catch { return false; }
-}
 
-  
+
   /* ===================== Grouping & rows ===================== */
   function buildGroups(){
     const gs = new Map(); // baseKey -> { base, addons[] }
