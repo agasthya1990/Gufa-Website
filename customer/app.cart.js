@@ -3,6 +3,25 @@
 // Refactor-friendly: clear seams for minOrder & usageLimit coming from Admin/promotions.js.
 
 ;(function(){
+  // ---- crash guards (no feature changes) ----
+  // Ensure global catalogs exist even if menu didn’t hydrate yet
+  if (!(window.COUPONS instanceof Map)) window.COUPONS = new Map();
+  if (!window.BANNERS) window.BANNERS = new Map(); // tolerate array elsewhere
+
+  // Safe-define no-op UI selectors bag if page didn’t set it (prevents null deref)
+  window.CART_UI = window.CART_UI || {};
+  window.CART_UI.list = window.CART_UI.list || {};
+
+  // Soft guard for Firestore usage in hydrate paths
+  // (hydrate functions already early-return if db is missing, but keep this stable)
+  if (!window.db) {
+    try {
+      // On checkout.html this is normally set; elsewhere we just leave it undefined
+      // so hydrate routines bail out safely.
+    } catch {}
+  }
+
+
   /* ===================== Money & utils ===================== */
   const INR = (v) => "₹" + Math.round(Number(v)||0).toLocaleString("en-IN");
   const SERVICE_TAX_RATE = 0.05;
