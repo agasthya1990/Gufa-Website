@@ -251,7 +251,6 @@ function activeMode(){
   /* ===================== PROMO FUNNEL (queue) + GUARD ===================== */
 
 // Arrival rail we already maintain elsewhere; provide a safe read fallback.
-const ORDER_KEY = "gufa:baseOrder";
 function __readBaseOrder(){
   try { const a = JSON.parse(localStorage.getItem(ORDER_KEY) || "[]"); return Array.isArray(a) ? a : []; }
   catch { return []; }
@@ -395,13 +394,11 @@ function runPromoGuard() {
     if (signature === __lastChosenSignature) { __promoGuardBusy = false; return; }
     __lastChosenSignature = signature;
 
-    // Persist and announce
-    if (typeof writeCouponLockFromMeta === "function") {
-      writeCouponLockFromMeta(head.lock.code || head.lock.id || "", head.lock);
-    } else {
-      try { localStorage.setItem("gufa_coupon", JSON.stringify(head.lock)); } catch {}
-    }
-    window.dispatchEvent(new CustomEvent("cart:update"));
+// Persist and announce (commit the prepared lock directly)
+try {
+  setLock ? setLock(head.lock) : localStorage.setItem("gufa_coupon", JSON.stringify(head.lock));
+} catch {}
+window.dispatchEvent(new CustomEvent("cart:update"));
   } catch {
     // swallow
   } finally {
