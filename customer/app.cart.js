@@ -435,8 +435,16 @@ function buildLockFromMeta(cid, meta) {
 
 // Create/find a small error line under the input (single-line, red, compact)
 function ensurePromoErrorHost() {
-  if (!R || !R.promoInput) return null;
-  const parent = R.promoInput.parentElement || R.promoInput.closest(".inv-list") || R.promoInput.closest("form") || R.promoInput;
+  const UI = resolveLayout();
+  const input = UI.promoInput;
+  if (!input) return null;
+
+  const parent =
+    input.parentElement ||
+    input.closest(".inv-list") ||
+    input.closest("form") ||
+    input;
+
   let node = parent.querySelector("#promo-error");
   if (!node) {
     node = document.createElement("div");
@@ -450,6 +458,7 @@ function ensurePromoErrorHost() {
   }
   return node;
 }
+
 
 function showPromoError(msg) {
   const host = ensurePromoErrorHost();
