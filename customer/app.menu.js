@@ -936,6 +936,7 @@ function itemMatchesBanner(item, banner){
 function openBannerList(banner){
   ACTIVE_BANNER = banner;
   try { window.ACTIVE_BANNER = ACTIVE_BANNER; } catch {}
+  try { if (typeof BANNERS !== "undefined") window.BANNERS = BANNERS; } catch {}
   view = "list";
   listKind = "banner";
   listId = banner.id;
@@ -1726,49 +1727,26 @@ async function boot(){
 }
 document.addEventListener("DOMContentLoaded", boot);
 
-
-// D1: re-filter banners when service mode changes
+// Service mode change → keep Menu & global mirrors in lockstep with Cart
 window.addEventListener("serviceMode:changed", () => {
-  if (view === "home") renderDeals();
-});
-
-
-// Refresh UI when service mode switches (Delivery <-> Dining)
-// Auto-refresh the page when service mode switches (Delivery <-> Dining)
-// Customer UI only; avoid reloading /admin.
-window.addEventListener("serviceMode:changed", () => {
-  // Don’t reload the Admin Panel.
-  if (location.pathname.startsWith("/admin")) return;
-
-  // Prevent duplicate reloads if multiple handlers fire.
-  if (window.__modeReloadPending) return;
-  window.__modeReloadPending = true;
-
-window.addEventListener("serviceMode:changed", () => {
-  // refresh deals strip (filters banners by mode)
-  try { renderDeals?.(); } catch {}
-
-  // if user is viewing a banner-filtered list, re-filter the items
   try {
-    if (typeof view !== "undefined" && view === "list" && typeof listKind !== "undefined" && listKind === "banner") {
+    // Keep global mirror fresh so checkout/cart can derive eligibility from banners
+    if (typeof BANNERS !== "undefined") { window.BANNERS = BANNERS; }
+
+    // If we’re on Home, repaint the deals rail (filters banners by mode)
+    if (typeof view !== "undefined" ? view === "home" : true) {
+      renderDeals?.();
+    }
+
+    // If we’re inside a banner-filtered list, re-render and re-decorate badges
+    if (typeof view !== "undefined" && view === "list" &&
+        typeof listKind !== "undefined" && listKind === "banner") {
       renderContentView?.();
+      decorateBannerDealBadges?.();
     }
   } catch {}
 });
 
-
-  
-  // Small delay to allow any in-flight UI actions to settle.
-  setTimeout(() => { try { location.reload(); } catch {} }, 120);
-});
-
-
-// Also refresh banner badges when service mode changes
-window.addEventListener("serviceMode:changed", () => {
-  if (view === "list" && listKind === "banner" && typeof decorateBannerDealBadges === "function") {
-    try { decorateBannerDealBadges(); } catch {}
-  }
-});
 
   
  // Keep header & badges in sync whenever the cart store updates
