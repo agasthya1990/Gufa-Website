@@ -1071,12 +1071,12 @@ function render(){
 // Promo totals row (left label + right amount)
 const codeText = locked ? displayCode(locked) : "";
 if (R.promoLbl) {
-  if (discount > 0) {
-    const tag = codeText || "APPLIED";
-    R.promoLbl.textContent = `Promotion (${tag}):`;
-    if (tag !== __LAST_PROMO_TAG__) { // only pulse on actual change
+  if (locked && codeText) {
+    // Always show the code if a lock exists, even if the discount is 0 for now
+    R.promoLbl.textContent = `Promotion (${codeText}):`;
+    if (codeText !== __LAST_PROMO_TAG__) { // pulse only when the tag changes
       pulsePromoLabel(R.promoLbl);
-      __LAST_PROMO_TAG__ = tag;
+      __LAST_PROMO_TAG__ = codeText;
     }
   } else {
     R.promoLbl.textContent = `Promotion (): none`;
@@ -1088,6 +1088,7 @@ if (R.promoAmt) {
 }
 // Clear any lingering error whenever a valid non-zero discount is active
 if (discount > 0) showPromoError("");
+
 
 
 // --- Next-eligible hint (for manual apply with no qualifying lines yet) ---
