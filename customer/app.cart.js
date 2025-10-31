@@ -246,6 +246,7 @@ function activeMode(){
   }
   const itemCount = () => entries().reduce((n, [,it]) => n + (Number(it?.qty)||0), 0);
   const isAddonKey = (key) => String(key).split(":").length >= 3;
+  const baseKeyOf  = (key) => String(key).split(":").slice(0,2).join(":");
 
   /* ===================== PROMO FUNNEL (queue) + GUARD ===================== */
 
@@ -417,9 +418,7 @@ window.addEventListener("promotions:hydrated", schedulePromoGuard);
 // On boot, give it one pass.
 document.addEventListener("DOMContentLoaded", schedulePromoGuard);
 
-
-const baseKeyOf  = (key) => String(key).split(":").slice(0,2).join(":");
-
+  
   /* ===================== Base-line order (Promo Wheel) ===================== */
   const ORDER_KEY = "gufa:baseOrder";
 
