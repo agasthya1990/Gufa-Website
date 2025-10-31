@@ -21,6 +21,7 @@ window.addEventListener("cart:update", persistCartSnapshotThrottled);
   const defaults = {
     items:      "#cart-items",
     empty:      "#cart-empty",
+    count:      null,
     subtotal:   "#subtotal-amt",
     servicetax: "#servicetax-amt",
     total:      "#total-amt",
@@ -38,12 +39,13 @@ window.addEventListener("cart:update", persistCartSnapshotThrottled);
 })();
 
 // 2) Resolve layout once and memoize element refs. Safe even if pieces are missing.
-function resolveLayout(){
-  const Q  = sel => document.querySelector(sel);
+function resolveLayoutNow(){
+  const Q  = sel => sel ? document.querySelector(sel) : null; // ⟵ guard null/undefined
   const UI = (window.CART_UI && window.CART_UI.list) || {};
   const R = {
-    items:      Q(UI.items),
-    empty:      Q(UI.empty),
+    items: Q(UI.items),
+    empty: Q(UI.empty),
+    count: Q(UI.count),
     subtotal:   Q(UI.subtotal),
     servicetax: Q(UI.servicetax),
     total:      Q(UI.total),
@@ -57,6 +59,8 @@ function resolveLayout(){
   };
   return R;
 }
+
+
 
 // --- Promo label pulse (visual only) ---
 let __LAST_PROMO_TAG__ = "";
@@ -118,9 +122,10 @@ function writeCouponLockFromMeta(couponId, meta){
 
   // mode gating
   const m = (String(localStorage.getItem("gufa_mode") || "delivery").toLowerCase() === "dining") ? "dining" : "delivery";
-  const t = meta.targets || {};
-  const allowed = (m === "delivery") ? !!t.delivery : !!t.dining;
-  if (!allowed) return false;
+const t = meta.targets || {};
+const allowed = (m === "delivery") ? (t.delivery ?? true) : (t.dining ?? true);
+if (!allowed) return false;
+
 
   // eligible items (fallback to full scan when scope absent)
   const eligibleItemIds = Array.isArray(meta.eligibleItemIds) && meta.eligibleItemIds.length
@@ -143,7 +148,7 @@ function writeCouponLockFromMeta(couponId, meta){
 }
 
 function wireApplyCouponUI(){
-  const UI = resolveLayout();
+  const UI = resolveLayoutNow();
   const input = UI.promoInput;
   const btn   = UI.promoApply;
   if (!btn || !input) return;
@@ -180,8 +185,11 @@ function wireApplyCouponUI(){
     }
   };
 
+ try {
   btn.addEventListener("click", apply);
   input.addEventListener("keydown", (e) => { if (e.key === "Enter") apply(); });
+} catch {}
+
 }
 
 // Boot the wire-up after DOM is ready
@@ -248,9 +256,10 @@ function activeMode(){
   const isAddonKey = (key) => String(key).split(":").length >= 3;
   const baseKeyOf  = (key) => String(key).split(":").slice(0,2).join(":");
 
-  /* ===================== PROMO FUNNEL (queue) + GUARD ===================== */
+/* ===================== PROMO FUNNEL (queue) + GUARD ===================== */
 
 // Arrival rail we already maintain elsewhere; provide a safe read fallback.
+const ORDER_KEY = "gufa:baseOrder";
 function __readBaseOrder(){
   try { const a = JSON.parse(localStorage.getItem(ORDER_KEY) || "[]"); return Array.isArray(a) ? a : []; }
   catch { return []; }
@@ -277,7 +286,18 @@ function buildPromoQueue() {
   for (const k of baseKeysLive) if (!order.includes(k)) order.push(k);
 
   // Build per-base coupon priority
-  const BANNERS = (window.BANNERS && Array.isArray(window.BANNERS)) ? window.BANNERS : [];
+  let BANNERS = [];
+if (Array.isArray(window.BANNERS)) {
+  BANNERS = window.BANNERS;
+} else if (window.BANNERS instanceof Map) {
+  // Flatten Map → array of pseudo-banners; preserve key and any coupon linkage.
+  BANNERS = Array.from(window.BANNERS.entries()).map(([key, itemIds]) => ({
+    id: key,
+    linkedCouponIds: key.startsWith("coupon:") ? [key.slice(7)] : [],
+    items: Array.isArray(itemIds) ? itemIds : []
+  }));
+}
+
   const COUPONS = (window.COUPONS instanceof Map) ? window.COUPONS : new Map();
 
   // Helper to get banner-linked coupon ids for a given baseKey
@@ -291,16 +311,19 @@ function buildPromoQueue() {
 
       // Accumulate [priorityBucket, couponId]
       const picks = [];
-      for (const b of BANNERS) {
-        const linked = Array.isArray(b?.linkedCouponIds) ? b.linkedCouponIds.map(String) : [];
-        if (!linked.length) continue;
+for (const b of BANNERS) {
+  const linked = Array.isArray(b?.linkedCouponIds) ? b.linkedCouponIds.map(String) : [];
+  if (!linked.length) continue;
 
-        // keep admin order → index score
-        linked.forEach((cid, idx) => {
-          // Banner eligibility by mode will be rechecked via computeDiscount anyway
-          picks.push([ (activeId && String(b.id) === activeId) ? 0 : 1, idx, cid ]);
-        });
-      }
+  // Only prefer if this banner actually lists the item (by itemId)
+  const hasItem = Array.isArray(b?.items) && b.items.map(String).some(x => x.trim() === itemId);
+  if (!hasItem) continue;
+
+  linked.forEach((cid, idx) => {
+    picks.push([ (activeId && String(b.id) === activeId) ? 0 : 1, idx, cid ]);
+  });
+}
+
       // sort by: active banner first (0), then admin order (idx)
       picks.sort((a,b) => (a[0]-b[0]) || (a[1]-b[1]));
       // return only coupon ids (unique)
@@ -417,8 +440,6 @@ document.addEventListener("DOMContentLoaded", schedulePromoGuard);
 
   
   /* ===================== Base-line order (Promo Wheel) ===================== */
-  const ORDER_KEY = "gufa:baseOrder";
-
   function readBaseOrder(){
     try { const a = JSON.parse(localStorage.getItem(ORDER_KEY) || "[]"); return Array.isArray(a) ? a : []; }
     catch { return []; }
@@ -495,17 +516,21 @@ document.addEventListener("DOMContentLoaded", schedulePromoGuard);
         if (kind !== "coupon") return;
 
         const targetsRaw = d.channels || d.targets || {};
-        const meta = {
-          code:      d.code ? String(d.code) : undefined,
-          type:      String(d.type || "flat").toLowerCase(), // 'percent' | 'flat'
-          value:     Number(d.value || 0),
-          minOrder:  Number(d.minOrder || 0),
-          targets:   { delivery: !!targetsRaw.delivery, dining: !!targetsRaw.dining },
-          // optional fields if you later add them
-          eligibleItemIds: Array.isArray(d.eligibleItemIds) ? d.eligibleItemIds : undefined,
-          usageLimit: d.usageLimit ?? undefined,
-          usedCount:  d.usedCount  ?? undefined
-        };
+       const meta = {
+  code:     d.code ? String(d.code) : undefined,
+  type:     String(d.type || "flat").toLowerCase(),
+  value:    Number(d.value || 0),
+  minOrder: Number(d.minOrder || 0),
+  targets: {
+    delivery: (targetsRaw.delivery === undefined ? undefined : !!targetsRaw.delivery),
+    dining:   (targetsRaw.dining   === undefined ? undefined : !!targetsRaw.dining),
+  },
+  // optional (top-level)
+  eligibleItemIds: Array.isArray(d.eligibleItemIds) ? d.eligibleItemIds : undefined,
+  usageLimit:      d.usageLimit ?? undefined,
+  usedCount:       d.usedCount  ?? undefined
+};
+
 
         window.COUPONS.set(String(doc.id), meta);
         added++;
@@ -537,22 +562,37 @@ document.addEventListener("DOMContentLoaded", schedulePromoGuard);
       const data = JSON.parse(tag.textContent || tag.innerText || "null");
       if (!data || typeof data !== "object") return false;
 
-      // Normalize coupons
-      if (!(window.COUPONS instanceof Map)) window.COUPONS = new Map();
-      if (Array.isArray(data.coupons)) {
-        for (const [cid, meta] of data.coupons) {
-          if (!cid) continue;
-          window.COUPONS.set(String(cid), meta || {});
-        }
-      }
+// Normalize coupons
+if (!(window.COUPONS instanceof Map)) window.COUPONS = new Map();
+if (Array.isArray(data.coupons)) {
+  // Expecting array of [cid, meta]
+  for (const [cid, meta] of data.coupons) {
+    if (!cid) continue;
+    window.COUPONS.set(String(cid), meta || {});
+  }
+} else if (data.coupons && typeof data.coupons === "object") {
+  // Also accept object map: { cid: meta, ... }
+  for (const cid of Object.keys(data.coupons)) {
+    window.COUPONS.set(String(cid), data.coupons[cid] || {});
+  }
+}
 
-      // Normalize banners to Map
-      if (!(window.BANNERS instanceof Map)) window.BANNERS = new Map();
-      if (Array.isArray(data.banners)) {
-        for (const [key, arr] of data.banners) {
-          window.BANNERS.set(String(key), Array.isArray(arr) ? arr : []);
-        }
-      }
+
+// Normalize banners to Map
+if (!(window.BANNERS instanceof Map)) window.BANNERS = new Map();
+if (Array.isArray(data.banners)) {
+  // Expecting array of [key, itemArray]
+  for (const [key, arr] of data.banners) {
+    window.BANNERS.set(String(key), Array.isArray(arr) ? arr : []);
+  }
+} else if (data.banners && typeof data.banners === "object") {
+  // Also accept object map: { key: [itemIds], ... }
+  for (const key of Object.keys(data.banners)) {
+    const arr = data.banners[key];
+    window.BANNERS.set(String(key), Array.isArray(arr) ? arr : []);
+  }
+}
+
 
       // Persist a lightweight snapshot for future tabs/pages
       try {
@@ -658,8 +698,12 @@ function buildLockFromMeta(cid, meta) {
 
 // Create/find a small error line under the input (single-line, red, compact)
 function ensurePromoErrorHost() {
-  const UI = resolveLayout();
-  const input = UI.promoInput;
+  // Prefer already-resolved R.promoInput; otherwise resolve safely without side-effects
+  const input =
+    (typeof R === "object" && R && R.promoInput) ||
+    (typeof resolveLayoutNow === "function" ? resolveLayoutNow().promoInput : null) ||
+    document.querySelector(window?.CART_UI?.list?.promoInput || "#promo-input");
+
   if (!input) return null;
 
   const parent =
@@ -681,6 +725,7 @@ function ensurePromoErrorHost() {
   }
   return node;
 }
+
 
 
 function showPromoError(msg) {
@@ -851,9 +896,9 @@ if (!elig.size){
     let any = false;
     for (const [key, it] of entries()){
       if (isAddonKey(key)) continue;
-      const parts = String(key).toLowerCase().split(":");
-      const itemId  = String(it?.id ?? parts[0]);
-      const baseKey = parts.slice(0,2).join(":");
+      const parts = String(key).split(":");
+      const itemId  = String(it?.id ?? parts[0]).toLowerCase();
+      const baseKey = parts.slice(0,2).join(":").toLowerCase();
       if (elig.has(itemId) || elig.has(baseKey) || Array.from(elig).some(x => !x.includes(":") && baseKey.startsWith(x + ":"))){
         any = true; break;
       }
@@ -1124,9 +1169,12 @@ return { discount: Math.max(0, Math.round(d)) };
   function getAddress(){ try { return JSON.parse(localStorage.getItem(ADDR_KEY) || "null"); } catch { return null; } }
   function setAddress(obj){ try { obj ? localStorage.setItem(ADDR_KEY, JSON.stringify(obj)) : localStorage.removeItem(ADDR_KEY); } catch {} }
 
-  function ensureDeliveryForm(){
-    if (activeMode() !== "delivery") { if (R.deliveryHost) R.deliveryHost.remove(); return; }
-    if (!R.deliveryHost) {
+ function ensureDeliveryForm(){
+  if (activeMode() !== "delivery") {
+    if (R.deliveryHost) { R.deliveryHost.remove(); R.deliveryHost = null; } // ⟵ null out ref
+    return;
+  }
+  if (!R.deliveryHost) {
       const aside = document.querySelector("aside.cart-right") || document.body;
       const wrap = document.createElement("div");
       wrap.id = "delivery-form";
@@ -1200,27 +1248,29 @@ function render(){
     if (R.items)   R.items.hidden      = n === 0;
 
     // Left list
-    if (R.items){
-      R.items.innerHTML = "";
-      const gs = buildGroups();
-      for (const [, g] of gs){
-        if (!g.base && g.addons.length){
-          // synthesize shell if only add-ons exist for a baseKey
-          const first = g.addons[0];
-          g.base = { key: first.key.split(":").slice(0,2).join(":"), it: { ...(first.it||{}), qty: 0 } };
-        }
-        if (g.base){
-          const row = baseRow(g.base.key, g.base.it);
-          if (g.addons.length){
-            const list = document.createElement("div");
-            list.className = "addon-list";
-            g.addons.sort((a,b)=>a.name.localeCompare(b.name)).forEach(a => list.appendChild(addonRow(g.base.key, a)));
-            row.appendChild(list);
-          }
-          R.items.appendChild(row);
-        }
-      }
+// Left list (build groups once and reuse)
+let gs = null;
+if (R.items){
+  R.items.innerHTML = "";
+  gs = buildGroups();
+  for (const [, g] of gs){
+    if (!g.base && g.addons.length){
+      // synthesize shell if only add-ons exist for a baseKey
+      const first = g.addons[0];
+      g.base = { key: first.key.split(":").slice(0,2).join(":"), it: { ...(first.it||{}), qty: 0 } };
     }
+    if (g.base){
+      const row = baseRow(g.base.key, g.base.it);
+      if (g.addons.length){
+        const list = document.createElement("div");
+        list.className = "addon-list";
+        g.addons.sort((a,b)=>a.name.localeCompare(b.name)).forEach(a => list.appendChild(addonRow(g.base.key, a)));
+        row.appendChild(list);
+      }
+      R.items.appendChild(row);
+    }
+  }
+}
 
     // Totals
     const { base, add } = splitBaseVsAddons();
@@ -1230,7 +1280,7 @@ function render(){
     const tax    = taxOn(preTax);
     const grand  = preTax + tax;
 
-    renderInvoiceLists(buildGroups());
+    renderInvoiceLists(gs || buildGroups());
 
     if (R.subtotal)   R.subtotal.textContent   = INR(base + add);
     if (R.servicetax) R.servicetax.textContent = INR(tax);
@@ -1306,9 +1356,10 @@ if (discount > 0) showPromoError("");
     ensureDeliveryForm();
 
 // Manual Apply Coupon (no auto-fill from lock)
-if (R.promoApply && !R.promoApply._wired){
-  R.promoApply._wired = true;
-  R.promoApply.addEventListener("click", async ()=>{
+if (R.promoApply){
+  if (!R.promoApply._wired){
+    R.promoApply._wired = true;
+    R.promoApply.addEventListener("click", async ()=>{
     // normalize user input once
     const raw = (R.promoInput?.value || "").trim();
     if (!raw) { showPromoError(""); return; }
@@ -1337,8 +1388,8 @@ if (R.promoApply && !R.promoApply._wired){
     showPromoError("");
     enforceFirstComeLock();
     window.dispatchEvent(new CustomEvent("cart:update"));
-  }, false);
-}
+    }, false);
+  }
 }
 
   /* ===================== Boot & subscriptions ===================== */
