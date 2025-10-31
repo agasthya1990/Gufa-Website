@@ -1,7 +1,7 @@
 /* app.cart.js — Consolidated Super File
-   - Robust Cart with strict Promotions
-   - Promo Funnel (queue) + Guard (non-stackable, FCFS by arrival)
-   - Apply-by-code + “next eligible item” hint
+   - Strict Promotions (scoped to eligible items only)
+   - Promo Funnel (FCFS, non-stackable) + Guard
+   - Apply-by-Code + “next eligible item” hint
    - Mode gating (Delivery/Dining) + minOrder
    - Add-on steppers + auto-prune
    - Promo totals row & invoice lists
@@ -52,7 +52,7 @@ const taxOn  = (amt) => clamp0(amt) * SERVICE_TAX_RATE;
 
 const COUPON_KEY = "gufa_coupon";
 const ADDR_KEY   = "gufa:deliveryAddress";
-const ORDER_KEY  = "gufa:baseOrder"; // declare ONCE
+const ORDER_KEY  = "gufa:baseOrder";
 
 const isUUID = (s) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s||"");
 
@@ -162,16 +162,11 @@ function hydrateCouponsFromInlineJson(){
 
     if (!(window.COUPONS instanceof Map)) window.COUPONS = new Map();
     if (Array.isArray(data.coupons)) {
-      for (const [cid, meta] of data.coupons) {
-        if (!cid) continue;
-        window.COUPONS.set(String(cid), meta || {});
-      }
+      for (const [cid, meta] of data.coupons) if (cid) window.COUPONS.set(String(cid), meta || {});
     }
     if (!(window.BANNERS instanceof Map)) window.BANNERS = new Map();
     if (Array.isArray(data.banners)) {
-      for (const [key, arr] of data.banners) {
-        window.BANNERS.set(String(key), Array.isArray(arr) ? arr : []);
-      }
+      for (const [key, arr] of data.banners) window.BANNERS.set(String(key), Array.isArray(arr) ? arr : []);
     }
     try {
       const dump = Array.from(window.COUPONS.entries());
@@ -193,7 +188,6 @@ async function ensureCouponsReady() {
 const getLock = () => { try { return JSON.parse(localStorage.getItem(COUPON_KEY) || "null"); } catch { return null; } };
 const setLock = (obj) => { try { obj ? localStorage.setItem(COUPON_KEY, JSON.stringify(obj)) : localStorage.removeItem(COUPON_KEY); } catch {} };
 function applyLock(lock){
-  // lock is a fully built lock {scope,type,value,code,minOrder?,valid?}
   setLock(lock);
   try { window.dispatchEvent(new CustomEvent("cart:update")); } catch {}
 }
@@ -322,6 +316,7 @@ function computeDiscount(locked, baseSubtotal){
   if (minOrder > 0 && baseSubtotal < minOrder) return { discount:0 };
 
   let elig = resolveEligibilitySet(locked);
+  // Manual-apply fallback: allow any base if no scope exists yet
   if (!elig.size && String(locked?.source||"") === "manual") {
     try {
       const bases = [];
@@ -378,7 +373,7 @@ function buildPromoQueue() {
   const BANNERS = (window.BANNERS && Array.isArray(window.BANNERS)) ? window.BANNERS : [];
   const COUPONS = (window.COUPONS instanceof Map) ? window.COUPONS : new Map();
 
-  function bannerPriorityFor(/* baseKey */){
+  function bannerPriorityFor(){
     try {
       const activeId = (window.ACTIVE_BANNER && window.ACTIVE_BANNER.id) ? String(window.ACTIVE_BANNER.id) : null;
       const picks = [];
@@ -402,7 +397,7 @@ function buildPromoQueue() {
       const meta = COUPONS.get(cid);
       if (!meta) continue;
       if (!checkUsageAvailable(meta)) continue;
-      const lock = buildLockFromMeta(String(cid), meta); // auto lock
+      const lock = buildLockFromMeta(String(cid), meta); // auto lock (with scoped eligibleItemIds)
       const res  = computeDiscount(lock, base);
       if (res && res.discount > 0) queue.push({ lock, baseKey: bKey, discount: res.discount });
     }
@@ -415,7 +410,7 @@ let __promoGuardTimer = null;
 let __lastChosenSignature = "";
 function schedulePromoGuard() {
   if (__promoGuardTimer) return;
-  __promoGuardTimer = setTimeout(runPromoGuard, 25); // coalesce bursts
+  __promoGuardTimer = setTimeout(runPromoGuard, 25);
 }
 function runPromoGuard() {
   __promoGuardTimer = null;
@@ -431,8 +426,7 @@ function runPromoGuard() {
     const { base } = splitBaseVsAddons();
     if (locked) {
       const res = computeDiscount(locked, base);
-      const manual = String(locked.source||"").startsWith("manual") || String(locked.source||"").startsWith("apply");
-      if (res.discount > 0) { __promoGuardBusy = false; return; } // keep current (manual or auto) while effective
+      if (res.discount > 0) { __promoGuardBusy = false; return; } // keep current while effective
     }
 
     const q = buildPromoQueue();
@@ -443,7 +437,6 @@ function runPromoGuard() {
     if (signature === __lastChosenSignature) { __promoGuardBusy = false; return; }
     __lastChosenSignature = signature;
 
-    // Apply directly (don’t use writeCouponLockFromMeta; lock already normalized)
     head.lock.source = "auto";
     applyLock(head.lock);
   } catch {} finally { __promoGuardBusy = false; }
@@ -541,12 +534,13 @@ function wireApplyCouponUI(){
     const found = findCouponByIdOrCode(needle) || findCouponByCode(needle);
     if (!found) { showPromoError(R, "Invalid or Ineligible Coupon Code"); return; }
 
-    const lock = buildLockFromMeta(found.cid, found.meta);
-    lock.source = "manual";
+    const fullLock = buildLockFromMeta(found.cid, found.meta);
+    fullLock.source = "manual";
+
+    // IMPORTANT: enforce discipline BEFORE setting lock (no global bleed)
     const { base } = splitBaseVsAddons();
-    const { discount } = computeDiscount(lock, base);
+    const { discount } = computeDiscount(fullLock, base);
     if (!discount || discount <= 0) {
-      // If nothing in cart yet is eligible, stash hint for Menu
       const ids = computeEligibleItemIdsForCoupon(found.cid);
       if (ids.length) localStorage.setItem("gufa:nextEligibleItem", ids[0]);
       showPromoError(R, "Invalid or Ineligible Coupon Code");
@@ -554,7 +548,7 @@ function wireApplyCouponUI(){
     }
 
     showPromoError(R, "");
-    applyLock(lock); // non-stackable is enforced by guard/compute
+    applyLock(fullLock);
   };
 
   if (!btn._wired)   { btn._wired   = true; btn.addEventListener("click", apply); }
@@ -707,10 +701,12 @@ function renderInvoiceLists(groups){
   if (R.invFood)   R.invFood.innerHTML   = food.length ? food.join("") : `<div class="muted">None</div>`;
   if (R.invAddons) R.invAddons.innerHTML = adds.length ? adds.join("") : `<div class="muted">None</div>`;
 }
+
+/* ===================== Delivery Address form (delivery only) ===================== */
 function getAddress(){ try { return JSON.parse(localStorage.getItem(ADDR_KEY) || "null"); } catch { return null; } }
 function setAddress(obj){ try { obj ? localStorage.setItem(ADDR_KEY, JSON.stringify(obj)) : localStorage.removeItem(ADDR_KEY); } catch {} }
 function ensureDeliveryForm(){
-  if (activeMode() !== "delivery") { if (R.deliveryHost) R.deliveryHost.remove(); R.deliveryHost = null; return; }
+  if (activeMode() !== "delivery") { if (R.deliveryHost) R.deliveryHost.remove(); return; }
   if (!R.deliveryHost) {
     const aside = document.querySelector("aside.cart-right") || document.body;
     const wrap = document.createElement("div");
@@ -731,22 +727,24 @@ function ensureDeliveryForm(){
     `;
     aside.appendChild(wrap);
     R.deliveryHost = wrap;
+    wireAddressForm();
+  } else {
+    wireAddressForm();
   }
-  wireAddressForm();
 }
 function wireAddressForm(){
-  if (!R.deliveryHost) return;
-  const $ = (sel) => R.deliveryHost.querySelector(sel);
   const saved = getAddress() || {};
+  const $ = (id) => R.deliveryHost.querySelector(id);
   const name=$('#addr-name'), phone=$('#addr-phone'), l1=$('#addr-line1'), l2=$('#addr-line2'),
         area=$('#addr-area'), pin=$('#addr-pin'), notes=$('#addr-notes'), save=$('#addr-save');
-  if (name && !name.value)   name.value  = saved.name  || "";
-  if (phone && !phone.value) phone.value = saved.phone || "";
-  if (l1 && !l1.value)       l1.value    = saved.line1 || "";
-  if (l2 && !l2.value)       l2.value    = saved.line2 || "";
-  if (area && !area.value)   area.value  = saved.area  || "";
-  if (pin && !pin.value)     pin.value   = saved.pin   || "";
-  if (notes && !notes.value) notes.value = saved.notes || "";
+  if (name && !name.value)  name.value  = saved.name  || "";
+  if (phone && !phone.value) phone.value= saved.phone || "";
+  if (l1 && !l1.value)      l1.value    = saved.line1 || "";
+  if (l2 && !l2.value)      l2.value    = saved.line2 || "";
+  if (area && !area.value)  area.value  = saved.area  || "";
+  if (pin && !pin.value)    pin.value   = saved.pin   || "";
+  if (notes && !notes.value)notes.value = saved.notes || "";
+
   if (save && !save._wired){
     save._wired = true;
     save.addEventListener("click", ()=>{
@@ -761,7 +759,7 @@ function wireAddressForm(){
       };
       setAddress(obj);
       window.dispatchEvent(new CustomEvent("cart:update"));
-    });
+    }, false);
   }
 }
 
@@ -769,7 +767,8 @@ function wireAddressForm(){
 function render(){
   if (!R.items && !resolveLayout()) return;
 
-  // Guard decides which single promo (if any) is active
+  // Promo discipline (non-stackable) is enforced here:
+  // if current lock stops discounting for current state, Guard promotes the next.
   schedulePromoGuard();
 
   const n = itemCount();
@@ -779,6 +778,7 @@ function render(){
   if (R.empty)   R.empty.hidden      = n > 0;
   if (R.items)   R.items.hidden      = n === 0;
 
+  // Left list
   if (R.items){
     R.items.innerHTML = "";
     const gs = buildGroups();
@@ -800,6 +800,7 @@ function render(){
     }
   }
 
+  // Totals
   const { base, add } = splitBaseVsAddons();
   const locked = getLock();
   const { discount } = computeDiscount(locked, base);
@@ -813,23 +814,21 @@ function render(){
   if (R.servicetax) R.servicetax.textContent = INR(tax);
   if (R.total)      R.total.textContent      = INR(grand);
 
+  // Promo totals row (left label + right amount)
   const codeText = locked ? displayCode(locked) : "";
   if (R.promoLbl) {
     if (locked && codeText) {
       R.promoLbl.textContent = `Promotion (${codeText}):`;
-      if (codeText !== __LAST_PROMO_TAG__) {
-        pulsePromoLabel(R.promoLbl);
-        __LAST_PROMO_TAG__ = codeText;
-      }
+      if (codeText !== __LAST_PROMO_TAG__) { pulsePromoLabel(R.promoLbl); __LAST_PROMO_TAG__ = codeText; }
     } else {
       R.promoLbl.textContent = `Promotion (): none`;
       __LAST_PROMO_TAG__ = "";
     }
   }
-  if (R.promoAmt) R.promoAmt.textContent = `− ${INR(discount)}`;
-  if (discount > 0) showPromoError(R, "");
+  if (R.promoAmt)  R.promoAmt.textContent = `− ${INR(discount)}`;
+  if (discount > 0) showPromoError(R, ""); // clear error if working
 
-  // Next-eligible hint
+  // “Next eligible” hint (if user applied a code but hasn’t added an eligible base yet)
   (function showNextEligibleHint(){
     try {
       const targetId = localStorage.getItem("gufa:nextEligibleItem");
@@ -864,24 +863,25 @@ function render(){
     } catch {}
   })();
 
+  // Delivery address (delivery mode only)
   ensureDeliveryForm();
+
+  // Wire “Apply Coupon” once DOM references exist
+  wireApplyCouponUI();
 }
 
-/* ===================== Boot ===================== */
+/* ===================== Boot & subscriptions ===================== */
 async function boot(){
   resolveLayout();
   const inlined = hydrateCouponsFromInlineJson();
   if (!inlined) { try { await ensureCouponsReady(); } catch {} }
-  wireApplyCouponUI();
   render();
 
   window.addEventListener("cart:update", render, false);
   window.addEventListener("serviceMode:changed", render, false);
   window.addEventListener("storage", (e) => {
     if (!e) return;
-    if (e.key === "gufa_cart" || e.key === COUPON_KEY || e.key === ADDR_KEY || e.key === "gufa_mode") {
-      render();
-    }
+    if (e.key === "gufa_cart" || e.key === COUPON_KEY || e.key === ADDR_KEY || e.key === "gufa_mode") render();
   }, false);
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") render(); }, false);
   window.addEventListener("pageshow", (ev) => { if (ev && ev.persisted) render(); }, false);
