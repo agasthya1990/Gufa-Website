@@ -1,136 +1,234 @@
-# Write the rewritten cart script to a file so the user can download and drop it in their project.
-code = r"""
-/**
- * app.cart.js — Rewritten (stable) build
- * ------------------------------------------------------------
- * Features preserved & hardened:
- * - FCFS, non-stackable promotions with strict eligibility
- * - Mode gating (delivery / dining)
- * - Manual Apply by CODE or ID (with next-eligible hint)
- * - Add-on steppers, auto-prune on base removal
- * - Invoice sections (food, add-ons), promo totals row
- * - Throttled cart snapshots to localStorage
- * - Delivery Address form (delivery mode only)
- * - Inline JSON hydrate (#promo-data) then Firestore hydrate (read-only)
- * - Render & hydrate are crash-guarded; no hard failures if any piece is missing
- *
- * Drop-in: replaces previous app.cart.js.
- * Works with legacy Cart store shape: window.Cart.get()/setQty()
- * and fallback to localStorage("gufa_cart") where needed.
- */
+// app.cart.js — Robust Cart with strict Promotions, FCFS (non-stackable), Mode gating,
+// Add-on steppers + auto-prune, Promo totals row, and Delivery Address form.
+// Refactor-friendly: clear seams for minOrder & usageLimit coming from Admin/promotions.js.
 
-;(() => {
-  /* ===================== Small utilities ===================== */
-  const INR = (v) => "₹" + Math.round(Number(v) || 0).toLocaleString("en-IN");
+let lastSnapshotAt = 0;
+function persistCartSnapshotThrottled() {
+  const now = Date.now();
+  if (now - lastSnapshotAt < 1000) return; // 1s debounce
+  lastSnapshotAt = now;
+  try {
+    const cart = window?.Cart?.get?.() || {};
+    localStorage.setItem("gufa_cart", JSON.stringify(cart));
+  } catch {}
+}
+window.addEventListener("cart:update", persistCartSnapshotThrottled);
+
+
+// ---- crash guards (no feature changes) ----
+// 1) Ensure we have a deterministic UI selector map that matches checkout.html
+(function ensureCartUIMap(){
+  const defaults = {
+    items:      "#cart-items",
+    empty:      "#cart-empty",
+    subtotal:   "#subtotal-amt",
+    servicetax: "#servicetax-amt",
+    total:      "#total-amt",
+    proceed:    "#proceed-btn",
+    invFood:    "#inv-food",
+    invAddons:  "#inv-addons",
+    promoLbl:   "#promo-label",
+    promoAmt:   "#promo-amt",
+    promoInput: "#promo-input",
+    promoApply: "#promo-apply"
+  };
+  const root = (window.CART_UI && window.CART_UI.list) ? window.CART_UI.list : {};
+  window.CART_UI = window.CART_UI || {};
+  window.CART_UI.list = Object.assign({}, defaults, root); // any page overrides still win
+})();
+
+// 2) Resolve layout once and memoize element refs. Safe even if pieces are missing.
+function resolveLayout(){
+  const Q  = sel => document.querySelector(sel);
+  const UI = (window.CART_UI && window.CART_UI.list) || {};
+  const R = {
+    items:      Q(UI.items),
+    empty:      Q(UI.empty),
+    subtotal:   Q(UI.subtotal),
+    servicetax: Q(UI.servicetax),
+    total:      Q(UI.total),
+    proceed:    Q(UI.proceed),
+    invFood:    Q(UI.invFood),
+    invAddons:  Q(UI.invAddons),
+    promoLbl:   Q(UI.promoLbl),
+    promoAmt:   Q(UI.promoAmt),
+    promoInput: Q(UI.promoInput),
+    promoApply: Q(UI.promoApply)
+  };
+  return R;
+}
+
+// --- Promo label pulse (visual only) ---
+let __LAST_PROMO_TAG__ = "";
+
+function pulsePromoLabel(el){
+  if (!el) return;
+  // retrigger CSS animation by toggling class
+  el.classList.remove("promo-pulse");
+  // force reflow so re-adding class plays again
+  void el.offsetWidth;
+  el.classList.add("promo-pulse");
+}
+
+
+// 3) Lightweight “no-crash” renderer wrapper
+function safeRender(fn){
+  
+  try { fn(); } catch (e) { console.warn("[cart] render suppressed:", e); }
+}
+
+// === Coupon helpers (apply-by-code + next-eligible) ===
+function findCouponByCodeOrId(input){
+  const raw = String(input || "").trim();
+  if (!raw) return null;
+
+  // Try direct id hit
+  if ((window.COUPONS instanceof Map) && window.COUPONS.has(raw)) {
+    const meta = window.COUPONS.get(raw);
+    return { id: raw, meta };
+  }
+
+  // Try code match (case-insensitive)
+  if (window.COUPONS instanceof Map) {
+    const hit = Array.from(window.COUPONS.entries()).find(([,m]) =>
+      String(m?.code || "").toLowerCase() === raw.toLowerCase()
+    );
+    if (hit) return { id: hit[0], meta: hit[1] };
+  }
+  return null;
+}
+
+function computeEligibleItemIdsForCoupon(couponId){
+  try {
+    const id = String(couponId || "");
+    const all = (window.ITEMS || []);
+    // items list may use promotions | coupons | couponIds
+    return all.filter((it) => {
+      const ids = Array.isArray(it.promotions) ? it.promotions
+                : Array.isArray(it.coupons)    ? it.coupons
+                : Array.isArray(it.couponIds)  ? it.couponIds
+                : [];
+      return ids.map(String).includes(id);
+    }).map(it => String(it.id));
+  } catch { return []; }
+}
+
+function writeCouponLockFromMeta(couponId, meta){
+  if (!couponId || !meta) return false;
+
+  // mode gating
+  const m = (String(localStorage.getItem("gufa_mode") || "delivery").toLowerCase() === "dining") ? "dining" : "delivery";
+  const t = meta.targets || {};
+  const allowed = (m === "delivery") ? !!t.delivery : !!t.dining;
+  if (!allowed) return false;
+
+  // eligible items (fallback to full scan when scope absent)
+  const eligibleItemIds = Array.isArray(meta.eligibleItemIds) && meta.eligibleItemIds.length
+    ? meta.eligibleItemIds.map(String)
+    : computeEligibleItemIdsForCoupon(couponId);
+
+  const payload = {
+    code:  String(meta.code || couponId).toUpperCase(),
+    type:  String(meta.type || ""),
+    value: Number(meta.value || 0),
+    valid: { delivery: !!(t.delivery ?? true), dining: !!(t.dining ?? true) },
+    scope: { couponId: String(couponId), eligibleItemIds },
+    lockedAt: Date.now(),
+    source: "apply:manual"
+  };
+
+  try { localStorage.setItem("gufa_coupon", JSON.stringify(payload)); } catch {}
+  try { window.dispatchEvent(new CustomEvent("cart:update", { detail: { coupon: payload } })); } catch {}
+  return true;
+}
+
+function wireApplyCouponUI(){
+  const UI = resolveLayout();
+  const input = UI.promoInput;
+  const btn   = UI.promoApply;
+  if (!btn || !input) return;
+
+  const apply = () => {
+    const query = input.value;
+    const found = findCouponByCodeOrId(query);
+    if (!found || !found.meta || found.meta.active === false) {
+      // Minimal UX: reflect error in label line; totals will stay unchanged
+      if (UI.promoLbl) UI.promoLbl.textContent = "Promotion (): invalid or inactive";
+      return;
+    }
+    const ok = writeCouponLockFromMeta(found.id, found.meta);
+
+    // If nothing in cart qualifies yet, stash a hint for Menu to highlight next eligible item
+    try {
+      const ids = computeEligibleItemIdsForCoupon(found.id);
+      const hasEligibleInCart = (function(){
+        const bag = window?.Cart?.get?.() || {};
+        return Object.keys(bag).some(k => {
+          const baseId = String(k).split(":")[0];
+          return ids.includes(baseId) && Number(bag[k]?.qty || 0) > 0;
+        });
+      })();
+      if (!hasEligibleInCart && ids.length) {
+        localStorage.setItem("gufa:nextEligibleItem", ids[0]);
+      }
+    } catch {}
+
+    // Repaint will be triggered via cart:update; keep a tiny UX touch here
+    if (ok && UI.promoLbl) {
+      const c = found.meta.code || found.id;
+      UI.promoLbl.textContent = `Promotion (${String(c).toUpperCase()})`;
+    }
+  };
+
+  btn.addEventListener("click", apply);
+  input.addEventListener("keydown", (e) => { if (e.key === "Enter") apply(); });
+}
+
+// Boot the wire-up after DOM is ready
+document.addEventListener("DOMContentLoaded", () => {
+  try { wireApplyCouponUI(); } catch {}
+});
+
+
+;(function(){
+  // ---- crash guards (no feature changes) ----
+  // Ensure global catalogs exist even if menu didn’t hydrate yet
+  if (!(window.COUPONS instanceof Map)) window.COUPONS = new Map();
+  if (!window.BANNERS) window.BANNERS = new Map(); // tolerate array elsewhere
+
+  // Safe-define no-op UI selectors bag if page didn’t set it (prevents null deref)
+  window.CART_UI = window.CART_UI || {};
+  window.CART_UI.list = window.CART_UI.list || {};
+
+  // Soft guard for Firestore usage in hydrate paths
+  // (hydrate functions already early-return if db is missing, but keep this stable)
+  if (!window.db) {
+    try {
+      // On checkout.html this is normally set; elsewhere we just leave it undefined
+      // so hydrate routines bail out safely.
+    } catch {}
+  }
+
+
+  /* ===================== Money & utils ===================== */
+  const INR = (v) => "₹" + Math.round(Number(v)||0).toLocaleString("en-IN");
   const SERVICE_TAX_RATE = 0.05;
-  const clamp0 = (n) => Math.max(0, Number(n) || 0);
+  const clamp0 = (n) => Math.max(0, Number(n)||0);
   const taxOn = (amt) => clamp0(amt) * SERVICE_TAX_RATE;
 
   const COUPON_KEY = "gufa_coupon";
-  const ORDER_KEY = "gufa:baseOrder";
-  const ADDR_KEY  = "gufa:deliveryAddress";
+  const ADDR_KEY   = "gufa:deliveryAddress";
 
-  const isUUID = (s) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s || "");
+  const isUUID = (s) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s||"");
 
-  const activeMode = () => (String(localStorage.getItem("gufa_mode") || "delivery").toLowerCase() === "dining") ? "dining" : "delivery";
+  /* ===================== Mode ===================== */
+function activeMode(){
+  const m = String(localStorage.getItem("gufa_mode") || "delivery").toLowerCase();
+  return m === "dining" ? "dining" : "delivery";
+}
 
-  /* ===================== Crash guards & globals ===================== */
-  // Safe global catalogs
-  if (!(window.COUPONS instanceof Map)) window.COUPONS = new Map();
-  if (!window.BANNERS) window.BANNERS = new Map(); // Map preferred; Array tolerated
 
-  // Deterministic UI selector map (page may override via window.CART_UI.list)
-  ;(function ensureCartUIMap(){
-    const defaults = {
-      items:      "#cart-items",
-      empty:      "#cart-empty",
-      count:      null,
-      subtotal:   "#subtotal-amt",
-      servicetax: "#servicetax-amt",
-      total:      "#total-amt",
-      proceed:    "#proceed-btn",
-      invFood:    "#inv-food",
-      invAddons:  "#inv-addons",
-      promoLbl:   "#promo-label",
-      promoAmt:   "#promo-amt",
-      promoInput: "#promo-input",
-      promoApply: "#promo-apply"
-    };
-    const root = (window.CART_UI && window.CART_UI.list) ? window.CART_UI.list : {};
-    window.CART_UI = window.CART_UI || {};
-    window.CART_UI.list = Object.assign({}, defaults, root);
-  })();
-
-  // Resolve layout lazily; tolerate missing pieces
-  let R = {};
-  const resolveLayout = () => {
-    const CFG = window.CART_UI?.list || {};
-    R = {
-      items:      document.querySelector(CFG.items),
-      empty:      document.querySelector(CFG.empty || null),
-      count:      document.querySelector(CFG.count || null),
-      subtotal:   document.querySelector(CFG.subtotal || null),
-      servicetax: document.querySelector(CFG.servicetax || null),
-      total:      document.querySelector(CFG.total || null),
-      proceed:    document.querySelector(CFG.proceed || null),
-      invFood:    document.querySelector(CFG.invFood || null),
-      invAddons:  document.querySelector(CFG.invAddons || null),
-      promoLbl:   document.querySelector(CFG.promoLbl || null),
-      promoAmt:   document.querySelector(CFG.promoAmt || null),
-      promoInput: document.querySelector(CFG.promoInput || null),
-      promoApply: document.querySelector(CFG.promoApply || null),
-      badge:      document.querySelector("#cart-count"),
-      deliveryHost: document.querySelector("#delivery-form") || null,
-    };
-    return !!R.items;
-  };
-
-  const safeQ = (sel) => sel ? document.querySelector(sel) : null;
-  const resolveLayoutNow = () => {
-    const UI = window.CART_UI?.list || {};
-    return {
-      items:      safeQ(UI.items),
-      empty:      safeQ(UI.empty),
-      count:      safeQ(UI.count),
-      subtotal:   safeQ(UI.subtotal),
-      servicetax: safeQ(UI.servicetax),
-      total:      safeQ(UI.total),
-      proceed:    safeQ(UI.proceed),
-      invFood:    safeQ(UI.invFood),
-      invAddons:  safeQ(UI.invAddons),
-      promoLbl:   safeQ(UI.promoLbl),
-      promoAmt:   safeQ(UI.promoAmt),
-      promoInput: safeQ(UI.promoInput),
-      promoApply: safeQ(UI.promoApply),
-    };
-  };
-
-  // Pulse animation helper for promo label
-  let __LAST_PROMO_TAG__ = "";
-  function pulsePromoLabel(el){
-    if (!el) return;
-    el.classList.remove("promo-pulse");
-    void el.offsetWidth; // reflow
-    el.classList.add("promo-pulse");
-  }
-
-  // Throttled cart snapshot (helps across tabs/pages)
-  let lastSnapshotAt = 0;
-  function persistCartSnapshotThrottled() {
-    const now = Date.now();
-    if (now - lastSnapshotAt < 1000) return; // 1s debounce
-    lastSnapshotAt = now;
-    try {
-      const cart = window?.Cart?.get?.() || {};
-      localStorage.setItem("gufa_cart", JSON.stringify(cart));
-    } catch {}
-  }
-  window.addEventListener("cart:update", persistCartSnapshotThrottled, false);
-
-  /* ===================== Cart I/O & shapes ===================== */
-  const isAddonKey = (key) => String(key).split(":").length >= 3;
-  const baseKeyOf  = (key) => String(key).split(":").slice(0,2).join(":");
-
+  /* ===================== Cart I/O ===================== */
   function entries(){
     try {
       const store = window?.Cart?.get?.();
@@ -146,8 +244,53 @@ code = r"""
       return Object.entries(bag || {});
     } catch { return []; }
   }
-  const itemCount = () => entries().reduce((n, [,it]) => n + (Number(it?.qty) || 0), 0);
+  const itemCount = () => entries().reduce((n, [,it]) => n + (Number(it?.qty)||0), 0);
+  const isAddonKey = (key) => String(key).split(":").length >= 3;
+  const baseKeyOf  = (key) => String(key).split(":").slice(0,2).join(":");
 
+ 
+
+  /* ===================== Base-line order (Promo Wheel) ===================== */
+  const ORDER_KEY = "gufa:baseOrder";
+
+  function readBaseOrder(){
+    try { const a = JSON.parse(localStorage.getItem(ORDER_KEY) || "[]"); return Array.isArray(a) ? a : []; }
+    catch { return []; }
+  }
+  function writeBaseOrder(arr){
+    try { localStorage.setItem(ORDER_KEY, JSON.stringify(Array.from(new Set(arr)))); } catch {}
+  }
+
+  // Maintain a stable “first arrival” order of base lines currently in cart.
+  // - add baseKey when its qty goes from 0 → >0
+  // - remove baseKey when its qty drops to 0
+  function syncBaseOrderWithCart(){
+    const bag = window?.Cart?.get?.() || {};
+    const liveBase = new Set(
+      Object.keys(bag)
+        .filter(k => !isAddonKey(k))
+        .map(k => baseKeyOf(k))
+    );
+
+    let order = readBaseOrder();
+
+    // add newly seen baseKeys at the end (preserve arrival)
+    for (const k of liveBase){
+      if (!order.includes(k)) order.push(k);
+    }
+    // drop baseKeys no longer present
+    order = order.filter(k => liveBase.has(k));
+
+    writeBaseOrder(order);
+    return order;
+  }
+
+  // Keep the order in sync on every cart mutation
+  window.addEventListener("cart:update", () => {
+    try { syncBaseOrderWithCart(); } catch {}
+  });
+
+  
   function splitBaseVsAddons(){
     let base=0, add=0;
     for (const [key, it] of entries()){
@@ -157,310 +300,47 @@ code = r"""
     return { base, add };
   }
 
-  /* ===================== Base order rail (FCFS) ===================== */
-  function readBaseOrder(){ try { const a = JSON.parse(localStorage.getItem(ORDER_KEY) || "[]"); return Array.isArray(a) ? a : []; } catch { return []; } }
-  function writeBaseOrder(arr){ try { localStorage.setItem(ORDER_KEY, JSON.stringify(Array.from(new Set(arr)))); } catch {} }
+    /* ===================== Global Catalogs ===================== */
+  if (!(window.COUPONS instanceof Map)) window.COUPONS = new Map();
+  if (!window.BANNERS) window.BANNERS = new Map(); // Map preferred; Array tolerated
 
-  function syncBaseOrderWithCart(){
-    const bag = window?.Cart?.get?.() || {};
-    const liveBase = new Set(Object.keys(bag).filter(k => !isAddonKey(k)).map(baseKeyOf));
-    let order = readBaseOrder();
-    for (const k of liveBase) if (!order.includes(k)) order.push(k);
-    order = order.filter(k => liveBase.has(k));
-    writeBaseOrder(order);
-    return order;
-  }
-  window.addEventListener("cart:update", () => { try { syncBaseOrderWithCart(); } catch {} }, false);
 
-  /* ===================== Promotions ===================== */
-  const getLock = () => { try { return JSON.parse(localStorage.getItem(COUPON_KEY) || "null"); } catch { return null; } };
-  const setLock = (obj) => { try { obj ? localStorage.setItem(COUPON_KEY, JSON.stringify(obj)) : localStorage.removeItem(COUPON_KEY); } catch {} };
-
-  function modeAllowed(locked){
-    const m = activeMode();
-    const v = locked?.valid;
-    if (v && typeof v === "object" && (m in v)) return !!v[m];
-    const cid = String(locked?.scope?.couponId||"");
-    const meta = (window.COUPONS instanceof Map) ? window.COUPONS.get(cid) : null;
-    if (meta && meta.targets && (m in meta.targets)) return !!meta.targets[m];
-    return true;
-  }
-
-  function eligibleIdsFromBanners(scope){
-    const out = new Set();
-    if (!scope) return out;
-    const bid = String(scope.bannerId||"").trim();
-    const cid = String(scope.couponId||"").trim();
-    const addAll = (arr) => {
-      if (!Array.isArray(arr)) return;
-      for (const x of arr) { const s = String(x||"").trim(); if (s) out.add(s.toLowerCase()); }
-    };
-    if (window.BANNERS instanceof Map){
-      addAll(window.BANNERS.get(bid));
-      if (!out.size && cid) addAll(window.BANNERS.get(`coupon:${cid}`));
-      return out;
-    }
-    if (Array.isArray(window.BANNERS)){
-      const banner = bid ? window.BANNERS.find(b => String(b?.id||"").trim() === bid) : null;
-      if (banner) {
-        addAll(banner.items || banner.eligibleItemIds || banner.itemIds);
-        if (out.size) return out;
-      }
-      if (!out.size && cid) {
-        const byCoupon = window.BANNERS.find(b =>
-          Array.isArray(b?.linkedCouponIds) &&
-          b.linkedCouponIds.map(String).some(x => x.trim() === cid)
-        );
-        addAll(byCoupon?.items || byCoupon?.eligibleItemIds || byCoupon?.itemIds);
-      }
-    }
-    return out;
-  }
-
-  function resolveEligibilitySet(locked){
-    const scope = locked?.scope || {};
-    const explicit = (
-      Array.isArray(scope.eligibleItemIds) ? scope.eligibleItemIds :
-      Array.isArray(scope.eligibleIds)     ? scope.eligibleIds     :
-      Array.isArray(scope.itemIds)         ? scope.itemIds         :
-      []
-    ).map(s=>String(s).toLowerCase());
-    if (explicit.length) return new Set(explicit);
-
-    const byBanner = eligibleIdsFromBanners(scope);
-    if (byBanner.size) return byBanner;
-
-    return new Set();
-  }
-
-  function displayCode(locked){
-    try {
-      if (!locked) return "";
-      const raw = String(locked.code || "").trim();
-      if (raw && !isUUID(raw)) return raw.toUpperCase();
-      const cid = String(locked?.scope?.couponId || "").trim();
-      if (cid && (window.COUPONS instanceof Map)) {
-        const meta = window.COUPONS.get(cid);
-        if (meta?.code) return String(meta.code).toUpperCase();
-      }
-      return "";
-    } catch { return ""; }
-  }
-
-  // Usage limits (future-ready; safe no-ops)
-  function checkUsageAvailable(meta){
-    if (!meta) return true;
-    if (typeof meta.usageLimit === "number" && meta.usageLimit <= 0) return false;
-    if (typeof meta.usageLimit === "number" && typeof meta.usedCount === "number") {
-      return meta.usedCount < meta.usageLimit;
-    }
-    return true;
-  }
-
-  function buildLockFromMeta(cid, meta) {
-    const explicit = Array.isArray(meta?.eligibleItemIds) ? meta.eligibleItemIds
-                  : Array.isArray(meta?.eligibleIds)     ? meta.eligibleIds
-                  : Array.isArray(meta?.itemIds)         ? meta.itemIds
-                  : [];
-    let eligSet = new Set(explicit.map(s => String(s).toLowerCase()));
-    if (!eligSet.size) eligSet = eligibleIdsFromBanners({ couponId: cid });
-    return {
-      scope: { couponId: cid, eligibleItemIds: Array.from(eligSet) },
-      type:  String(meta?.type || "flat").toLowerCase(),
-      value: Number(meta?.value || 0),
-      minOrder: Number(meta?.minOrder || 0),
-      valid: meta?.targets ? { delivery: !!meta.targets.delivery, dining: !!meta.targets.dining } : undefined,
-      code: (meta?.code ? String(meta.code).toUpperCase() : undefined),
-    };
-  }
-
-  function computeDiscount(locked, baseSubtotal){
-    if (!locked) return { discount:0 };
-    if (!modeAllowed(locked)) return { discount:0 };
-    const minOrder = Number(locked?.minOrder || 0);
-    if (minOrder > 0 && baseSubtotal < minOrder) return { discount:0 };
-
-    let elig = resolveEligibilitySet(locked);
-    // Manual fallback: if admin data didn’t yield scope, allow any base in current cart
-    if (!elig.size && String(locked?.source||"") === "manual") {
-      try {
-        const bases = [];
-        for (const [key, it] of entries()) {
-          if (isAddonKey(key)) continue;
-          const parts  = String(key).split(":");
-          const itemId = String(it?.id ?? parts[0]).toLowerCase();
-          bases.push(itemId);
-        }
-        if (bases.length) elig = new Set(bases);
-      } catch {}
-    }
-    if (!elig.size) return { discount:0 };
-
-    let eligibleBase = 0;
-    let eligibleQty  = 0;
-    for (const [key, it] of entries()){
-      if (isAddonKey(key)) continue;
-      const parts = String(key).split(":");
-      const itemId  = String(it?.id ?? parts[0]).toLowerCase();
-      const baseKey = parts.slice(0,2).join(":").toLowerCase();
-      if (elig.has(itemId) || elig.has(baseKey) || Array.from(elig).some(x => !x.includes(":") && baseKey.startsWith(x + ":"))){
-        const q = clamp0(it.qty);
-        eligibleBase += clamp0(it.price) * q;
-        eligibleQty  += q;
-      }
-    }
-    if (eligibleBase <= 0) return { discount:0 };
-
-    const t = String(locked?.type||"").toLowerCase();
-    const v = Number(locked?.value||0);
-    let d = 0;
-    if (t === "percent") d = Math.round(eligibleBase * (v/100));
-    else if (t === "flat") d = Math.min(v * eligibleQty, eligibleBase);
-    return { discount: Math.max(0, Math.round(d)) };
-  }
-
-  // Queue candidates by arrival order → banner-linked coupons → rest
-  function buildPromoQueue() {
-    const bag = (window?.Cart?.get?.() || {});
-    const { base } = splitBaseVsAddons();
-
-    const baseKeysLive = [];
-    for (const [k, it] of Object.entries(bag)) {
-      if (isAddonKey(k)) continue;
-      if ((it?.qty|0) > 0) baseKeysLive.push(baseKeyOf(k));
-    }
-    if (!baseKeysLive.length) return [];
-
-    const order = readBaseOrder().filter(k => baseKeysLive.includes(k));
-    for (const k of baseKeysLive) if (!order.includes(k)) order.push(k);
-
-    let BANNERS = [];
-    if (Array.isArray(window.BANNERS)) {
-      BANNERS = window.BANNERS;
-    } else if (window.BANNERS instanceof Map) {
-      BANNERS = Array.from(window.BANNERS.entries()).map(([key, itemIds]) => ({
-        id: key,
-        linkedCouponIds: key.startsWith("coupon:") ? [key.slice(7)] : [],
-        items: Array.isArray(itemIds) ? itemIds : []
-      }));
-    }
-    const COUPONS = (window.COUPONS instanceof Map) ? window.COUPONS : new Map();
-
-    function bannerPriorityFor(baseKey){
-      try {
-        const itemId = baseKey.split(":")[0];
-        const activeId = (window.ACTIVE_BANNER && window.ACTIVE_BANNER.id) ? String(window.ACTIVE_BANNER.id) : null;
-        const picks = [];
-        for (const b of BANNERS) {
-          const linked = Array.isArray(b?.linkedCouponIds) ? b.linkedCouponIds.map(String) : [];
-          if (!linked.length) continue;
-          const hasItem = Array.isArray(b?.items) && b.items.map(String).some(x => x.trim() === itemId);
-          if (!hasItem) continue;
-          linked.forEach((cid, idx) => {
-            picks.push([ (activeId && String(b.id) === activeId) ? 0 : 1, idx, cid ]);
-          });
-        }
-        picks.sort((a,b) => (a[0]-b[0]) || (a[1]-b[1]));
-        const out = [];
-        for (const [, , cid] of picks) if (!out.includes(cid)) out.push(cid);
-        return out;
-      } catch { return []; }
-    }
-
-    const queue = [];
-    for (const bKey of order) {
-      const primaryIds = bannerPriorityFor(bKey);
-      const allIds = [...new Set([...primaryIds, ...Array.from(COUPONS.keys()).map(String)])];
-      for (const cid of allIds) {
-        const meta = COUPONS.get(cid);
-        if (!meta || !checkUsageAvailable(meta)) continue;
-        const lock = buildLockFromMeta(String(cid), meta);
-        lock.source = lock.source || "auto";
-        const res = computeDiscount(lock, base) || { discount: 0 };
-        if (res.discount > 0) queue.push({ lock, baseKey: bKey, discount: res.discount });
-      }
-    }
-    return queue;
-  }
-
-  // Promo guard — keep exactly one active promo; auto promote if current stops discounting
-  let __promoGuardBusy = false;
-  let __promoGuardTimer = null;
-  let __lastChosenSignature = "";
-  function schedulePromoGuard() {
-    if (__promoGuardTimer) return;
-    __promoGuardTimer = setTimeout(runPromoGuard, 25);
-  }
-  function runPromoGuard() {
-    __promoGuardTimer = null;
-    if (__promoGuardBusy) return;
-    __promoGuardBusy = true;
-    try {
-      const COUPONS_READY = (window.COUPONS instanceof Map) && window.COUPONS.size > 0;
-      const bag = (window?.Cart?.get?.() || {});
-      const hasBase = Object.keys(bag).some(k => !isAddonKey(k) && (bag[k]?.qty|0) > 0);
-      if (!hasBase || !COUPONS_READY) { __promoGuardBusy = false; return; }
-
-      let locked = null;
-      try { locked = JSON.parse(localStorage.getItem(COUPON_KEY) || "null"); } catch {}
-      const { base } = splitBaseVsAddons();
-      if (locked) {
-        const res = computeDiscount(locked, base) || { discount: 0 };
-        const manual = String(locked.source||"").startsWith("manual") || String(locked.source||"").startsWith("apply");
-        if (res.discount > 0) { __promoGuardBusy = false; return; } // manual or auto can stay while discounting
-      }
-
-      const q = buildPromoQueue();
-      if (!q.length) {
-        try { localStorage.removeItem(COUPON_KEY); } catch {}
-        window.dispatchEvent(new CustomEvent("cart:update"));
-        __promoGuardBusy = false;
-        return;
-      }
-
-      const head = q[0];
-      const signature = `${head.lock.code}:${head.discount}`;
-      if (signature === __lastChosenSignature) { __promoGuardBusy = false; return; }
-      __lastChosenSignature = signature;
-
-      try { setLock(head.lock); } catch {}
-      window.dispatchEvent(new CustomEvent("cart:update"));
-    } catch {} finally { __promoGuardBusy = false; }
-  }
-  window.addEventListener("cart:update", schedulePromoGuard, false);
-  window.addEventListener("serviceMode:changed", schedulePromoGuard, false);
-  window.addEventListener("promotions:hydrated", schedulePromoGuard, false);
-  document.addEventListener("DOMContentLoaded", schedulePromoGuard, false);
-
-  /* ===================== Hydration paths ===================== */
+  /* ===== INSERT: read-only Firestore hydrate for promotions ===== */
   async function hydrateCouponsFromFirestoreOnce() {
     try {
+      // Already hydrated? skip
       if (window.COUPONS instanceof Map && window.COUPONS.size > 0) return false;
+
+      // db comes from /admin/firease.js (shimmed to window.db in checkout.html)
       const db = window.db;
       if (!db || !db.collection) return false;
+
+      // Fetch only active promotions; you can add 'published' or date windows later
       const snap = await db.collection("promotions").where("active", "==", true).get();
       if (!snap || snap.empty) return false;
 
       if (!(window.COUPONS instanceof Map)) window.COUPONS = new Map();
       let added = 0;
+
       snap.forEach(doc => {
         const d = doc.data() || {};
+        // Only coupons (ignore any non-coupon docs)
         const kind = String(d.kind || "coupon").toLowerCase();
         if (kind !== "coupon") return;
+
         const targetsRaw = d.channels || d.targets || {};
         const meta = {
-          code:     d.code ? String(d.code) : undefined,
-          type:     String(d.type || "flat").toLowerCase(),
-          value:    Number(d.value || 0),
-          minOrder: Number(d.minOrder || 0),
-          targets: {
-            delivery: (targetsRaw.delivery === undefined ? undefined : !!targetsRaw.delivery),
-            dining:   (targetsRaw.dining   === undefined ? undefined : !!targetsRaw.dining),
-          },
+          code:      d.code ? String(d.code) : undefined,
+          type:      String(d.type || "flat").toLowerCase(), // 'percent' | 'flat'
+          value:     Number(d.value || 0),
+          minOrder:  Number(d.minOrder || 0),
+          targets:   { delivery: !!targetsRaw.delivery, dining: !!targetsRaw.dining },
+          // optional fields if you later add them
           eligibleItemIds: Array.isArray(d.eligibleItemIds) ? d.eligibleItemIds : undefined,
-          usageLimit:      d.usageLimit ?? undefined,
-          usedCount:       d.usedCount  ?? undefined
+          usageLimit: d.usageLimit ?? undefined,
+          usedCount:  d.usedCount  ?? undefined
         };
+
         window.COUPONS.set(String(doc.id), meta);
         added++;
       });
@@ -478,44 +358,43 @@ code = r"""
       return false;
     }
   }
-
+    
+  /* ===== Hydrate from inline JSON (#promo-data) before any promo logic ===== */
   function hydrateCouponsFromInlineJson(){
     try {
+      // Skip if coupons already exist
       if (window.COUPONS instanceof Map && window.COUPONS.size > 0) return false;
+
       const tag = document.getElementById("promo-data");
-      if (!tag) return false;
+      if (!tag) return false; // nothing embedded on this page
+
       const data = JSON.parse(tag.textContent || tag.innerText || "null");
       if (!data || typeof data !== "object") return false;
 
+      // Normalize coupons
       if (!(window.COUPONS instanceof Map)) window.COUPONS = new Map();
       if (Array.isArray(data.coupons)) {
         for (const [cid, meta] of data.coupons) {
           if (!cid) continue;
           window.COUPONS.set(String(cid), meta || {});
         }
-      } else if (data.coupons && typeof data.coupons === "object") {
-        for (const cid of Object.keys(data.coupons)) {
-          window.COUPONS.set(String(cid), data.coupons[cid] || {});
-        }
       }
 
+      // Normalize banners to Map
       if (!(window.BANNERS instanceof Map)) window.BANNERS = new Map();
       if (Array.isArray(data.banners)) {
         for (const [key, arr] of data.banners) {
           window.BANNERS.set(String(key), Array.isArray(arr) ? arr : []);
         }
-      } else if (data.banners && typeof data.banners === "object") {
-        for (const key of Object.keys(data.banners)) {
-          const arr = data.banners[key];
-          window.BANNERS.set(String(key), Array.isArray(arr) ? arr : []);
-        }
       }
 
+      // Persist a lightweight snapshot for future tabs/pages
       try {
         const dump = Array.from(window.COUPONS.entries());
         if (dump.length) localStorage.setItem("gufa:COUPONS", JSON.stringify(dump));
       } catch {}
 
+      // One immediate repaint (no timers)
       window.dispatchEvent(new CustomEvent("cart:update"));
       return true;
     } catch (e) {
@@ -524,108 +403,384 @@ code = r"""
     }
   }
 
-  async function ensureCouponsReady() {
-    if (window.COUPONS instanceof Map && window.COUPONS.size > 0) return true;
-    try { return !!(await hydrateCouponsFromFirestoreOnce()); } catch { return false; }
+/* ========== ensure coupons exist on Checkout (Firestore-only) ========== */
+async function ensureCouponsReady() {
+  if (window.COUPONS instanceof Map && window.COUPONS.size > 0) return true;
+  try {
+    const ok = await hydrateCouponsFromFirestoreOnce();
+    return !!ok;
+  } catch {
+    return false;
+  }
+}
+
+
+  /* ===================== Coupon Lock ===================== */
+  const getLock = () => { try { return JSON.parse(localStorage.getItem(COUPON_KEY) || "null"); } catch { return null; } };
+  const setLock = (obj) => { try { obj ? localStorage.setItem(COUPON_KEY, JSON.stringify(obj)) : localStorage.removeItem(COUPON_KEY); } catch {} };
+
+
+  function displayCode(locked){
+  try {
+    if (!locked) return "";
+    const raw = String(locked.code || "").trim();
+    if (raw && !isUUID(raw)) return raw.toUpperCase();
+    const cid = String(locked?.scope?.couponId || "").trim();
+    if (cid && (window.COUPONS instanceof Map)) {
+      const meta = window.COUPONS.get(cid);
+      if (meta?.code) return String(meta.code).toUpperCase();
+    }
+    return "";
+  } catch { return ""; }
+}
+
+
+  
+// --- Helpers: resolve code -> coupon, build lock, and error host ---
+function findCouponByCode(codeUpp) {
+  if (!(window.COUPONS instanceof Map)) return null;
+  for (const [cid, meta] of window.COUPONS) {
+    const mcode = (meta?.code || "").toString().trim().toUpperCase();
+    if (mcode && mcode === codeUpp) return { cid: String(cid), meta };
+  }
+  return null;
+}
+
+// Accept either Coupon ID or CODE (admin may read out the ID on a call)
+function findCouponByIdOrCode(input) {
+  const needle = String(input || "").trim().toUpperCase();
+  if (!needle || !(window.COUPONS instanceof Map)) return null;
+
+  // 1) direct ID match (key)
+  if (window.COUPONS.has(needle) || window.COUPONS.has(needle.toLowerCase())) {
+    const meta = window.COUPONS.get(needle) || window.COUPONS.get(needle.toLowerCase());
+    return { cid: needle, meta };
   }
 
-  /* ===================== Manual Apply UI ===================== */
-  function findCouponByCode(codeUpp) {
-    if (!(window.COUPONS instanceof Map)) return null;
-    for (const [cid, meta] of window.COUPONS) {
-      const mcode = (meta?.code || "").toString().trim().toUpperCase();
-      if (mcode && mcode === codeUpp) return { cid: String(cid), meta };
-    }
-    return null;
+  // 2) meta.code match
+  for (const [cid, meta] of window.COUPONS) {
+    const mcode = (meta?.code || "").toString().trim().toUpperCase();
+    if (mcode && mcode === needle) return { cid: String(cid), meta };
   }
-  function findCouponByIdOrCode(input) {
-    const needle = String(input || "").trim().toUpperCase();
-    if (!needle || !(window.COUPONS instanceof Map)) return null;
-    if (window.COUPONS.has(needle) || window.COUPONS.has(needle.toLowerCase())) {
-      const meta = window.COUPONS.get(needle) || window.COUPONS.get(needle.toLowerCase());
-      return { cid: needle, meta };
-    }
-    for (const [cid, meta] of window.COUPONS) {
-      const mcode = (meta?.code || "").toString().trim().toUpperCase();
-      if (mcode && mcode === needle) return { cid: String(cid), meta };
-    }
-    return null;
+  return null;
+}
+
+function buildLockFromMeta(cid, meta) {
+  // 1) Prefer explicit meta eligibility if present
+  const explicit = Array.isArray(meta?.eligibleItemIds) ? meta.eligibleItemIds
+                 : Array.isArray(meta?.eligibleIds)     ? meta.eligibleIds
+                 : Array.isArray(meta?.itemIds)         ? meta.itemIds
+                 : [];
+  let eligSet = new Set(explicit.map(s => String(s).toLowerCase()));
+
+  // 2) Else derive from banners
+  if (!eligSet.size) {
+    eligSet = eligibleIdsFromBanners({ couponId: cid });
   }
 
-  function ensurePromoErrorHost() {
-    const input =
-      (typeof R === "object" && R && R.promoInput) ||
-      resolveLayoutNow().promoInput ||
-      document.querySelector(window?.CART_UI?.list?.promoInput || "#promo-input");
-    if (!input) return null;
-    const parent = input.parentElement || input.closest(".inv-list") || input.closest("form") || input;
-    let node = parent.querySelector("#promo-error");
-    if (!node) {
-      node = document.createElement("div");
-      node.id = "promo-error";
-      node.style.color = "#B00020";
-      node.style.fontSize = "12px";
-      node.style.marginTop = "6px";
-      node.style.lineHeight = "1.2";
-      node.style.minHeight = "14px";
-      parent.appendChild(node);
-    }
-    return node;
+
+  return {
+    scope: { couponId: cid, eligibleItemIds: Array.from(eligSet) },
+    type:  String(meta?.type || "flat").toLowerCase(),
+    value: Number(meta?.value || 0),
+    minOrder: Number(meta?.minOrder || 0),
+    valid: meta?.targets ? { delivery: !!meta.targets.delivery, dining: !!meta.targets.dining } : undefined,
+    code: (meta?.code ? String(meta.code).toUpperCase() : undefined),
+  };
+}
+
+
+// Create/find a small error line under the input (single-line, red, compact)
+function ensurePromoErrorHost() {
+  const UI = resolveLayout();
+  const input = UI.promoInput;
+  if (!input) return null;
+
+  const parent =
+    input.parentElement ||
+    input.closest(".inv-list") ||
+    input.closest("form") ||
+    input;
+
+  let node = parent.querySelector("#promo-error");
+  if (!node) {
+    node = document.createElement("div");
+    node.id = "promo-error";
+    node.style.color = "#B00020";
+    node.style.fontSize = "12px";
+    node.style.marginTop = "6px";
+    node.style.lineHeight = "1.2";
+    node.style.minHeight = "14px";
+    parent.appendChild(node);
   }
-  function showPromoError(msg) { const host = ensurePromoErrorHost(); if (host) host.textContent = msg || ""; }
+  return node;
+}
 
-  function wireApplyCouponUI(){
-    const UI = resolveLayoutNow();
-    const input = UI.promoInput;
-    const btn   = UI.promoApply;
-    if (!btn || !input) return;
-    if (btn._wired) return;
-    btn._wired = true;
 
-    const apply = async () => {
-      const raw = (input.value || "").trim();
-      if (!raw) { showPromoError(""); return; }
-      const needle = raw.toUpperCase();
+function showPromoError(msg) {
+  const host = ensurePromoErrorHost();
+  if (host) host.textContent = msg || "";
+}
 
-      const hydrated = await ensureCouponsReady();
-      if (!hydrated && !(window.COUPONS instanceof Map && window.COUPONS.size > 0)) {
-        showPromoError("Coupon data not available");
-        return;
+  /* ===================== Promotions Discipline ===================== */
+  // Hooks for future admin fields:
+  // - minOrder: number  (already supported)
+  // - usageLimit: number, usedCount: number (supported via checkUsageAvailable)
+  function checkUsageAvailable(meta){
+    // Future ready: if admin tracks usedCount per customer/user, plug it here.
+    // For now, if usageLimit exists on meta and is 0 or less, treat as exhausted.
+    if (!meta) return true;
+    if (typeof meta.usageLimit === "number" && meta.usageLimit <= 0) return false;
+    // If meta.usedCount >= usageLimit → not available
+    if (typeof meta.usageLimit === "number" && typeof meta.usedCount === "number") {
+      return meta.usedCount < meta.usageLimit;
+    }
+    return true;
+  }
+
+  function modeAllowed(locked){
+    const m = activeMode();
+    const v = locked?.valid;
+    if (v && typeof v === "object" && (m in v)) return !!v[m];
+    const cid = String(locked?.scope?.couponId||"");
+    const meta = (window.COUPONS instanceof Map) ? window.COUPONS.get(cid) : null;
+    if (meta && meta.targets && (m in meta.targets)) return !!meta.targets[m];
+    return true;
+  }
+
+function eligibleIdsFromBanners(scope){
+  const out = new Set();
+  if (!scope) return out;
+
+  const bid = String(scope.bannerId||"").trim();
+  const cid = String(scope.couponId||"").trim();
+
+  // Helper to add ids safely
+  const addAll = (arr) => {
+    if (!Array.isArray(arr)) return;
+    for (const x of arr) {
+      const s = String(x||"").trim();
+      if (s) out.add(s.toLowerCase());
+    }
+  };
+
+  // Map form: key -> array of itemIds (or a keyed alias "coupon:<cid>")
+  if (window.BANNERS instanceof Map){
+    addAll(window.BANNERS.get(bid));
+    if (!out.size && cid) addAll(window.BANNERS.get(`coupon:${cid}`));
+    return out;
+  }
+
+  // Array form: [{ id, linkedCouponIds, items/eligibleItemIds/itemIds }]
+  if (Array.isArray(window.BANNERS)){
+    const banner = bid ? window.BANNERS.find(b => String(b?.id||"").trim() === bid) : null;
+    if (banner) {
+      // explicit items first
+      addAll(banner.items || banner.eligibleItemIds || banner.itemIds);
+      if (out.size) return out;
+      // no explicit items? then we accept banner linkage as eligibility scope;
+      // in strict mode, fallback is empty if no items listed—so keep it empty here.
+    }
+
+    // if only the couponId is known, look for a banner that links this coupon
+    if (!out.size && cid) {
+      const byCoupon = window.BANNERS.find(b =>
+        Array.isArray(b?.linkedCouponIds) &&
+        b.linkedCouponIds.map(String).some(x => x.trim() === cid)
+      );
+      addAll(byCoupon?.items || byCoupon?.eligibleItemIds || byCoupon?.itemIds);
+    }
+  }
+  return out;
+}
+
+
+  // explicit eligibleItemIds > banner-derived > empty (strict)
+  function resolveEligibilitySet(locked){
+    const scope = locked?.scope || {};
+    const explicit = (
+      Array.isArray(scope.eligibleItemIds) ? scope.eligibleItemIds :
+      Array.isArray(scope.eligibleIds)     ? scope.eligibleIds     :
+      Array.isArray(scope.itemIds)         ? scope.itemIds         :
+      []
+    ).map(s=>String(s).toLowerCase());
+    if (explicit.length) return new Set(explicit);
+
+    const byBanner = eligibleIdsFromBanners(scope);
+    if (byBanner.size) return byBanner;
+
+    return new Set();
+  }
+
+// Provenance: did this base line come from the currently locked banner/coupon?
+function hasBannerProvenance(baseKey) {
+  try {
+    // Current persisted lock (if any)
+    const lock = getLock && getLock();
+    if (!lock) return false;
+
+    // Build the eligibility set the banner/coupon declared
+    const eligible = resolveEligibilitySet(lock); // Set of item ids (lowercased)
+    if (!(eligible instanceof Set) || eligible.size === 0) return false;
+
+    // baseKey looks like "<itemId>:<variant>"
+    const itemId = String(baseKey || "").split(":")[0].toLowerCase();
+    return eligible.has(itemId);
+  } catch {
+    return false;
+  }
+}
+
+  
+  // FCFS: pick the first base item in the cart that matches any coupon eligibility,
+  // and use that coupon exclusively (non-stackable).
+function findFirstApplicableCouponForCart(){
+  const es = entries();
+  if (!es.length) return null;
+  if (!(window.COUPONS instanceof Map)) return null;
+
+  const { base } = splitBaseVsAddons();
+
+  // 1) Build the FCFS scan order from our persistent wheel (arrival order),
+  //    then append any leftover bases we somehow missed.
+  const order = syncBaseOrderWithCart(); // returns array of baseKeys
+  const seen = new Set(order);
+  for (const [key] of es){
+    if (isAddonKey(key)) continue;
+    const b = baseKeyOf(key);
+    if (!seen.has(b)) order.push(b), seen.add(b);
+  }
+
+  // 2) For each baseKey in arrival order, try coupons in map order.
+  //    We allow cross-banner handoff: any coupon that discounts wins.
+  for (const bKey of order){
+    for (const [cid, meta] of window.COUPONS){
+      if (!checkUsageAvailable(meta)) continue;
+      const lock = buildLockFromMeta(String(cid), meta);
+      lock.source = "auto";
+      const { discount } = computeDiscount(lock, base);
+      if (discount > 0) return lock; // first stop that actually discounts wins
+    }
+  }
+
+  return null;
+}
+
+
+
+
+
+  function clearLockIfNoLongerApplicable(){
+    const lock = getLock();
+    if (!lock) return;
+// If no eligible items for this lock remain, clear it and trigger same-frame recompute.
+const elig = resolveEligibilitySet(lock);
+if (!elig.size){
+  setLock(null);
+  window.dispatchEvent(new CustomEvent("cart:update")); // ← ensures FCFS picks next promo immediately
+  return;
+}
+
+    // If the cart no longer contains any of the eligible IDs as base lines, clear it.
+    let any = false;
+    for (const [key, it] of entries()){
+      if (isAddonKey(key)) continue;
+      const parts = String(key).toLowerCase().split(":");
+      const itemId  = String(it?.id ?? parts[0]);
+      const baseKey = parts.slice(0,2).join(":");
+      if (elig.has(itemId) || elig.has(baseKey) || Array.from(elig).some(x => !x.includes(":") && baseKey.startsWith(x + ":"))){
+        any = true; break;
       }
-
-      const found = findCouponByIdOrCode(needle) || findCouponByCode(needle);
-      if (!found) { showPromoError("Invalid or Ineligible Coupon Code"); return; }
-
-      const fullLock = buildLockFromMeta(found.cid, found.meta);
-      const { base } = splitBaseVsAddons();
-      const { discount } = computeDiscount(fullLock, base);
-      if (!discount || discount <= 0) { showPromoError("Invalid or Ineligible Coupon Code"); return; }
-
-      fullLock.source = "manual";
-      setLock(fullLock);
-      showPromoError("");
-      window.dispatchEvent(new CustomEvent("cart:update"));
-
-      // Breadcrumb for Menu — next eligible item if user has none yet
-      try {
-        const ids = Array.isArray(fullLock.scope?.eligibleItemIds) ? fullLock.scope.eligibleItemIds : [];
-        const bag = window?.Cart?.get?.() || {};
-        const hasEligibleInCart = Object.keys(bag).some(k => {
-          const baseId = String(k).split(":")[0];
-          return ids.includes(baseId) && Number(bag[k]?.qty || 0) > 0;
-        });
-        if (!hasEligibleInCart && ids.length) localStorage.setItem("gufa:nextEligibleItem", String(ids[0]));
-      } catch {}
-    };
-
-    try {
-      btn.addEventListener("click", apply, false);
-      input.addEventListener("keydown", (e) => { if (e.key === "Enter") apply(); }, false);
-    } catch {}
+    }
+    if (!any) {
+  setLock(null);
+  // trigger instant recompute so FCFS can pick the next coupon in the same frame
+  window.dispatchEvent(new CustomEvent("cart:update"));
   }
-  document.addEventListener("DOMContentLoaded", () => { try { wireApplyCouponUI(); } catch {} }, { once:true });
+}
 
-  /* ===================== Grouped rows & steppers ===================== */
+function enforceFirstComeLock(){
+  // If there’s a current lock but it’s no longer applicable, clear it first.
+  clearLockIfNoLongerApplicable();
+
+  // If we still have a lock, keep it only if it actually produces a discount now.
+  const kept = getLock();
+  const { base } = splitBaseVsAddons();
+  if (kept) {
+    const { discount } = computeDiscount(kept, base);
+    if (discount > 0) return;         // keep current non-stackable lock
+    // Otherwise fall through to try the next applicable coupon (FCFS among remaining items)
+    setLock(null);
+  }
+
+  // Pick the first coupon that actually yields a non-zero discount for current cart & mode.
+  const fcfs = findFirstApplicableCouponForCart();
+  if (!fcfs) return;
+  const test = computeDiscount(fcfs, base);
+  if (test.discount > 0) setLock(fcfs);
+}
+
+/* ===================== Discount computation ===================== */
+function computeDiscount(locked, baseSubtotal){
+
+
+    if (!locked) return { discount:0 };
+
+    // Mode gate
+    if (!modeAllowed(locked)) return { discount:0 };
+
+    // Admin minOrder (present/future)
+    const minOrder = Number(locked?.minOrder || 0);
+    if (minOrder > 0 && baseSubtotal < minOrder) return { discount:0 };
+
+    // Eligibility set (strict)
+let elig = resolveEligibilitySet(locked);
+
+// Manual-apply fallback: if no eligibility could be derived, allow any base line in cart
+if (!elig.size && String(locked?.source||"") === "manual") {
+  try {
+    const bases = [];
+    for (const [key, it] of entries()) {
+      if (isAddonKey(key)) continue;
+      const parts  = String(key).split(":");
+      const itemId = String(it?.id ?? parts[0]).toLowerCase();
+      bases.push(itemId);
+    }
+    if (bases.length) elig = new Set(bases);
+  } catch {}
+}
+
+if (!elig.size) return { discount:0 };
+
+
+// Eligible base subtotal only
+let eligibleBase = 0;
+let eligibleQty  = 0; // NEW: count units across eligible base lines
+for (const [key, it] of entries()){
+  if (isAddonKey(key)) continue;
+  const parts = String(key).split(":");
+  const itemId  = String(it?.id ?? parts[0]).toLowerCase();
+  const baseKey = parts.slice(0,2).join(":").toLowerCase();
+  if (elig.has(itemId) || elig.has(baseKey) || Array.from(elig).some(x => !x.includes(":") && baseKey.startsWith(x + ":"))){
+    const q = clamp0(it.qty);
+    eligibleBase += clamp0(it.price) * q;
+    eligibleQty  += q; // count quantity
+  }
+}
+    if (eligibleBase <= 0) return { discount:0 };
+
+const t = String(locked?.type||"").toLowerCase();
+const v = Number(locked?.value||0);
+let d = 0;
+if (t === "percent") d = Math.round(eligibleBase * (v/100));
+else if (t === "flat") d = Math.min(v * eligibleQty, eligibleBase); // stack flat per unit, cap at line value;
+return { discount: Math.max(0, Math.round(d)) };
+    
+  }
+
+
+
+  /* ===================== Grouping & rows ===================== */
   function buildGroups(){
     const gs = new Map(); // baseKey -> { base, addons[] }
     for (const [key, it] of entries()){
@@ -645,9 +800,10 @@ code = r"""
 
   function removeAllAddonsOf(baseKey){
     const bag = window?.Cart?.get?.() || {};
-    if (!window?.Cart?.setQty) return;
     for (const k of Object.keys(bag)) {
-      if (isAddonKey(k) && baseKeyOf(k) === baseKey) window.Cart.setQty(k, 0);
+      if (isAddonKey(k) && baseKeyOf(k) === baseKey) {
+        window.Cart.setQty(k, 0);
+      }
     }
   }
 
@@ -678,17 +834,16 @@ code = r"""
     lineSub.textContent = computeLine();
 
     plus.addEventListener("click", () => {
-      if (!window?.Cart?.setQty) return;
-      const cur = Number(window?.Cart?.get?.()[key]?.qty || 0);
+      const cur = Number(window.Cart?.get?.()[key]?.qty || 0);
       const next = cur + 1;
       window.Cart.setQty(key, next, it);
       out.textContent = String(next);
       lineSub.textContent = computeLine();
       window.dispatchEvent(new CustomEvent("cart:update"));
     });
+
     minus.addEventListener("click", () => {
-      if (!window?.Cart?.setQty) return;
-      const cur = Number(window?.Cart?.get?.()[key]?.qty || 0);
+      const cur = Number(window.Cart?.get?.()[key]?.qty || 0);
       const next = Math.max(0, cur - 1);
       window.Cart.setQty(key, next, it);
       out.textContent = String(next);
@@ -729,15 +884,12 @@ code = r"""
     stepper.append(minus, out, plus);
 
     plus.addEventListener("click", () => {
-      if (!window?.Cart?.get || !window?.Cart?.setQty) return;
-      const prev = Number(window.Cart.get()?.[baseKey]?.qty || 0);
-      const next = prev + 1;
+      const next = (Number(window.Cart.get()?.[baseKey]?.qty)||0) + 1;
       window.Cart.setQty(baseKey, next, it);
       window.dispatchEvent(new CustomEvent("cart:update"));
     });
     minus.addEventListener("click", () => {
-      if (!window?.Cart?.get || !window?.Cart?.setQty) return;
-      const prev = Number(window.Cart.get()?.[baseKey]?.qty || 0);
+      const prev = (Number(window.Cart.get()?.[baseKey]?.qty)||0);
       const next = Math.max(0, prev - 1);
       window.Cart.setQty(baseKey, next, it);
       if (next === 0) removeAllAddonsOf(baseKey);
@@ -748,7 +900,6 @@ code = r"""
     remove.className = "remove-link";
     remove.textContent = "Remove";
     remove.addEventListener("click", () => {
-      if (!window?.Cart?.setQty) return;
       window.Cart.setQty(baseKey, 0);
       removeAllAddonsOf(baseKey);
       window.dispatchEvent(new CustomEvent("cart:update"));
@@ -760,7 +911,31 @@ code = r"""
     return li;
   }
 
-  /* ===================== Invoice rendering ===================== */
+  /* ===================== Layout & Invoice ===================== */
+  let R = {};
+  function resolveLayout(){
+    const CFG = window.CART_UI?.list || {};
+    R = {
+      items:      document.querySelector(CFG.items),
+      empty:      document.querySelector(CFG.empty || null),
+      count:      document.querySelector(CFG.count || null),
+      subtotal:   document.querySelector(CFG.subtotal || null),
+      servicetax: document.querySelector(CFG.servicetax || null),
+      total:      document.querySelector(CFG.total || null),
+      proceed:    document.querySelector(CFG.proceed || null),
+      invFood:    document.querySelector(CFG.invFood || null),
+      invAddons:  document.querySelector(CFG.invAddons || null),
+      promoLbl:   document.querySelector(CFG.promoLbl || null),
+      promoAmt:   document.querySelector(CFG.promoAmt || null),
+      promoInput: document.querySelector(CFG.promoInput || null),
+      promoApply: document.querySelector(CFG.promoApply || null),
+      badge:      document.querySelector('#cart-count'),
+      // Delivery form container (created dynamically if missing)
+      deliveryHost: document.querySelector('#delivery-form') || null,
+    };
+    return !!R.items;
+  }
+
   function renderInvoiceLists(groups){
     const food = [], adds = [];
     for (const [, g] of groups){
@@ -779,15 +954,12 @@ code = r"""
     if (R.invAddons) R.invAddons.innerHTML = adds.length ? adds.join("") : `<div class="muted">None</div>`;
   }
 
-  /* ===================== Delivery Address (delivery mode) ===================== */
-  const getAddress = () => { try { return JSON.parse(localStorage.getItem(ADDR_KEY) || "null"); } catch { return null; } };
-  const setAddress = (obj) => { try { obj ? localStorage.setItem(ADDR_KEY, JSON.stringify(obj)) : localStorage.removeItem(ADDR_KEY); } catch {} };
+  /* ===================== Delivery Address form (mode = delivery) ===================== */
+  function getAddress(){ try { return JSON.parse(localStorage.getItem(ADDR_KEY) || "null"); } catch { return null; } }
+  function setAddress(obj){ try { obj ? localStorage.setItem(ADDR_KEY, JSON.stringify(obj)) : localStorage.removeItem(ADDR_KEY); } catch {} }
 
   function ensureDeliveryForm(){
-    if (activeMode() !== "delivery") {
-      if (R.deliveryHost) { R.deliveryHost.remove(); R.deliveryHost = null; }
-      return;
-    }
+    if (activeMode() !== "delivery") { if (R.deliveryHost) R.deliveryHost.remove(); return; }
     if (!R.deliveryHost) {
       const aside = document.querySelector("aside.cart-right") || document.body;
       const wrap = document.createElement("div");
@@ -813,6 +985,7 @@ code = r"""
       wireAddressForm();
     }
   }
+
   function wireAddressForm(){
     const saved = getAddress() || {};
     const $ = (id) => R.deliveryHost.querySelector(id);
@@ -825,6 +998,7 @@ code = r"""
     if (area && !area.value)  area.value  = saved.area  || "";
     if (pin && !pin.value)    pin.value   = saved.pin   || "";
     if (notes && !notes.value)notes.value = saved.notes || "";
+
     if (save && !save._wired){
       save._wired = true;
       save.addEventListener("click", ()=>{
@@ -843,13 +1017,15 @@ code = r"""
     }
   }
 
+
+  
   /* ===================== Render ===================== */
-  function render(){
-    if (!R.items && !resolveLayout()) return;
+function render(){
+  if (!R.items && !resolveLayout()) return;
+  enforceFirstComeLock();
+ 
 
-    // Enforce non-stackable FCFS before calculating totals
-    enforceFirstComeLock();
-
+    
     const n = itemCount();
     if (R.badge)   R.badge.textContent = String(n);
     if (R.count)   R.count.textContent = `(${n} ${n===1?"item":"items"})`;
@@ -858,12 +1034,12 @@ code = r"""
     if (R.items)   R.items.hidden      = n === 0;
 
     // Left list
-    let gs = null;
     if (R.items){
       R.items.innerHTML = "";
-      gs = buildGroups();
+      const gs = buildGroups();
       for (const [, g] of gs){
         if (!g.base && g.addons.length){
+          // synthesize shell if only add-ons exist for a baseKey
           const first = g.addons[0];
           g.base = { key: first.key.split(":").slice(0,2).join(":"), it: { ...(first.it||{}), qty: 0 } };
         }
@@ -888,114 +1064,146 @@ code = r"""
     const tax    = taxOn(preTax);
     const grand  = preTax + tax;
 
-    renderInvoiceLists(gs || buildGroups());
+    renderInvoiceLists(buildGroups());
 
     if (R.subtotal)   R.subtotal.textContent   = INR(base + add);
     if (R.servicetax) R.servicetax.textContent = INR(tax);
     if (R.total)      R.total.textContent      = INR(grand);
 
-    const codeText = locked ? displayCode(locked) : "";
-    if (R.promoLbl) {
-      if (locked && codeText) {
-        R.promoLbl.textContent = `Promotion (${codeText}):`;
-        if (codeText !== __LAST_PROMO_TAG__) { pulsePromoLabel(R.promoLbl); __LAST_PROMO_TAG__ = codeText; }
-      } else {
-        R.promoLbl.textContent = `Promotion (): none`;
-        __LAST_PROMO_TAG__ = "";
-      }
+// Promo totals row (left label + right amount)
+const codeText = locked ? displayCode(locked) : "";
+if (R.promoLbl) {
+  if (locked && codeText) {
+    // Always show the code if a lock exists, even if the discount is 0 for now
+    R.promoLbl.textContent = `Promotion (${codeText}):`;
+    if (codeText !== __LAST_PROMO_TAG__) { // pulse only when the tag changes
+      pulsePromoLabel(R.promoLbl);
+      __LAST_PROMO_TAG__ = codeText;
     }
-    if (R.promoAmt) R.promoAmt.textContent = `− ${INR(discount)}`;
-    if (discount > 0) showPromoError("");
+  } else {
+    R.promoLbl.textContent = `Promotion (): none`;
+    __LAST_PROMO_TAG__ = "";
+  }
+}
+if (R.promoAmt) {
+  R.promoAmt.textContent = `− ${INR(discount)}`;
+}
+// Clear any lingering error whenever a valid non-zero discount is active
+if (discount > 0) showPromoError("");
 
-    // Next-eligible tip
-    ;(() => {
-      try {
-        const targetId = localStorage.getItem("gufa:nextEligibleItem");
-        const clean = () => { localStorage.removeItem("gufa:nextEligibleItem"); const n = document.getElementById("next-eligible"); if (n) n.remove(); };
-        if (!targetId) { clean(); return; }
-        const bag = window?.Cart?.get?.() || {};
-        const hasAnyEligibleBaseNow = Object.keys(bag).some(k => {
-          const parts  = String(k).split(":");
-          if (parts.length < 2) return false;
-          const baseId = String(bag[k]?.id || parts[0]).toLowerCase();
-          return baseId === String(targetId).toLowerCase() && Number(bag[k]?.qty||0) > 0;
-        });
-        if (discount > 0 || hasAnyEligibleBaseNow) { clean(); return; }
-        const parent = (R.promoInput?.parentElement) || document.querySelector(".promo-wrap") || document.querySelector("aside.cart-right");
-        if (!parent) return;
-        let node = document.getElementById("next-eligible");
-        if (!node) {
-          node = document.createElement("div");
-          node.id = "next-eligible";
-          node.style.fontSize = "12px";
-          node.style.marginTop = "6px";
-          node.style.color = "#444";
-          parent.appendChild(node);
-        }
-        node.textContent = "Tip: add one eligible item to activate your coupon.";
-      } catch {}
+
+
+// --- Next-eligible hint (for manual apply with no qualifying lines yet) ---
+(function showNextEligibleHint(){
+  try {
+    const targetId = localStorage.getItem("gufa:nextEligibleItem");
+    // If no breadcrumb, remove any old hint and bail
+    if (!targetId) { const n = document.getElementById("next-eligible"); if (n) n.remove(); return; }
+
+    const hasAnyEligibleBaseNow = (function(){
+      const bag = window?.Cart?.get?.() || {};
+      for (const [k, it] of Object.entries(bag)) {
+        // base keys look like "<itemId>:<variant>"
+        const parts  = String(k).split(":");
+        if (parts.length < 2) continue; // skip add-ons or malformed
+        const baseId = String(it?.id || parts[0]).toLowerCase();
+        if (baseId === String(targetId).toLowerCase() && Number(it?.qty||0) > 0) return true;
+      }
+      return false;
     })();
 
-    // Delivery address
-    ensureDeliveryForm();
-  }
-
-  // Clear lock if not applicable anymore, then keep FCFS
-  function clearLockIfNoLongerApplicable(){
-    const lock = getLock();
-    if (!lock) return;
-    const elig = resolveEligibilitySet(lock);
-    if (!elig.size){
-      setLock(null);
-      window.dispatchEvent(new CustomEvent("cart:update"));
+    // If discount is active or the qualifying item is now present, clear the hint
+    if (discount > 0 || hasAnyEligibleBaseNow) {
+      localStorage.removeItem("gufa:nextEligibleItem");
+      const n = document.getElementById("next-eligible"); if (n) n.remove();
       return;
     }
-    let any = false;
-    for (const [key, it] of entries()){
-      if (isAddonKey(key)) continue;
-      const parts = String(key).split(":");
-      const itemId  = String(it?.id ?? parts[0]).toLowerCase();
-      const baseKey = parts.slice(0,2).join(":").toLowerCase();
-      if (elig.has(itemId) || elig.has(baseKey) || Array.from(elig).some(x => !x.includes(":") && baseKey.startsWith(x + ":"))){
-        any = true; break;
-      }
+
+    // Create/refresh the hint node under the promo input
+    const parent = (R.promoInput?.parentElement) || document.querySelector(".promo-wrap") || document.querySelector("aside.cart-right");
+    if (!parent) return;
+    let node = document.getElementById("next-eligible");
+    if (!node) {
+      node = document.createElement("div");
+      node.id = "next-eligible";
+      node.style.fontSize = "12px";
+      node.style.marginTop = "6px";
+      node.style.color = "#444";
+      parent.appendChild(node);
     }
-    if (!any) {
-      setLock(null);
-      window.dispatchEvent(new CustomEvent("cart:update"));
+    node.textContent = "Tip: add one eligible item to activate your coupon.";
+  } catch {}
+})();
+
+  
+  // Delivery address section (mode = delivery only)
+    ensureDeliveryForm();
+
+// Manual Apply Coupon (no auto-fill from lock)
+if (R.promoApply && !R.promoApply._wired){
+  R.promoApply._wired = true;
+  R.promoApply.addEventListener("click", async ()=>{
+    // normalize user input once
+    const raw = (R.promoInput?.value || "").trim();
+    if (!raw) { showPromoError(""); return; }
+    const needle = raw.toUpperCase();
+
+    // hydrate once (was called twice)
+    const hydrated = await ensureCouponsReady();
+    if (!hydrated && !(window.COUPONS instanceof Map && window.COUPONS.size > 0)) {
+      showPromoError("Coupon data not available");
+      return;
     }
-  }
-  function enforceFirstComeLock(){
-    clearLockIfNoLongerApplicable();
-    const kept = getLock();
+
+    // resolve by ID or CODE
+    const found = findCouponByIdOrCode(needle) || findCouponByCode(needle);
+    if (!found) { showPromoError("Invalid or Ineligible Coupon Code"); return; }
+
+    // construct lock & validate against current cart
+    const fullLock = buildLockFromMeta(found.cid, found.meta);
     const { base } = splitBaseVsAddons();
-    if (kept) {
-      const { discount } = computeDiscount(kept, base);
-      if (discount > 0) return;
-      setLock(null);
-    }
-    const q = buildPromoQueue();
-    if (!q.length) return;
-    const head = q[0]?.lock;
-    if (!head) return;
-    const res = computeDiscount(head, base);
-    if ((res?.discount || 0) > 0) setLock(head);
+    const { discount } = computeDiscount(fullLock, base);
+    if (!discount || discount <= 0) { showPromoError("Invalid or Ineligible Coupon Code"); return; }
+
+    // apply (non-stackable FCFS is enforced by render/enforceFirstComeLock)
+    fullLock.source = "manual";
+    setLock(fullLock);
+    showPromoError("");
+    enforceFirstComeLock();
+    window.dispatchEvent(new CustomEvent("cart:update"));
+  }, false);
+}
+}
+
+  /* ===================== Boot & subscriptions ===================== */
+async function boot(){
+  resolveLayout();
+
+  // 1) Inline JSON first (if present in HTML)
+  const inlined = hydrateCouponsFromInlineJson();
+
+  // 2) If still empty, hydrate from Firestore (once)
+  if (!inlined) {
+    try { await ensureCouponsReady(); } catch {}
   }
 
-  /* ===================== Boot ===================== */
-  async function boot(){
-    resolveLayout();
-    const inlined = hydrateCouponsFromInlineJson();
-    if (!inlined) { try { await ensureCouponsReady(); } catch {} }
-    render();
+  // 3) First paint — Apply & FCFS are deterministic now
+  render();
 
+
+    // Normal reactive paints
     window.addEventListener("cart:update", render, false);
     window.addEventListener("serviceMode:changed", render, false);
     window.addEventListener("storage", (e) => {
-      if (!e) return;
-      if (e.key === "gufa_cart" || e.key === COUPON_KEY || e.key === ADDR_KEY || e.key === "gufa_mode") render();
+  if (!e) return;
+  if (e.key === "gufa_cart" || e.key === COUPON_KEY || e.key === ADDR_KEY || e.key === "gufa_mode") {
+    render();
+  }
+}, false);
+
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") render();
     }, false);
-    document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") render(); }, false);
     window.addEventListener("pageshow", (ev) => { if (ev && ev.persisted) render(); }, false);
   }
   if (document.readyState === "loading") {
@@ -1004,7 +1212,8 @@ code = r"""
     boot();
   }
 
-  /* ===================== Debug ===================== */
+
+  /* ===================== Debug helper ===================== */
   window.CartDebug = window.CartDebug || {};
   window.CartDebug.eval = function(){
     const lock = getLock();
@@ -1014,7 +1223,6 @@ code = r"""
     return { lock, mode:activeMode(), base, add, elig, discount };
   };
 })();
-"""
-with open("/mnt/data/app.cart.rewritten.js", "w", encoding="utf-8") as f:
-    f.write(code)
-print("Wrote /mnt/data/app.cart.rewritten.js")
+
+
+This is the entire file, let me know if this all good to go for commit?
