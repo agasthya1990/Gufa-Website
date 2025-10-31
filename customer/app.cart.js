@@ -421,7 +421,7 @@ document.addEventListener("DOMContentLoaded", schedulePromoGuard);
 /* =================== END PROMO FUNNEL + GUARD =================== */
 
   /* ===================== Base-line order (Promo Wheel) ===================== */
-  const ORDER_KEY = "gufa:baseOrder";
+
 
   function readBaseOrder(){
     try { const a = JSON.parse(localStorage.getItem(ORDER_KEY) || "[]"); return Array.isArray(a) ? a : []; }
