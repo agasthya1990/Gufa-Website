@@ -152,6 +152,8 @@ function wireApplyCouponUI(){
   const input = UI.promoInput;
   const btn   = UI.promoApply;
   if (!btn || !input) return;
+  if (btn._wired) return;           // ← guard
+  btn._wired = true;                // ← mark wired
 
   const apply = () => {
     const query = input.value;
@@ -185,11 +187,10 @@ function wireApplyCouponUI(){
     }
   };
 
- try {
-  btn.addEventListener("click", apply);
-  input.addEventListener("keydown", (e) => { if (e.key === "Enter") apply(); });
-} catch {}
-
+  try {
+    btn.addEventListener("click", apply, false);
+    input.addEventListener("keydown", (e) => { if (e.key === "Enter") apply(); }, false);
+  } catch {}
 }
 
 // Boot the wire-up after DOM is ready
