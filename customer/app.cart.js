@@ -578,18 +578,14 @@ function findFirstApplicableCouponForCart(){
 for (const [key] of es){
   const parts = String(key).split(":");
   if (parts.length >= 3) continue; // skip add-ons
-
-  // Only consider base lines that were added from a banner list
-  const baseKey = parts.slice(0,2).join(":");
-  if (!hasBannerProvenance(baseKey)) continue;
+  // FCFS over present base lines — allow cross-banner candidates
 
   for (const [cid, meta] of window.COUPONS){
     if (!checkUsageAvailable(meta)) continue;
     const lock = buildLockFromMeta(String(cid), meta);
-    // mark provenance of the lock as auto
     lock.source = "auto";
     const { discount } = computeDiscount(lock, base);
-    if (discount > 0) return lock; // FCFS over cart order among banner-origin items
+    if (discount > 0) return lock; // first stop that actually discounts wins
   }
 }
   return null;
