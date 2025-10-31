@@ -188,7 +188,6 @@
   };
 
   // One-time defaults for deterministic gating
-  try { localStorage.removeItem("gufa:COUPONS"); } catch (e) {}
   if (!localStorage.getItem("gufa_mode")) localStorage.setItem("gufa_mode", "delivery");
 </script>
 
@@ -221,6 +220,7 @@
   <script src="./app.cart.js"></script>
 </body>
 </html>
+
 
 
 
