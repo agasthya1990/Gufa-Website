@@ -1,5 +1,3 @@
-# Re-executing to save the consolidated enhanced cart file.
-content = r"""// app.cart.js — Consolidated + Enhanced
 // Robust Cart with strict Promotions (non-stackable, FCFS), Mode gating,
 // Add-on steppers + auto-prune, Promo totals row, Delivery Address form,
 // Manual [Apply Coupon] with strict scope, and Next-Eligible hint.
@@ -1029,4 +1027,4 @@ document.addEventListener("DOMContentLoaded", () => { try { wireApplyCouponUI();
     return { lock, mode:activeMode(), base, add, elig, discount };
   };
 })();
-"""
+
