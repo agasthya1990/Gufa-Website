@@ -1010,14 +1010,16 @@ return { discount: Math.max(0, Math.round(d)) };
     return gs;
   }
 
-  function removeAllAddonsOf(baseKey){
-    const bag = window?.Cart?.get?.() || {};
-    for (const k of Object.keys(bag)) {
-      if (isAddonKey(k) && baseKeyOf(k) === baseKey) {
-        window.Cart.setQty(k, 0);
-      }
+function removeAllAddonsOf(baseKey){
+  const bag = window?.Cart?.get?.() || {};
+  if (!window?.Cart?.setQty) return;
+  for (const k of Object.keys(bag)) {
+    if (isAddonKey(k) && baseKeyOf(k) === baseKey) {
+      window.Cart.setQty(k, 0);
     }
   }
+}
+
 
   function addonRow(baseKey, add){
     const { key, it, name } = add;
@@ -1045,23 +1047,27 @@ return { discount: Math.max(0, Math.round(d)) };
     const computeLine = () => INR(clamp0(it.price) * clamp0((window.Cart?.get?.()[key]?.qty || 0)));
     lineSub.textContent = computeLine();
 
-    plus.addEventListener("click", () => {
-      const cur = Number(window.Cart?.get?.()[key]?.qty || 0);
-      const next = cur + 1;
-      window.Cart.setQty(key, next, it);
-      out.textContent = String(next);
-      lineSub.textContent = computeLine();
-      window.dispatchEvent(new CustomEvent("cart:update"));
-    });
+plus.addEventListener("click", () => {
+  if (!window?.Cart?.setQty) return;
+  const cur = Number(window?.Cart?.get?.()[key]?.qty || 0);
+  const next = cur + 1;
+  window.Cart.setQty(key, next, it);
+  out.textContent = String(next);
+  lineSub.textContent = computeLine();
+  window.dispatchEvent(new CustomEvent("cart:update"));
+});
 
-    minus.addEventListener("click", () => {
-      const cur = Number(window.Cart?.get?.()[key]?.qty || 0);
-      const next = Math.max(0, cur - 1);
-      window.Cart.setQty(key, next, it);
-      out.textContent = String(next);
-      lineSub.textContent = computeLine();
-      window.dispatchEvent(new CustomEvent("cart:update"));
-    });
+minus.addEventListener("click", () => {
+  if (!window?.Cart?.setQty) return;
+  const cur = Number(window?.Cart?.get?.()[key]?.qty || 0);
+  const next = Math.max(0, cur - 1);
+  window.Cart.setQty(key, next, it);
+  out.textContent = String(next);
+  lineSub.textContent = computeLine();
+  window.dispatchEvent(new CustomEvent("cart:update"));
+});
+
+
 
     right.append(stepper, lineSub);
     row.append(label, right);
@@ -1095,18 +1101,22 @@ return { discount: Math.max(0, Math.round(d)) };
     const plus  = document.createElement("button");  plus.textContent = "+";
     stepper.append(minus, out, plus);
 
-    plus.addEventListener("click", () => {
-      const next = (Number(window.Cart.get()?.[baseKey]?.qty)||0) + 1;
-      window.Cart.setQty(baseKey, next, it);
-      window.dispatchEvent(new CustomEvent("cart:update"));
-    });
-    minus.addEventListener("click", () => {
-      const prev = (Number(window.Cart.get()?.[baseKey]?.qty)||0);
-      const next = Math.max(0, prev - 1);
-      window.Cart.setQty(baseKey, next, it);
-      if (next === 0) removeAllAddonsOf(baseKey);
-      window.dispatchEvent(new CustomEvent("cart:update"));
-    });
+plus.addEventListener("click", () => {
+  if (!window?.Cart?.get || !window?.Cart?.setQty) return;
+  const prev = Number(window.Cart.get()?.[baseKey]?.qty || 0);
+  const next = prev + 1;
+  window.Cart.setQty(baseKey, next, it);
+  window.dispatchEvent(new CustomEvent("cart:update"));
+});
+minus.addEventListener("click", () => {
+  if (!window?.Cart?.get || !window?.Cart?.setQty) return;
+  const prev = Number(window.Cart.get()?.[baseKey]?.qty || 0);
+  const next = Math.max(0, prev - 1);
+  window.Cart.setQty(baseKey, next, it);
+  if (next === 0) removeAllAddonsOf(baseKey);
+  window.dispatchEvent(new CustomEvent("cart:update"));
+});
+
 
     const remove = document.createElement("button");
     remove.className = "remove-link";
