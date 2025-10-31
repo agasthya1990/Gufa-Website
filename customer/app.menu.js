@@ -230,12 +230,15 @@ window.addEventListener("serviceMode:changed", () => {
     const ACTIVE_BANNER = (window.BANNERS || []).find(b => String(b.id) === ACTIVE_BANNER_ID);
     if (!ACTIVE_BANNER) return;
 
-    const [couponId] = Array.isArray(ACTIVE_BANNER.linkedCouponIds) ? ACTIVE_BANNER.linkedCouponIds : [];
-    if (!couponId) return;
+const [couponId] = Array.isArray(ACTIVE_BANNER.linkedCouponIds) ? ACTIVE_BANNER.linkedCouponIds : [];
+if (!couponId) return;
+
+const catalog = (ITEMS && ITEMS.length ? ITEMS : (window.ITEMS || []));
 
 const eligibleItemIds = catalog
   .filter(it => Array.isArray(it.promotions) && it.promotions.map(String).includes(String(couponId)))
   .map(it => String(it.id));
+
 
 
     if (!eligibleItemIds.includes(String(addedItemId))) return;
