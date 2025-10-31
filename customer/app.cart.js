@@ -1,11 +1,25 @@
-/* app.cart.js — Consolidated Super File (STRICT promotions, FCFS guard, mode/minOrder, add-ons, invoice, address)
+# Writing a consolidated, fully self-contained app.cart.js to the workspace.
+# The file aims to preserve and enhance all previously established behaviors:
+# - Strict per-coupon eligibility (never globalize discounts)
+# - Manual Apply (ID or CODE) with validation + next-eligible breadcrumb
+# - FCFS promo funnel + guard (non-stackable, swaps only when current stops discounting)
+# - Mode gating (delivery/dining) + minOrder (admin-driven)
+# - Stable base arrival rail for fair-scanning
+# - Add-on steppers, auto-prune when base qty hits 0
+# - Invoice lists, promo totals row, address form (delivery mode only)
+# - LocalStorage snapshot + debug helpers
+# NOTE: This code is meant to be drop-in for checkout/cart view.
+#
+# The file will be saved as /mnt/data/app.cart.super.js
+
+content = r"""/* app.cart.js — Consolidated Super File (STRICT promotions, FCFS guard, mode/minOrder, add-ons, invoice, address)
    - Strict scoping: coupons discount ONLY their eligible items
-   - Manual Apply: no global fallback; shows error + next-eligible breadcrumb
+   - Manual Apply: validate before persisting; no global fallback
    - Promo Funnel + Guard: FCFS, non-stackable, swaps only when current stops discounting
    - Mode gating (Delivery/Dining) + minOrder
    - Add-on steppers + auto-prune
    - Promo totals row & invoice lists
-   - Delivery Address form
+   - Delivery Address form (delivery mode only)
    - LocalStorage snapshot + debug helper
 */
 
@@ -315,7 +329,6 @@ function computeDiscount(locked, baseSubtotal){
   const minOrder = Number(locked?.minOrder || 0);
   if (minOrder > 0 && baseSubtotal < minOrder) return { discount:0 };
 
-  // STRICT: no global manual fallback; must have scope
   const elig = resolveEligibilitySet(locked);
   if (!elig.size) return { discount:0 };
 
@@ -688,10 +701,8 @@ function renderInvoiceLists(groups){
   if (R.invAddons) R.invAddons.innerHTML = adds.length ? adds.join("") : `<div class="muted">None</div>`;
 }
 
-/* ===================== Delivery Address form (mode = delivery) ===================== */
 function getAddress(){ try { return JSON.parse(localStorage.getItem(ADDR_KEY) || "null"); } catch { return null; } }
 function setAddress(obj){ try { obj ? localStorage.setItem(ADDR_KEY, JSON.stringify(obj)) : localStorage.removeItem(ADDR_KEY); } catch {} }
-
 function ensureDeliveryForm(){
   if (activeMode() !== "delivery") { if (R.deliveryHost) R.deliveryHost.remove(); return; }
   if (!R.deliveryHost) {
@@ -753,9 +764,6 @@ function wireAddressForm(){
 function render(){
   if (!R.items && !resolveLayout()) return;
 
-  // Promo guard first to keep lock sane
-  schedulePromoGuard();
-
   const n = itemCount();
   if (R.badge)   R.badge.textContent = String(n);
   if (R.count)   R.count.textContent = `(${n} ${n===1?"item":"items"})`;
@@ -804,7 +812,10 @@ function render(){
   if (R.promoLbl) {
     if (locked && codeText) {
       R.promoLbl.textContent = `Promotion (${codeText}):`;
-      if (codeText !== __LAST_PROMO_TAG__) { pulsePromoLabel(R.promoLbl); __LAST_PROMO_TAG__ = codeText; }
+      if (codeText !== __LAST_PROMO_TAG__) {
+        pulsePromoLabel(R.promoLbl);
+        __LAST_PROMO_TAG__ = codeText;
+      }
     } else {
       R.promoLbl.textContent = `Promotion (): none`;
       __LAST_PROMO_TAG__ = "";
@@ -815,7 +826,7 @@ function render(){
   }
   if (discount > 0) showPromoError(R, "");
 
-  // Next-eligible hint (manual apply with no qualifying lines yet)
+  // Next-eligible UX
   (function showNextEligibleHint(){
     try {
       const targetId = localStorage.getItem("gufa:nextEligibleItem");
@@ -855,19 +866,21 @@ function render(){
 
   // Delivery address section (mode = delivery only)
   ensureDeliveryForm();
-
-  // Wire Apply UI once
-  wireApplyCouponUI();
 }
 
 /* ===================== Boot & subscriptions ===================== */
 async function boot(){
   resolveLayout();
 
+  // Inline JSON first (if present), else Firestore
   const inlined = hydrateCouponsFromInlineJson();
   if (!inlined) { try { await ensureCouponsReady(); } catch {} }
 
+  // First paint
   render();
+
+  // Wire Apply UI once R is resolved
+  wireApplyCouponUI();
 
   window.addEventListener("cart:update", render, false);
   window.addEventListener("serviceMode:changed", render, false);
@@ -898,3 +911,4 @@ window.CartDebug.eval = function(){
   const { discount } = computeDiscount(lock, base);
   return { lock, mode:activeMode(), base, add, elig, discount };
 };
+
