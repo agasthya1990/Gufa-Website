@@ -1,7 +1,7 @@
-/* app.cart.js — Consolidated Super File
-   - Strict Promotions (scoped to eligible items only)
-   - Promo Funnel (FCFS, non-stackable) + Guard
-   - Apply-by-Code + “next eligible item” hint
+/* app.cart.js — Consolidated Super File (STRICT promotions, FCFS guard, mode/minOrder, add-ons, invoice, address)
+   - Strict scoping: coupons discount ONLY their eligible items
+   - Manual Apply: no global fallback; shows error + next-eligible breadcrumb
+   - Promo Funnel + Guard: FCFS, non-stackable, swaps only when current stops discounting
    - Mode gating (Delivery/Dining) + minOrder
    - Add-on steppers + auto-prune
    - Promo totals row & invoice lists
@@ -315,20 +315,8 @@ function computeDiscount(locked, baseSubtotal){
   const minOrder = Number(locked?.minOrder || 0);
   if (minOrder > 0 && baseSubtotal < minOrder) return { discount:0 };
 
-  let elig = resolveEligibilitySet(locked);
-  // Manual-apply fallback: allow any base if no scope exists yet
-  if (!elig.size && String(locked?.source||"") === "manual") {
-    try {
-      const bases = [];
-      for (const [key, it] of entries()) {
-        if (isAddonKey(key)) continue;
-        const parts  = String(key).split(":");
-        const itemId = String(it?.id ?? parts[0]).toLowerCase();
-        bases.push(itemId);
-      }
-      if (bases.length) elig = new Set(bases);
-    } catch {}
-  }
+  // STRICT: no global manual fallback; must have scope
+  const elig = resolveEligibilitySet(locked);
   if (!elig.size) return { discount:0 };
 
   let eligibleBase = 0;
@@ -397,7 +385,7 @@ function buildPromoQueue() {
       const meta = COUPONS.get(cid);
       if (!meta) continue;
       if (!checkUsageAvailable(meta)) continue;
-      const lock = buildLockFromMeta(String(cid), meta); // auto lock (with scoped eligibleItemIds)
+      const lock = buildLockFromMeta(String(cid), meta); // auto lock (scoped)
       const res  = computeDiscount(lock, base);
       if (res && res.discount > 0) queue.push({ lock, baseKey: bKey, discount: res.discount });
     }
@@ -450,9 +438,7 @@ document.addEventListener("DOMContentLoaded",    schedulePromoGuard);
 let __LAST_PROMO_TAG__ = "";
 function pulsePromoLabel(el){
   if (!el) return;
-  el.classList.remove("promo-pulse");
-  void el.offsetWidth;
-  el.classList.add("promo-pulse");
+  el.classList.remove("promo-pulse"); void el.offsetWidth; el.classList.add("promo-pulse");
 }
 function ensurePromoErrorHost(R) {
   const input = R.promoInput;
@@ -537,7 +523,7 @@ function wireApplyCouponUI(){
     const fullLock = buildLockFromMeta(found.cid, found.meta);
     fullLock.source = "manual";
 
-    // IMPORTANT: enforce discipline BEFORE setting lock (no global bleed)
+    // STRICT: validate BEFORE persisting
     const { base } = splitBaseVsAddons();
     const { discount } = computeDiscount(fullLock, base);
     if (!discount || discount <= 0) {
@@ -702,9 +688,10 @@ function renderInvoiceLists(groups){
   if (R.invAddons) R.invAddons.innerHTML = adds.length ? adds.join("") : `<div class="muted">None</div>`;
 }
 
-/* ===================== Delivery Address form (delivery only) ===================== */
+/* ===================== Delivery Address form (mode = delivery) ===================== */
 function getAddress(){ try { return JSON.parse(localStorage.getItem(ADDR_KEY) || "null"); } catch { return null; } }
 function setAddress(obj){ try { obj ? localStorage.setItem(ADDR_KEY, JSON.stringify(obj)) : localStorage.removeItem(ADDR_KEY); } catch {} }
+
 function ensureDeliveryForm(){
   if (activeMode() !== "delivery") { if (R.deliveryHost) R.deliveryHost.remove(); return; }
   if (!R.deliveryHost) {
@@ -744,7 +731,6 @@ function wireAddressForm(){
   if (area && !area.value)  area.value  = saved.area  || "";
   if (pin && !pin.value)    pin.value   = saved.pin   || "";
   if (notes && !notes.value)notes.value = saved.notes || "";
-
   if (save && !save._wired){
     save._wired = true;
     save.addEventListener("click", ()=>{
@@ -767,8 +753,7 @@ function wireAddressForm(){
 function render(){
   if (!R.items && !resolveLayout()) return;
 
-  // Promo discipline (non-stackable) is enforced here:
-  // if current lock stops discounting for current state, Guard promotes the next.
+  // Promo guard first to keep lock sane
   schedulePromoGuard();
 
   const n = itemCount();
@@ -825,14 +810,17 @@ function render(){
       __LAST_PROMO_TAG__ = "";
     }
   }
-  if (R.promoAmt)  R.promoAmt.textContent = `− ${INR(discount)}`;
-  if (discount > 0) showPromoError(R, ""); // clear error if working
+  if (R.promoAmt) {
+    R.promoAmt.textContent = `− ${INR(discount)}`;
+  }
+  if (discount > 0) showPromoError(R, "");
 
-  // “Next eligible” hint (if user applied a code but hasn’t added an eligible base yet)
+  // Next-eligible hint (manual apply with no qualifying lines yet)
   (function showNextEligibleHint(){
     try {
       const targetId = localStorage.getItem("gufa:nextEligibleItem");
       if (!targetId) { const n = document.getElementById("next-eligible"); if (n) n.remove(); return; }
+
       const hasAnyEligibleBaseNow = (function(){
         const bag = window?.Cart?.get?.() || {};
         for (const [k, it] of Object.entries(bag)) {
@@ -843,11 +831,13 @@ function render(){
         }
         return false;
       })();
+
       if (discount > 0 || hasAnyEligibleBaseNow) {
         localStorage.removeItem("gufa:nextEligibleItem");
         const n = document.getElementById("next-eligible"); if (n) n.remove();
         return;
       }
+
       const parent = (R.promoInput?.parentElement) || document.querySelector(".promo-wrap") || document.querySelector("aside.cart-right");
       if (!parent) return;
       let node = document.getElementById("next-eligible");
@@ -863,27 +853,34 @@ function render(){
     } catch {}
   })();
 
-  // Delivery address (delivery mode only)
+  // Delivery address section (mode = delivery only)
   ensureDeliveryForm();
 
-  // Wire “Apply Coupon” once DOM references exist
+  // Wire Apply UI once
   wireApplyCouponUI();
 }
 
 /* ===================== Boot & subscriptions ===================== */
 async function boot(){
   resolveLayout();
+
   const inlined = hydrateCouponsFromInlineJson();
   if (!inlined) { try { await ensureCouponsReady(); } catch {} }
+
   render();
 
   window.addEventListener("cart:update", render, false);
   window.addEventListener("serviceMode:changed", render, false);
   window.addEventListener("storage", (e) => {
     if (!e) return;
-    if (e.key === "gufa_cart" || e.key === COUPON_KEY || e.key === ADDR_KEY || e.key === "gufa_mode") render();
+    if (e.key === "gufa_cart" || e.key === COUPON_KEY || e.key === ADDR_KEY || e.key === "gufa_mode") {
+      render();
+    }
   }, false);
-  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") render(); }, false);
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") render();
+  }, false);
   window.addEventListener("pageshow", (ev) => { if (ev && ev.persisted) render(); }, false);
 }
 if (document.readyState === "loading") {
