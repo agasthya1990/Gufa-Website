@@ -1,4 +1,4 @@
-<script>
+
 /* =========================================================================
    app.cart.js — Consolidated, hardened Cart
    - Strict Promotions (eligibility only, no scope widening)
@@ -1046,4 +1046,3 @@ window.CartDebug.eval = function(){
   const { discount } = computeDiscount(lock, base);
   return { lock, mode:activeMode(), base, add, elig, discount };
 };
-</script>
