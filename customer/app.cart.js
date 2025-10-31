@@ -58,8 +58,22 @@ function resolveLayout(){
   return R;
 }
 
+// --- Promo label pulse (visual only) ---
+let __LAST_PROMO_TAG__ = "";
+
+function pulsePromoLabel(el){
+  if (!el) return;
+  // retrigger CSS animation by toggling class
+  el.classList.remove("promo-pulse");
+  // force reflow so re-adding class plays again
+  void el.offsetWidth;
+  el.classList.add("promo-pulse");
+}
+
+
 // 3) Lightweight “no-crash” renderer wrapper
 function safeRender(fn){
+  
   try { fn(); } catch (e) { console.warn("[cart] render suppressed:", e); }
 }
 
@@ -234,6 +248,47 @@ function activeMode(){
   const isAddonKey = (key) => String(key).split(":").length >= 3;
   const baseKeyOf  = (key) => String(key).split(":").slice(0,2).join(":");
 
+  /* ===================== Base-line order (Promo Wheel) ===================== */
+  const ORDER_KEY = "gufa:baseOrder";
+
+  function readBaseOrder(){
+    try { const a = JSON.parse(localStorage.getItem(ORDER_KEY) || "[]"); return Array.isArray(a) ? a : []; }
+    catch { return []; }
+  }
+  function writeBaseOrder(arr){
+    try { localStorage.setItem(ORDER_KEY, JSON.stringify(Array.from(new Set(arr)))); } catch {}
+  }
+
+  // Maintain a stable “first arrival” order of base lines currently in cart.
+  // - add baseKey when its qty goes from 0 → >0
+  // - remove baseKey when its qty drops to 0
+  function syncBaseOrderWithCart(){
+    const bag = window?.Cart?.get?.() || {};
+    const liveBase = new Set(
+      Object.keys(bag)
+        .filter(k => !isAddonKey(k))
+        .map(k => baseKeyOf(k))
+    );
+
+    let order = readBaseOrder();
+
+    // add newly seen baseKeys at the end (preserve arrival)
+    for (const k of liveBase){
+      if (!order.includes(k)) order.push(k);
+    }
+    // drop baseKeys no longer present
+    order = order.filter(k => liveBase.has(k));
+
+    writeBaseOrder(order);
+    return order;
+  }
+
+  // Keep the order in sync on every cart mutation
+  window.addEventListener("cart:update", () => {
+    try { syncBaseOrderWithCart(); } catch {}
+  });
+
+  
   function splitBaseVsAddons(){
     let base=0, add=0;
     for (const [key, it] of entries()){
@@ -584,21 +639,31 @@ function findFirstApplicableCouponForCart(){
 
   const { base } = splitBaseVsAddons();
 
-for (const [key] of es){
-  const parts = String(key).split(":");
-  if (parts.length >= 3) continue; // skip add-ons
-  // FCFS over present base lines — allow cross-banner candidates
-
-  for (const [cid, meta] of window.COUPONS){
-    if (!checkUsageAvailable(meta)) continue;
-    const lock = buildLockFromMeta(String(cid), meta);
-    lock.source = "auto";
-    const { discount } = computeDiscount(lock, base);
-    if (discount > 0) return lock; // first stop that actually discounts wins
+  // 1) Build the FCFS scan order from our persistent wheel (arrival order),
+  //    then append any leftover bases we somehow missed.
+  const order = syncBaseOrderWithCart(); // returns array of baseKeys
+  const seen = new Set(order);
+  for (const [key] of es){
+    if (isAddonKey(key)) continue;
+    const b = baseKeyOf(key);
+    if (!seen.has(b)) order.push(b), seen.add(b);
   }
-}
+
+  // 2) For each baseKey in arrival order, try coupons in map order.
+  //    We allow cross-banner handoff: any coupon that discounts wins.
+  for (const bKey of order){
+    for (const [cid, meta] of window.COUPONS){
+      if (!checkUsageAvailable(meta)) continue;
+      const lock = buildLockFromMeta(String(cid), meta);
+      lock.source = "auto";
+      const { discount } = computeDiscount(lock, base);
+      if (discount > 0) return lock; // first stop that actually discounts wins
+    }
+  }
+
   return null;
 }
+
 
 
 
@@ -1003,14 +1068,19 @@ function render(){
     if (R.servicetax) R.servicetax.textContent = INR(tax);
     if (R.total)      R.total.textContent      = INR(grand);
 
-    // Promo totals row (left label + right amount)
+// Promo totals row (left label + right amount)
 const codeText = locked ? displayCode(locked) : "";
 if (R.promoLbl) {
   if (discount > 0) {
     const tag = codeText || "APPLIED";
     R.promoLbl.textContent = `Promotion (${tag}):`;
+    if (tag !== __LAST_PROMO_TAG__) { // only pulse on actual change
+      pulsePromoLabel(R.promoLbl);
+      __LAST_PROMO_TAG__ = tag;
+    }
   } else {
     R.promoLbl.textContent = `Promotion (): none`;
+    __LAST_PROMO_TAG__ = "";
   }
 }
 if (R.promoAmt) {
@@ -1018,6 +1088,7 @@ if (R.promoAmt) {
 }
 // Clear any lingering error whenever a valid non-zero discount is active
 if (discount > 0) showPromoError("");
+
 
 // --- Next-eligible hint (for manual apply with no qualifying lines yet) ---
 (function showNextEligibleHint(){
