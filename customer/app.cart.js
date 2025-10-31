@@ -1223,6 +1223,3 @@ async function boot(){
     return { lock, mode:activeMode(), base, add, elig, discount };
   };
 })();
-
-
-This is the entire file, let me know if this all good to go for commit?
