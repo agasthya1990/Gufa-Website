@@ -1118,14 +1118,16 @@ minus.addEventListener("click", () => {
 });
 
 
-    const remove = document.createElement("button");
-    remove.className = "remove-link";
-    remove.textContent = "Remove";
-    remove.addEventListener("click", () => {
-      window.Cart.setQty(baseKey, 0);
-      removeAllAddonsOf(baseKey);
-      window.dispatchEvent(new CustomEvent("cart:update"));
-    });
+const remove = document.createElement("button");
+remove.className = "remove-link";
+remove.textContent = "Remove";
+remove.addEventListener("click", () => {
+  if (!window?.Cart?.setQty) return; // guard to prevent hard crash
+  window.Cart.setQty(baseKey, 0);
+  removeAllAddonsOf(baseKey);
+  window.dispatchEvent(new CustomEvent("cart:update"));
+});
+
 
     mid.append(title, sub);
     right.append(stepper, lineSub, remove);
