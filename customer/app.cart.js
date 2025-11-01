@@ -691,7 +691,7 @@ function findFirstApplicableCouponForCart(){
 
   const { base } = splitBaseVsAddons();
 
-  // 1) Build FCFS scan order of base lines (first arrival → first scan)
+  // 1) FCFS scan order of base lines
   const order = syncBaseOrderWithCart(); // ["<itemId>:<variant>", ...]
   const seen = new Set(order);
   for (const [key] of es){
@@ -700,11 +700,9 @@ function findFirstApplicableCouponForCart(){
     if (!seen.has(b)) { order.push(b); seen.add(b); }
   }
 
-  // 2) For each baseKey in FCFS order, prefer coupons whose eligibility
-  //    explicitly includes this base item (banner-affiliated), then fallback.
+  // 2) Prefer coupons whose eligibility includes the base item; then fallback to any discounting coupon
   for (const bKey of order){
-    const itemId = String(bKey).split(":")[0].toLowerCase();
-
+    const baseId = String(bKey).split(":")[0].toLowerCase();
     const preferred = [];
     const fallback  = [];
 
@@ -714,30 +712,31 @@ function findFirstApplicableCouponForCart(){
       const lock = buildLockFromMeta(String(cid), meta);
       lock.source = "auto";
 
-      // Use existing resolver; no new helpers.
-      const elig = resolveEligibilitySet(lock); // Set of eligible ids/keys
+      // Use existing resolver
+      const eligSet = resolveEligibilitySet(lock);
       const hasDirectHit =
-        elig.has(itemId) ||
-        elig.has(bKey.toLowerCase()) ||
-        Array.from(elig).some(x => !x.includes(":") && bKey.toLowerCase().startsWith(x + ":"));
+        eligSet.has(baseId) ||
+        eligSet.has(bKey.toLowerCase()) ||
+        Array.from(eligSet).some(x => !String(x).includes(":") && bKey.toLowerCase().startsWith(String(x).toLowerCase() + ":"));
 
       (hasDirectHit ? preferred : fallback).push(lock);
     }
 
-    // Try banner-affiliated coupons first
-    for (const lock of preferred){
-      const { discount } = computeDiscount(lock, base);
-      if (discount > 0) return lock;
+    // Preferred first
+    for (const L of preferred){
+      const { discount } = computeDiscount(L, base);
+      if (discount > 0) return L;
     }
-    // Then any other coupon that actually discounts
-    for (const lock of fallback){
-      const { discount } = computeDiscount(lock, base);
-      if (discount > 0) return lock;
+    // Otherwise any coupon that actually discounts
+    for (const L of fallback){
+      const { discount } = computeDiscount(L, base);
+      if (discount > 0) return L;
     }
   }
 
   return null;
 }
+
 
 
 
