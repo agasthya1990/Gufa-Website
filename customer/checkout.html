@@ -215,17 +215,24 @@
   try { localStorage.removeItem("gufa:COUPONS"); } catch (e) {}
   if (!localStorage.getItem("gufa_mode")) localStorage.setItem("gufa_mode", "delivery");
 </script>
-  <script id="promo-data" type="application/json">
+<script id="promo-data" type="application/json">
 {
+  "coupons": [
+    ["XMAS100",   {"code":"XMAS100","type":"flat","value":100,"targets":{"delivery":true,"dining":true}}],
+    ["DIWALI100", {"code":"DIWALI100","type":"flat","value":100,"targets":{"delivery":true,"dining":true}}]
+  ],
   "banners": [
     ["couponCode:XMAS100",   ["<xmasItemId1>","<xmasItemId2>"]],
     ["couponCode:DIWALI100", ["<diwaliItemId1>"]]
   ]
 }
 </script>
+
+</script>
 <script src="./app.cart.js"></script>
 <script src="./coupon-engine.js"></script>
 
 </body>
 </html>
+
 
