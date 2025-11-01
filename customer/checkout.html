@@ -218,21 +218,20 @@
 <script id="promo-data" type="application/json">
 {
   "coupons": [
-    ["XMAS100",   {"code":"XMAS100","type":"flat","value":100,"targets":{"delivery":true,"dining":true}}],
-    ["DIWALI100", {"code":"DIWALI100","type":"flat","value":100,"targets":{"delivery":true,"dining":true}}]
-  ],
-  "banners": [
-    ["couponCode:XMAS100",   ["<xmasItemId1>","<xmasItemId2>"]],
-    ["couponCode:DIWALI100", ["<diwaliItemId1>"]]
+    ["XMAS100",   { "code":"XMAS100",   "type":"flat", "value":100,
+                    "targets":{"delivery":true,"dining":true},
+                    "eligibleItemIds": ["ej97zamjkmykct3vguvb"] }],
+    ["DIWALI100", { "code":"DIWALI100", "type":"flat", "value":100,
+                    "targets":{"delivery":true,"dining":true},
+                    "eligibleItemIds": ["<put the diwali item id here>"] }]
   ]
 }
-</script>
-
 </script>
 <script src="./app.cart.js"></script>
 <script src="./coupon-engine.js"></script>
 
 </body>
 </html>
+
 
 
