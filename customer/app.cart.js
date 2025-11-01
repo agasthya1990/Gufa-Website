@@ -528,6 +528,15 @@ function buildLockFromMeta(cid, meta) {
     eligSet = eligibleIdsFromBanners({ couponId: cid });
   }
 
+  // 3) Else derive from product catalog (ITEMS) by couponId → promotions/coupons/couponIds
+  if (!eligSet.size && typeof computeEligibleItemIdsForCoupon === "function") {
+    try {
+      const viaItems = computeEligibleItemIdsForCoupon(cid);
+      if (Array.isArray(viaItems) && viaItems.length) {
+        eligSet = new Set(viaItems.map(s => String(s).toLowerCase()));
+      }
+    } catch {}
+  }
 
   return {
     scope: { couponId: cid, eligibleItemIds: Array.from(eligSet) },
@@ -538,6 +547,7 @@ function buildLockFromMeta(cid, meta) {
     code: (meta?.code ? String(meta.code).toUpperCase() : undefined),
   };
 }
+
 
 
 // Create/find a small error line under the input (single-line, red, compact)
