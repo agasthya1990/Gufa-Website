@@ -538,14 +538,16 @@ function buildLockFromMeta(cid, meta) {
     } catch {}
   }
 
-  return {
-    scope: { couponId: cid, eligibleItemIds: Array.from(eligSet) },
-    type:  String(meta?.type || "flat").toLowerCase(),
-    value: Number(meta?.value || 0),
-    minOrder: Number(meta?.minOrder || 0),
-    valid: meta?.targets ? { delivery: !!meta.targets.delivery, dining: !!meta.targets.dining } : undefined,
-    code: (meta?.code ? String(meta.code).toUpperCase() : undefined),
-  };
+return {
+  scope: { couponId: cid, eligibleItemIds: Array.from(eligSet) },
+  type:  String(meta?.type || "flat").toLowerCase(),
+  value: Number(meta?.value || 0),
+  minOrder: Number(meta?.minOrder || 0),
+  valid: meta?.targets ? { delivery: !!meta.targets.delivery, dining: !!meta.targets.dining } : undefined,
+  code: (meta?.code ? String(meta.code).toUpperCase() : undefined),
+  meta: meta || null
+};
+
 }
 
 
@@ -656,21 +658,32 @@ function eligibleIdsFromBanners(scope){
 
 
   // explicit eligibleItemIds > banner-derived > empty (strict)
-  function resolveEligibilitySet(locked){
-    const scope = locked?.scope || {};
-    const explicit = (
-      Array.isArray(scope.eligibleItemIds) ? scope.eligibleItemIds :
-      Array.isArray(scope.eligibleIds)     ? scope.eligibleIds     :
-      Array.isArray(scope.itemIds)         ? scope.itemIds         :
-      []
-    ).map(s=>String(s).toLowerCase());
-    if (explicit.length) return new Set(explicit);
+function resolveEligibilitySet(locked){
+  const scope = locked?.scope || {};
+  const explicit = (
+    Array.isArray(scope.eligibleItemIds) ? scope.eligibleItemIds :
+    Array.isArray(scope.eligibleIds)     ? scope.eligibleIds     :
+    Array.isArray(scope.itemIds)         ? scope.itemIds         :
+    []
+  ).map(s=>String(s).toLowerCase());
+  if (explicit.length) return new Set(explicit);
 
-    const byBanner = eligibleIdsFromBanners(scope);
-    if (byBanner.size) return byBanner;
+  const byBanner = eligibleIdsFromBanners(scope);
+  if (byBanner.size) return byBanner;
 
-    return new Set();
+  // NEW: last-mile fallback via product catalog (ITEMS) using couponId
+  if (typeof computeEligibleItemIdsForCoupon === "function" && scope.couponId) {
+    try {
+      const via = computeEligibleItemIdsForCoupon(String(scope.couponId));
+      if (Array.isArray(via) && via.length) {
+        return new Set(via.map(s => String(s).toLowerCase()));
+      }
+    } catch {}
   }
+
+  return new Set();
+}
+
 
 // Provenance: did this base line come from the currently locked banner/coupon?
 function hasBannerProvenance(baseKey) {
