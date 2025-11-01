@@ -1345,7 +1345,7 @@ async function boot(){
 
  /* ===================== Debug helper ===================== */
 window.CartDebug = window.CartDebug || {};
-  window.CartDebug.eval = function(){
+    window.CartDebug.eval = function(){
     const lock = getLock();
     const { base, add } = splitBaseVsAddons();
     const elig = Array.from(lock ? resolveEligibilitySet(lock) : new Set());
@@ -1373,5 +1373,4 @@ window.CartDebug = window.CartDebug || {};
       findCouponByIdOrCode
     });
   } catch {}
-  
 })();
