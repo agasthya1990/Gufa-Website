@@ -1345,7 +1345,36 @@ async function boot(){
 
  /* ===================== Debug helper ===================== */
 window.CartDebug = window.CartDebug || {};
-window.CartDebug.eval = function(){
+  window.CartDebug.eval = function(){
+    const lock = getLock();
+    const { base, add } = splitBaseVsAddons();
+    const elig = Array.from(lock ? resolveEligibilitySet(lock) : new Set());
+    const { discount } = computeDiscount(lock, base);
+    return { lock, mode:activeMode(), base, add, elig, discount };
+  };
+
+  // === expose core helpers for console/tests (no behavior change) ===
+  try {
+    // primary globals (what your console scripts expect)
+    window.computeDiscount = computeDiscount;
+    window.resolveEligibilitySet = resolveEligibilitySet;
+    window.buildLockFromMeta = buildLockFromMeta;
+    window.findFirstApplicableCouponForCart = findFirstApplicableCouponForCart;
+    window.findCouponByCode = window.findCouponByCode || findCouponByCode;
+    window.findCouponByIdOrCode = window.findCouponByIdOrCode || findCouponByIdOrCode;
+
+    // optional namespaced mirror (handy for future)
+    window.CartAPI = Object.assign(window.CartAPI || {}, {
+      computeDiscount,
+      resolveEligibilitySet,
+      buildLockFromMeta,
+      findFirstApplicableCouponForCart,
+      findCouponByCode,
+      findCouponByIdOrCode
+    });
+  } catch {}
+})();
+
   const lock = getLock();
   const { base, add } = splitBaseVsAddons();
   const elig = Array.from(lock ? resolveEligibilitySet(lock) : new Set());
