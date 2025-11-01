@@ -735,30 +735,33 @@ function findFirstApplicableCouponForCart(){
       const lock = buildLockFromMeta(String(cid), meta);
       lock.source = "auto";
 
-      // --- SAFETY: resolver → meta/lock fallback → LAST-MILE FCFS fallback
-      let eligSet = (typeof resolveEligibilitySet === "function") ? resolveEligibilitySet(lock) : new Set();
-      if (!eligSet || eligSet.size === 0) {
-        const metaElig = Array.isArray(meta?.eligibleItemIds) ? meta.eligibleItemIds.map(s=>String(s).toLowerCase()) : [];
-        const lockElig = Array.isArray(lock?.scope?.eligibleItemIds) ? lock.scope.eligibleItemIds.map(s=>String(s).toLowerCase()) : [];
-        const merged   = Array.from(new Set([...metaElig, ...lockElig]));
-        if (merged.length) {
-          lock.scope = Object.assign({}, lock.scope, { eligibleItemIds: merged });
-          eligSet = new Set(merged);
-        } else {
-          // NEW: last-mile fallback — optimistically try the current FCFS baseId
-          lock.scope = Object.assign({}, lock.scope, { eligibleItemIds: [baseId] });
-          eligSet = new Set([baseId]);
-        }
-      }
+      // derive once for this bKey (used by both fallback and hasDirectHit)
+const baseId = String(bKey).split(":")[0].toLowerCase();
 
+// --- SAFETY: resolver → meta/lock fallback → LAST-MILE FCFS fallback
+let eligSet = (typeof resolveEligibilitySet === "function") ? resolveEligibilitySet(lock) : new Set();
 
-      const hasDirectHit =
-        eligSet.has(baseId) ||
-        eligSet.has(bKey.toLowerCase()) ||
-        Array.from(eligSet).some(x => !String(x).includes(":") && bKey.toLowerCase().startsWith(String(x).toLowerCase() + ":"));
+if (!eligSet || eligSet.size === 0) {
+  const metaElig = Array.isArray(meta?.eligibleItemIds) ? meta.eligibleItemIds.map(s=>String(s).toLowerCase()) : [];
+  const lockElig = Array.isArray(lock?.scope?.eligibleItemIds) ? lock.scope.eligibleItemIds.map(s=>String(s).toLowerCase()) : [];
+  const merged   = Array.from(new Set([...metaElig, ...lockElig]));
+  if (merged.length) {
+    lock.scope = Object.assign({}, lock.scope, { eligibleItemIds: merged });
+    eligSet = new Set(merged);
+  } else {
+    // last-mile FCFS: try the current baseId
+    lock.scope = Object.assign({}, lock.scope, { eligibleItemIds: [baseId] });
+    eligSet = new Set([baseId]);
+  }
+}
 
-      (hasDirectHit ? preferred : fallback).push(lock);
-    }
+const hasDirectHit =
+  eligSet.has(baseId) ||
+  eligSet.has(bKey.toLowerCase()) ||
+  Array.from(eligSet).some(x => !String(x).includes(":") && bKey.toLowerCase().startsWith(String(x).toLowerCase() + ":"));
+
+(hasDirectHit ? preferred : fallback).push(lock);
+
 
     // Preferred first (banner-affiliated)
     for (const L of preferred){
@@ -1342,13 +1345,26 @@ async function boot(){
   }
 
 
-  /* ===================== Debug helper ===================== */
-  window.CartDebug = window.CartDebug || {};
-  window.CartDebug.eval = function(){
-    const lock = getLock();
-    const { base, add } = splitBaseVsAddons();
-    const elig = Array.from(lock ? resolveEligibilitySet(lock) : new Set());
-    const { discount } = computeDiscount(lock, base);
-    return { lock, mode:activeMode(), base, add, elig, discount };
-  };
-})();
+ /* ===================== Debug helper ===================== */
+window.CartDebug = window.CartDebug || {};
+window.CartDebug.eval = function(){
+  const lock = getLock();
+  const { base, add } = splitBaseVsAddons();
+  const elig = Array.from(lock ? resolveEligibilitySet(lock) : new Set());
+  const { discount } = computeDiscount(lock, base);
+  return { lock, mode:activeMode(), base, add, elig, discount };
+};
+
+// Expose internal helpers for checkout console & interop (no behavior change)
+try {
+  if (typeof findFirstApplicableCouponForCart === "function")
+    window.CartDebug.choose = findFirstApplicableCouponForCart;
+  if (typeof computeDiscount === "function")
+    window.CartDebug.computeDiscount = computeDiscount;
+  if (typeof buildLockFromMeta === "function")
+    window.CartDebug.buildLockFromMeta = buildLockFromMeta;
+  if (typeof resolveEligibilitySet === "function")
+    window.CartDebug.resolveEligibilitySet = resolveEligibilitySet;
+  if (typeof modeAllowed === "function")
+    window.CartDebug.modeAllowed = modeAllowed;
+} catch {}
