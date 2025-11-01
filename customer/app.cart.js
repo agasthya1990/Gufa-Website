@@ -640,25 +640,47 @@ function findFirstApplicableCouponForCart(){
 
   const { base } = splitBaseVsAddons();
 
-  // 1) Build the FCFS scan order from our persistent wheel (arrival order),
-  //    then append any leftover bases we somehow missed.
-  const order = syncBaseOrderWithCart(); // returns array of baseKeys
+  // 1) Build FCFS order of base lines (first arrival → first scan)
+  const order = syncBaseOrderWithCart(); // array of baseKeys like "<itemId>:<variant>"
   const seen = new Set(order);
   for (const [key] of es){
     if (isAddonKey(key)) continue;
     const b = baseKeyOf(key);
-    if (!seen.has(b)) order.push(b), seen.add(b);
+    if (!seen.has(b)) { order.push(b); seen.add(b); }
   }
 
-  // 2) For each baseKey in arrival order, try coupons in map order.
-  //    We allow cross-banner handoff: any coupon that discounts wins.
+  // 2) For each baseKey in FCFS order, prefer coupons whose eligibility explicitly
+  //    includes this base item (banner-affiliated), then fall back to any coupon.
   for (const bKey of order){
+    const itemId = String(bKey).split(":")[0].toLowerCase();
+
+    // 2a) Preferred: coupons whose eligibility set contains this item/base
+    const preferred = [];
+    const fallback  = [];
     for (const [cid, meta] of window.COUPONS){
       if (!checkUsageAvailable(meta)) continue;
       const lock = buildLockFromMeta(String(cid), meta);
       lock.source = "auto";
+
+      // Use the same resolver the engine uses, no new helpers.
+      const elig = resolveEligibilitySet(lock);
+      const hasDirectHit =
+        elig.has(itemId) ||
+        elig.has(bKey.toLowerCase()) ||
+        Array.from(elig).some(x => !x.includes(":") && bKey.toLowerCase().startsWith(x + ":"));
+
+      (hasDirectHit ? preferred : fallback).push(lock);
+    }
+
+    // Try preferred first
+    for (const lock of preferred){
       const { discount } = computeDiscount(lock, base);
-      if (discount > 0) return lock; // first stop that actually discounts wins
+      if (discount > 0) return lock;
+    }
+    // Then any remaining coupon, as before
+    for (const lock of fallback){
+      const { discount } = computeDiscount(lock, base);
+      if (discount > 0) return lock;
     }
   }
 
