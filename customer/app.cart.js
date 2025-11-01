@@ -1,19 +1,14 @@
-// GUFA Cart — Full rewrite with Funnel FCFS across banners + robust Apply
-// Features: non-stackable coupons, banner-aware "funnel" next-eligible handoff,
-// strict mode gating (Delivery/Dining), add-on steppers + auto-prune,
-// promo totals row, delivery address form, hydration from inline/Firestore/local dump,
-// single idempotent [Apply Coupon], debug surface.
-//
-// Keys used:
-//   gufa_cart, gufa_coupon, gufa:COUPONS, gufa:baseOrder, gufa:promoPivot,
-//   gufa:nextEligibleItem, gufa:deliveryAddress, gufa_mode
+// GUFA Cart — Full stack with Next-Eligible Funnel (FCFS across banners)
+// Preserves: non-stackable promos, Delivery/Dining gating, add-on steppers + auto-prune,
+// promo totals row, Delivery Address form, manual [Apply Coupon] with strict scope,
+// inline/Firestore/local hydration, next-eligible hint, debug surface.
 
-/* ===================== Persistence snapshot (unchanged) ===================== */
-let lastSnapshotAt = 0;
+// ===================== Persistence snapshot =====================
+let __lastSnapshotAt = 0;
 function persistCartSnapshotThrottled() {
   const now = Date.now();
-  if (now - lastSnapshotAt < 1000) return; // 1s debounce
-  lastSnapshotAt = now;
+  if (now - __lastSnapshotAt < 1000) return; // 1s debounce
+  __lastSnapshotAt = now;
   try {
     const cart = window?.Cart?.get?.() || {};
     localStorage.setItem("gufa_cart", JSON.stringify(cart));
@@ -21,7 +16,7 @@ function persistCartSnapshotThrottled() {
 }
 window.addEventListener("cart:update", persistCartSnapshotThrottled);
 
-/* ===================== Deterministic UI selector map ===================== */
+// ===================== Deterministic UI selector map =====================
 (function ensureCartUIMap(){
   const defaults = {
     items:      "#cart-items",
@@ -43,7 +38,7 @@ window.addEventListener("cart:update", persistCartSnapshotThrottled);
   window.CART_UI.list = Object.assign({}, defaults, root);
 })();
 
-/* ============ Tiny helpers for the promo controls (decoupled from layout) ============ */
+// ===================== Promo UI helpers =====================
 function getUI(){
   const Q = (sel) => (sel ? document.querySelector(sel) : null);
   const UI = (window.CART_UI && window.CART_UI.list) || {};
@@ -58,12 +53,12 @@ let __LAST_PROMO_TAG__ = "";
 function pulsePromoLabel(el){
   if (!el) return;
   el.classList.remove("promo-pulse");
-  void el.offsetWidth; // reflow to retrigger
+  void el.offsetWidth;
   el.classList.add("promo-pulse");
 }
 function safe(fn){ try { fn(); } catch(e){ console.warn("[cart] render suppressed:", e); } }
 
-/* ===================== Apply-by-code helpers (code or id) ===================== */
+// ===================== Coupon helpers (apply-by-code + eligible scan) =====================
 function findCouponByCodeOrId(input){
   const raw = String(input || "").trim();
   if (!raw) return null;
@@ -122,31 +117,43 @@ function writeCouponLockFromMeta(couponId, meta){
   return true;
 }
 
-/* ===================== Single [Apply Coupon] UI binder (idempotent) ===================== */
-(function wireApplyCouponUI(){
+// ===================== [Apply Coupon] UI wiring (idempotent) =====================
+function ensurePromoErrorHost() {
+  const UI = getUI();
+  const input = UI.promoInput;
+  if (!input) return null;
+
+  const parent =
+    input.parentElement ||
+    input.closest(".inv-list") ||
+    input.closest("form") ||
+    input;
+
+  let node = parent.querySelector("#promo-error");
+  if (!node) {
+    node = document.createElement("div");
+    node.id = "promo-error";
+    node.style.color = "#B00020";
+    node.style.fontSize = "12px";
+    node.style.marginTop = "6px";
+    node.style.lineHeight = "1.2";
+    node.style.minHeight = "14px";
+    parent.appendChild(node);
+  }
+  return node;
+}
+function showPromoError(msg) {
+  const host = ensurePromoErrorHost();
+  if (host) host.textContent = msg || "";
+}
+
+function wireApplyCouponUI(){
   const UI = getUI();
   const input = UI.promoInput;
   const btn   = UI.promoApply;
-  if (!btn || !input || btn._wiredOnce) return;
+  if (!btn || !input) return;
 
-  const ensureErrHost = () => {
-    const parent = input.parentElement || input.closest(".inv-list") || input.closest("form") || input;
-    let node = parent.querySelector("#promo-error");
-    if (!node) {
-      node = document.createElement("div");
-      node.id = "promo-error";
-      node.style.color = "#B00020";
-      node.style.fontSize = "12px";
-      node.style.marginTop = "6px";
-      node.style.lineHeight = "1.2";
-      node.style.minHeight = "14px";
-      parent.appendChild(node);
-    }
-    return node;
-  };
-  const showPromoError = (msg) => { const n = ensureErrHost(); if (n) n.textContent = msg || ""; };
-
-  async function apply(){
+  const apply = async () => {
     const query = (input.value || "").trim();
     if (!query) { showPromoError(""); return; }
 
@@ -187,22 +194,28 @@ function writeCouponLockFromMeta(couponId, meta){
     } else {
       showPromoError("Invalid or Ineligible Coupon Code");
     }
+  };
+
+  if (!btn._wired){
+    btn._wired = true;
+    btn.addEventListener("click", (e)=>{ e.preventDefault(); apply(); }, false);
   }
+  if (!input._wiredEnter){
+    input._wiredEnter = true;
+    input.addEventListener("keydown", (e) => { if (e.key === "Enter"){ e.preventDefault(); apply(); }}, false);
+  }
+}
+document.addEventListener("DOMContentLoaded", () => { try { wireApplyCouponUI(); } catch {} });
 
-  btn._wiredOnce = true;
-  btn.addEventListener("click", (e)=>{ e.preventDefault(); apply(); }, false);
-  input.addEventListener("keydown", (e)=>{ if (e.key === "Enter"){ e.preventDefault(); apply(); }}, false);
-})();
-
-/* ===================== Main cart module ===================== */
+// ===================== Main cart module =====================
 ;(function(){
-  // Global catalogs
+  // Global catalogs & guards
   if (!(window.COUPONS instanceof Map)) window.COUPONS = new Map();
-  if (!window.BANNERS) window.BANNERS = new Map(); // Map preferred; array tolerated
+  if (!window.BANNERS) window.BANNERS = new Map(); // tolerate array elsewhere
   window.CART_UI = window.CART_UI || {};
   window.CART_UI.list = window.CART_UI.list || {};
 
-  /* ===================== Money & utils ===================== */
+  // ===================== Money & utils =====================
   const INR = (v) => "₹" + Math.round(Number(v)||0).toLocaleString("en-IN");
   const SERVICE_TAX_RATE = 0.05;
   const clamp0 = (n) => Math.max(0, Number(n)||0);
@@ -215,13 +228,13 @@ function writeCouponLockFromMeta(couponId, meta){
 
   const isUUID = (s) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s||"");
 
-  /* ===================== Mode ===================== */
+  // ===================== Mode =====================
   function activeMode(){
     const m = String(localStorage.getItem("gufa_mode") || "delivery").toLowerCase();
     return m === "dining" ? "dining" : "delivery";
   }
 
-  /* ===================== Cart I/O ===================== */
+  // ===================== Cart I/O =====================
   function entries(){
     try {
       const store = window?.Cart?.get?.();
@@ -241,7 +254,7 @@ function writeCouponLockFromMeta(couponId, meta){
   const isAddonKey = (key) => String(key).split(":").length >= 3;
   const baseKeyOf  = (key) => String(key).split(":").slice(0,2).join(":");
 
-  /* ===================== Arrival rail (for FCFS) ===================== */
+  // ===================== Arrival rail (FCFS order) =====================
   function readBaseOrder(){
     try { const a = JSON.parse(localStorage.getItem(ORDER_KEY) || "[]"); return Array.isArray(a) ? a : []; }
     catch { return []; }
@@ -265,7 +278,7 @@ function writeCouponLockFromMeta(couponId, meta){
   }
   window.addEventListener("cart:update", () => { try { syncBaseOrderWithCart(); } catch {} });
 
-  /* ===================== Split base vs addons ===================== */
+  // ===================== Split base vs addons =====================
   function splitBaseVsAddons(){
     let base=0, add=0;
     for (const [key, it] of entries()){
@@ -274,8 +287,8 @@ function writeCouponLockFromMeta(couponId, meta){
     }
     return { base, add };
   }
-
-  /* ===================== Hydration (inline / local dump / Firestore) ===================== */
+  
+    // ===================== Hydration (inline / local dump / Firestore) =====================
   function defaultTrueTargets(meta){
     if (!meta) return meta;
     const t = meta.targets || {};
@@ -286,6 +299,7 @@ function writeCouponLockFromMeta(couponId, meta){
   function hydrateCouponsFromInlineJson(){
     try {
       if (window.COUPONS instanceof Map && window.COUPONS.size > 0) return false;
+
       const tag = document.getElementById("promo-data");
       if (!tag) return false;
 
@@ -385,7 +399,7 @@ function writeCouponLockFromMeta(couponId, meta){
     try { return !!(await hydrateCouponsFromFirestoreOnce()); } catch { return false; }
   };
 
-  /* ===================== Coupon Lock ===================== */
+  // ===================== Coupon Lock =====================
   const getLock = () => { try { return JSON.parse(localStorage.getItem(COUPON_KEY) || "null"); } catch { return null; } };
   const setLock = (obj) => { try { obj ? localStorage.setItem(COUPON_KEY, JSON.stringify(obj)) : localStorage.removeItem(COUPON_KEY); } catch {} };
 
@@ -510,7 +524,7 @@ function writeCouponLockFromMeta(couponId, meta){
     return new Set();
   }
 
-  /* ===================== Discount computation ===================== */
+  // ===================== Discount computation =====================
   function computeDiscount(locked, baseSubtotal){
     if (!locked) return { discount:0 };
     if (!modeAllowed(locked)) return { discount:0 };
@@ -558,7 +572,7 @@ function writeCouponLockFromMeta(couponId, meta){
     return { discount: Math.max(0, Math.round(d)) };
   }
 
-  /* ===================== FUNNEL: next-eligible across banners (FCFS) ===================== */
+  // ===================== Next-Eligible Funnel (FCFS across banners) =====================
   function readPivot(){ try { return String(localStorage.getItem(PIVOT_KEY)||""); } catch { return ""; } }
   function storePivot(bKey){ try { localStorage.setItem(PIVOT_KEY, String(bKey||"")); } catch {} }
 
@@ -569,7 +583,7 @@ function writeCouponLockFromMeta(couponId, meta){
     const itemId = parts[0];
 
     const bag = window?.Cart?.get?.() || {};
-    const live = bag[pivot]?.qty > 0;
+    const live = (bag[pivot]?.qty|0) > 0;
     const eligible = eligSet.has(itemId) || eligSet.has(pivot.toLowerCase());
     return live && eligible;
   }
@@ -589,7 +603,7 @@ function writeCouponLockFromMeta(couponId, meta){
       const elig = resolveEligibilitySet(lock);
       if (!elig.size) continue;
 
-      // find earliest baseKey in arrival order that intersects elig
+      // earliest baseKey that intersects elig
       let earliestIdx = Infinity;
       let pivotKey = "";
       for (let i = 0; i < presentBaseKeys.length; i++){
@@ -602,14 +616,12 @@ function writeCouponLockFromMeta(couponId, meta){
       }
       if (earliestIdx === Infinity) continue;
 
-      // verify discount > 0 for this cart
       const { discount } = computeDiscount(lock, baseSubtotal);
       if (discount <= 0) continue;
 
       candidates.push({ cid, meta, lock, elig, earliestIdx, pivotKey, discount });
     }
 
-    // FCFS: smallest earliestIdx wins
     candidates.sort((a,b)=> a.earliestIdx - b.earliestIdx);
     return candidates;
   }
@@ -618,17 +630,17 @@ function writeCouponLockFromMeta(couponId, meta){
     const { base } = splitBaseVsAddons();
     const candidates = computeFunnelCandidates(base);
 
-    // Keep current lock if still valid (FCFS sticks to its owner)
+    // Keep current lock if still valid (manual or auto) and pivot still live
     const kept = getLock();
     if (kept){
       const elig = resolveEligibilitySet(kept);
       const { discount } = computeDiscount(kept, base);
-      if (discount > 0 && pivotStillValid(readPivot(), elig)) return; // keep
-      // otherwise release and try funnel
+      // keep manual if still yields discount irrespective of pivot
+      if (discount > 0 && String(kept?.source||"").startsWith("apply:")) return;
+      if (discount > 0 && pivotStillValid(readPivot(), elig)) return; // keep auto with valid pivot
       setLock(null);
     }
 
-    // Choose first candidate in the funnel
     if (candidates.length){
       const first = candidates[0];
       storePivot(first.pivotKey || "");
@@ -637,11 +649,10 @@ function writeCouponLockFromMeta(couponId, meta){
       return;
     }
 
-    // No candidates → ensure cleared
     setLock(null);
   }
   
-    /* ===================== Grouping & rows (steppers intact) ===================== */
+    // ===================== Grouping & rows (steppers intact) =====================
   function buildGroups(){
     const gs = new Map(); // baseKey -> { base, addons[] }
     for (const [key, it] of entries()){
@@ -772,7 +783,7 @@ function writeCouponLockFromMeta(couponId, meta){
     return li;
   }
 
-  /* ===================== Layout & Invoice ===================== */
+  // ===================== Layout & Invoice =====================
   let R = {};
   function resolveLayout(){
     const CFG = window.CART_UI?.list || {};
@@ -814,7 +825,7 @@ function writeCouponLockFromMeta(couponId, meta){
     if (R.invAddons) R.invAddons.innerHTML = adds.length ? adds.join("") : `<div class="muted">None</div>`;
   }
 
-  /* ===================== Delivery Address (mode = delivery) ===================== */
+  // ===================== Delivery Address (mode = delivery) =====================
   function getAddress(){ try { return JSON.parse(localStorage.getItem(ADDR_KEY) || "null"); } catch { return null; } }
   function setAddress(obj){ try { obj ? localStorage.setItem(ADDR_KEY, JSON.stringify(obj)) : localStorage.removeItem(ADDR_KEY); } catch {} }
 
@@ -878,9 +889,9 @@ function writeCouponLockFromMeta(couponId, meta){
     }
   }
 
-  /* ===================== Render ===================== */
+  // ===================== Render =====================
   function render(){
-    if (!resolveLayout()) return;
+    if (!R.items && !resolveLayout()) return;
     enforceFunnelFCFS();
 
     const n = itemCount();
@@ -941,12 +952,8 @@ function writeCouponLockFromMeta(couponId, meta){
       }
     }
     if (R.promoAmt) R.promoAmt.textContent = `− ${INR(discount)}`;
-    if (discount > 0) {
-      const e = document.getElementById("promo-error");
-      if (e) e.textContent = "";
-    }
 
-    // Next-eligible hint (when a valid manual code is set but no eligible base in cart yet)
+    // Next-eligible hint
     (function nextEligibleHint(){
       try {
         const targetId = localStorage.getItem("gufa:nextEligibleItem");
@@ -985,9 +992,34 @@ function writeCouponLockFromMeta(couponId, meta){
     })();
 
     ensureDeliveryForm();
-  }
 
-  /* ===================== Boot & subscriptions ===================== */
+    // Manual Apply Coupon fallback wiring (in case page loaded after DOMContentLoaded)
+    if (R.promoApply && !R.promoApply._wiredLate){
+      R.promoApply._wiredLate = true;
+      R.promoApply.addEventListener("click", async ()=>{
+        const raw = (R.promoInput?.value || "").trim();
+        if (!raw) { showPromoError(""); return; }
+        const hydrated = await window.ensureCouponsReady();
+        if (!hydrated && !(window.COUPONS instanceof Map && window.COUPONS.size > 0)) {
+          showPromoError("Coupon data not available");
+          return;
+        }
+        const found = findCouponByIdOrCode(raw) || findCouponByCodeOrId(raw);
+        if (!found) { showPromoError("Invalid or Ineligible Coupon Code"); return; }
+        const fullLock = buildLockFromMeta(found.cid || found.id, found.meta);
+        const { base } = splitBaseVsAddons();
+        const { discount } = computeDiscount(fullLock, base);
+        if (!discount || discount <= 0) { showPromoError("Invalid or Ineligible Coupon Code"); return; }
+        fullLock.source = "apply:manual";
+        setLock(fullLock);
+        showPromoError("");
+        enforceFunnelFCFS();
+        window.dispatchEvent(new CustomEvent("cart:update"));
+      }, false);
+    }
+  }
+  
+    // ===================== Boot & subscriptions =====================
   async function boot(){
     resolveLayout();
     const inlined = (function(){ try { return hydrateCouponsFromInlineJson(); } catch { return false; }})();
@@ -1013,7 +1045,7 @@ function writeCouponLockFromMeta(couponId, meta){
     boot();
   }
 
-  /* ===================== Debug helper ===================== */
+  // ===================== Debug helper =====================
   window.CartDebug = window.CartDebug || {};
   window.CartDebug.eval = function(){
     const lock = getLock();
@@ -1021,6 +1053,7 @@ function writeCouponLockFromMeta(couponId, meta){
     const elig = Array.from(lock ? resolveEligibilitySet(lock) : new Set());
     const pivot = (function(){ try { return localStorage.getItem("gufa:promoPivot")||""; } catch { return ""; } })();
     const { discount } = computeDiscount(lock, base);
-    return { lock, mode:activeMode(), base, add, elig, pivot, discount };
+    const order = (function(){ try { return JSON.parse(localStorage.getItem("gufa:baseOrder")||"[]"); } catch { return []; } })();
+    return { lock, mode:activeMode(), base, add, elig, pivot, order, discount };
   };
 })();
