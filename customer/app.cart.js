@@ -736,22 +736,31 @@ function findFirstApplicableCouponForCart(){
       lock.source = "auto";
 
 
-// --- SAFETY: resolver → meta/lock fallback → LAST-MILE FCFS fallback
-let eligSet = (typeof resolveEligibilitySet === "function") 
-  ? resolveEligibilitySet(lock) 
+// --- SAFETY: resolver → meta/lock fallback → LAST-MILE FCFS fallback (classified)
+let eligSet = (typeof resolveEligibilitySet === "function")
+  ? resolveEligibilitySet(lock)
   : new Set();
+
+let fromLastMile = false;
+
+// 1) meta/lock scope fallback if resolver empty
 if (!eligSet || eligSet.size === 0) {
   const metaElig = Array.isArray(meta?.eligibleItemIds) ? meta.eligibleItemIds.map(s=>String(s).toLowerCase()) : [];
   const lockElig = Array.isArray(lock?.scope?.eligibleItemIds) ? lock.scope.eligibleItemIds.map(s=>String(s).toLowerCase()) : [];
   const merged   = Array.from(new Set([...metaElig, ...lockElig]));
   if (merged.length) {
+    // persist merged into lock for computeDiscount
     lock.scope = Object.assign({}, lock.scope, { eligibleItemIds: merged });
     eligSet = new Set(merged);
-  } else {
-    // NEW: last-mile fallback — optimistically try the current FCFS baseId
-    lock.scope = Object.assign({}, lock.scope, { eligibleItemIds: [baseId] });
-    eligSet = new Set([baseId]);
   }
+}
+
+// 2) last-mile only if still empty — mark as fallback
+if (!eligSet || eligSet.size === 0) {
+  fromLastMile = true;
+  // IMPORTANT: allow computeDiscount to see this, but keep it classified as fallback
+  lock.scope = Object.assign({}, lock.scope, { eligibleItemIds: [baseId] });
+  eligSet = new Set([baseId]);
 }
 
 const hasDirectHit =
@@ -759,7 +768,9 @@ const hasDirectHit =
   eligSet.has(bKey.toLowerCase()) ||
   Array.from(eligSet).some(x => !String(x).includes(":") && bKey.toLowerCase().startsWith(String(x).toLowerCase() + ":"));
 
-(hasDirectHit ? preferred : fallback).push(lock);
+// classify: explicit resolver/meta hits → preferred; last-mile hits → fallback
+(if (hasDirectHit && !fromLastMile) ? preferred : fallback).push(lock);
+
   }
 
     // Preferred first (banner-affiliated)
