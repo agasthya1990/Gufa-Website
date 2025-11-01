@@ -1,7 +1,12 @@
-// Robust Cart with strict Promotions (non-stackable, FCFS), Mode gating,
-// Add-on steppers + auto-prune, Promo totals row, Delivery Address form,
-// Manual [Apply Coupon] with strict scope, and Next-Eligible hint.
-// Hydration guards for inline JSON and Firestore; single coupon resolver.
+// GUFA Cart — Full rewrite with Funnel FCFS across banners + robust Apply
+// Features: non-stackable coupons, banner-aware "funnel" next-eligible handoff,
+// strict mode gating (Delivery/Dining), add-on steppers + auto-prune,
+// promo totals row, delivery address form, hydration from inline/Firestore/local dump,
+// single idempotent [Apply Coupon], debug surface.
+//
+// Keys used:
+//   gufa_cart, gufa_coupon, gufa:COUPONS, gufa:baseOrder, gufa:promoPivot,
+//   gufa:nextEligibleItem, gufa:deliveryAddress, gufa_mode
 
 /* ===================== Persistence snapshot (unchanged) ===================== */
 let lastSnapshotAt = 0;
@@ -35,10 +40,10 @@ window.addEventListener("cart:update", persistCartSnapshotThrottled);
   };
   const root = (window.CART_UI && window.CART_UI.list) ? window.CART_UI.list : {};
   window.CART_UI = window.CART_UI || {};
-  window.CART_UI.list = Object.assign({}, defaults, root); // page overrides still win
+  window.CART_UI.list = Object.assign({}, defaults, root);
 })();
 
-// Lightweight helper strictly for the promo controls (decoupled from render layout)
+/* ============ Tiny helpers for the promo controls (decoupled from layout) ============ */
 function getUI(){
   const Q = (sel) => (sel ? document.querySelector(sel) : null);
   const UI = (window.CART_UI && window.CART_UI.list) || {};
@@ -49,8 +54,6 @@ function getUI(){
     promoApply: Q(UI.promoApply),
   };
 }
-
-/* ===================== Promo label pulse (visual only) ===================== */
 let __LAST_PROMO_TAG__ = "";
 function pulsePromoLabel(el){
   if (!el) return;
@@ -58,11 +61,9 @@ function pulsePromoLabel(el){
   void el.offsetWidth; // reflow to retrigger
   el.classList.add("promo-pulse");
 }
-
-/* ===================== Safe render wrapper (best-effort) ===================== */
 function safe(fn){ try { fn(); } catch(e){ console.warn("[cart] render suppressed:", e); } }
 
-/* ===================== Coupon helpers (apply-by-code + next-eligible) ===================== */
+/* ===================== Apply-by-code helpers (code or id) ===================== */
 function findCouponByCodeOrId(input){
   const raw = String(input || "").trim();
   if (!raw) return null;
@@ -99,7 +100,7 @@ function writeCouponLockFromMeta(couponId, meta){
 
   const m = (String(localStorage.getItem("gufa_mode") || "delivery").toLowerCase() === "dining") ? "dining" : "delivery";
   const t = meta.targets || {};
-  const allowed = (m === "delivery") ? !!t.delivery : !!t.dining;
+  const allowed = (m === "delivery") ? (t.delivery ?? true) : (t.dining ?? true);
   if (!allowed) return false;
 
   const eligibleItemIds = Array.isArray(meta.eligibleItemIds) && meta.eligibleItemIds.length
@@ -110,7 +111,7 @@ function writeCouponLockFromMeta(couponId, meta){
     code:  String(meta.code || couponId).toUpperCase(),
     type:  String(meta.type || ""),
     value: Number(meta.value || 0),
-    valid: { delivery: !!(t.delivery ?? true), dining: !!(t.dining ?? true) },
+    valid: { delivery: (t.delivery ?? true), dining: (t.dining ?? true) },
     scope: { couponId: String(couponId), eligibleItemIds },
     lockedAt: Date.now(),
     source: "apply:manual"
@@ -121,101 +122,83 @@ function writeCouponLockFromMeta(couponId, meta){
   return true;
 }
 
-/* ===================== Single [Apply Coupon] UI resolver ===================== */
-(function bindApplyCouponUIOnce(){
+/* ===================== Single [Apply Coupon] UI binder (idempotent) ===================== */
+(function wireApplyCouponUI(){
   const UI = getUI();
   const input = UI.promoInput;
   const btn   = UI.promoApply;
-  if (!btn || !input) return;
+  if (!btn || !input || btn._wiredOnce) return;
 
-  const showHost = (() => {
-    let node;
-    return (msg) => {
-      if (!node) {
-        const host = input.parentElement || input.closest(".inv-list") || input.closest("form") || input;
-        node = host.querySelector("#promo-error");
-        if (!node) {
-          node = document.createElement("div");
-          node.id = "promo-error";
-          node.style.color = "#B00020";
-          node.style.fontSize = "12px";
-          node.style.marginTop = "6px";
-          node.style.lineHeight = "1.2";
-          node.style.minHeight = "14px";
-          host.appendChild(node);
-        }
-      }
-      node.textContent = msg || "";
-    };
-  })();
+  const ensureErrHost = () => {
+    const parent = input.parentElement || input.closest(".inv-list") || input.closest("form") || input;
+    let node = parent.querySelector("#promo-error");
+    if (!node) {
+      node = document.createElement("div");
+      node.id = "promo-error";
+      node.style.color = "#B00020";
+      node.style.fontSize = "12px";
+      node.style.marginTop = "6px";
+      node.style.lineHeight = "1.2";
+      node.style.minHeight = "14px";
+      parent.appendChild(node);
+    }
+    return node;
+  };
+  const showPromoError = (msg) => { const n = ensureErrHost(); if (n) n.textContent = msg || ""; };
 
-  async function ensureCouponsReady() {
-    if (window.COUPONS instanceof Map && window.COUPONS.size > 0) return true;
-    try { return !!(await hydrateCouponsFromFirestoreOnce()); } catch { return false; }
-  }
-
-  async function applyFromInput(){
+  async function apply(){
     const query = (input.value || "").trim();
-    if (!query) { showHost(""); return; }
+    if (!query) { showPromoError(""); return; }
 
-    const hydrated = await ensureCouponsReady();
-    if (!hydrated && !(window.COUPONS instanceof Map && window.COUPONS.size > 0)) {
-      showHost("Coupon data not available");
+    const ready = await window.ensureCouponsReady?.();
+    if (!ready && !(window.COUPONS instanceof Map && window.COUPONS.size > 0)) {
+      showPromoError("Coupon data not available");
       return;
     }
 
     const found = findCouponByCodeOrId(query);
     if (!found || !found.meta || found.meta.active === false) {
-      const L = getUI().promoLbl;
-      if (L) L.textContent = "Promotion (): invalid or inactive";
-      showHost("Invalid or Ineligible Coupon Code");
+      const L = getUI().promoLbl; if (L) L.textContent = "Promotion (): invalid or inactive";
+      showPromoError("Invalid or Ineligible Coupon Code");
       return;
     }
 
-    // Strict mode/channel check and lock
     const ok = writeCouponLockFromMeta(found.id, found.meta);
 
-    // Next-eligible suggestion if user applied a valid coupon but no eligible base is in cart (yet)
+    // Hint: next eligible, if none in cart yet
     try {
-      const ids = computeEligibleItemIdsForCoupon(found.id);
-      const hasEligibleInCart = (function(){
+      const ids = Array.isArray(found.meta.eligibleItemIds) && found.meta.eligibleItemIds.length
+        ? found.meta.eligibleItemIds.map(String) : computeEligibleItemIdsForCoupon(found.id);
+      if (ids?.length) {
         const bag = window?.Cart?.get?.() || {};
-        return Object.keys(bag).some(k => {
+        const hasEligible = Object.keys(bag).some(k => {
           const baseId = String(k).split(":")[0];
           return ids.includes(baseId) && Number(bag[k]?.qty || 0) > 0;
         });
-      })();
-      if (!hasEligibleInCart && ids.length) {
-        localStorage.setItem("gufa:nextEligibleItem", ids[0]);
+        if (!hasEligible) localStorage.setItem("gufa:nextEligibleItem", ids[0]);
       }
     } catch {}
 
     if (ok) {
-      const L = getUI().promoLbl;
-      const c = found.meta.code || found.id;
-      if (L) {
-        L.textContent = `Promotion (${String(c).toUpperCase()}):`;
-        pulsePromoLabel(L);
-      }
-      showHost("");
+      const L = getUI().promoLbl; const c = found.meta.code || found.id;
+      if (L) { L.textContent = `Promotion (${String(c).toUpperCase()}):`; pulsePromoLabel(L); }
+      showPromoError("");
       window.dispatchEvent(new CustomEvent("cart:update"));
     } else {
-      showHost("Invalid or Ineligible Coupon Code");
+      showPromoError("Invalid or Ineligible Coupon Code");
     }
   }
 
-  if (!btn._wiredOnce){
-    btn._wiredOnce = true;
-    btn.addEventListener("click", applyFromInput, false);
-    input.addEventListener("keydown", (e) => { if (e.key === "Enter") applyFromInput(); }, false);
-  }
+  btn._wiredOnce = true;
+  btn.addEventListener("click", (e)=>{ e.preventDefault(); apply(); }, false);
+  input.addEventListener("keydown", (e)=>{ if (e.key === "Enter"){ e.preventDefault(); apply(); }}, false);
 })();
 
 /* ===================== Main cart module ===================== */
 ;(function(){
-  // Global catalogs & guards
+  // Global catalogs
   if (!(window.COUPONS instanceof Map)) window.COUPONS = new Map();
-  if (!window.BANNERS) window.BANNERS = new Map(); // tolerate array elsewhere
+  if (!window.BANNERS) window.BANNERS = new Map(); // Map preferred; array tolerated
   window.CART_UI = window.CART_UI || {};
   window.CART_UI.list = window.CART_UI.list || {};
 
@@ -227,6 +210,8 @@ function writeCouponLockFromMeta(couponId, meta){
 
   const COUPON_KEY = "gufa_coupon";
   const ADDR_KEY   = "gufa:deliveryAddress";
+  const ORDER_KEY  = "gufa:baseOrder";
+  const PIVOT_KEY  = "gufa:promoPivot";
 
   const isUUID = (s) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s||"");
 
@@ -256,8 +241,7 @@ function writeCouponLockFromMeta(couponId, meta){
   const isAddonKey = (key) => String(key).split(":").length >= 3;
   const baseKeyOf  = (key) => String(key).split(":").slice(0,2).join(":");
 
-  /* ===================== Arrival rail (Promo Wheel) ===================== */
-  const ORDER_KEY = "gufa:baseOrder";
+  /* ===================== Arrival rail (for FCFS) ===================== */
   function readBaseOrder(){
     try { const a = JSON.parse(localStorage.getItem(ORDER_KEY) || "[]"); return Array.isArray(a) ? a : []; }
     catch { return []; }
@@ -291,58 +275,17 @@ function writeCouponLockFromMeta(couponId, meta){
     return { base, add };
   }
 
-  /* ===================== Hydrate Coupons ===================== */
-  async function hydrateCouponsFromFirestoreOnce() {
-    try {
-      if (window.COUPONS instanceof Map && window.COUPONS.size > 0) return false;
-      const db = window.db;
-      if (!db || !db.collection) return false;
-
-      const snap = await db.collection("promotions").where("active", "==", true).get();
-      if (!snap || snap.empty) return false;
-
-      if (!(window.COUPONS instanceof Map)) window.COUPONS = new Map();
-      let added = 0;
-
-      snap.forEach(doc => {
-        const d = doc.data() || {};
-        const kind = String(d.kind || "coupon").toLowerCase();
-        if (kind !== "coupon") return;
-
-        const targetsRaw = d.channels || d.targets || {};
-        const meta = {
-          code:      d.code ? String(d.code) : undefined,
-          type:      String(d.type || "flat").toLowerCase(), // 'percent' | 'flat'
-          value:     Number(d.value || 0),
-          minOrder:  Number(d.minOrder || 0),
-          targets:   { delivery: !!targetsRaw.delivery, dining: !!targetsRaw.dining },
-          eligibleItemIds: Array.isArray(d.eligibleItemIds) ? d.eligibleItemIds : undefined,
-          usageLimit: d.usageLimit ?? undefined,
-          usedCount:  d.usedCount  ?? undefined
-        };
-
-        window.COUPONS.set(String(doc.id), meta);
-        added++;
-      });
-
-      if (added > 0) {
-        try {
-          localStorage.setItem("gufa:COUPONS", JSON.stringify(Array.from(window.COUPONS.entries())));
-        } catch {}
-        window.dispatchEvent(new CustomEvent("promotions:hydrated"));
-        return true;
-      }
-      return false;
-    } catch (err) {
-      console.warn("[Firestore promo hydrate] failed:", err);
-      return false;
-    }
+  /* ===================== Hydration (inline / local dump / Firestore) ===================== */
+  function defaultTrueTargets(meta){
+    if (!meta) return meta;
+    const t = meta.targets || {};
+    meta.targets = { delivery: (t.delivery ?? true), dining: (t.dining ?? true) };
+    return meta;
   }
 
   function hydrateCouponsFromInlineJson(){
     try {
       if (window.COUPONS instanceof Map && window.COUPONS.size > 0) return false;
-
       const tag = document.getElementById("promo-data");
       if (!tag) return false;
 
@@ -353,7 +296,7 @@ function writeCouponLockFromMeta(couponId, meta){
       if (Array.isArray(data.coupons)) {
         for (const [cid, meta] of data.coupons) {
           if (!cid) continue;
-          window.COUPONS.set(String(cid), meta || {});
+          window.COUPONS.set(String(cid), defaultTrueTargets(meta || {}));
         }
       }
 
@@ -377,10 +320,70 @@ function writeCouponLockFromMeta(couponId, meta){
     }
   }
 
-  async function ensureCouponsReady() {
-    if (window.COUPONS instanceof Map && window.COUPONS.size > 0) return true;
-    try { return !!(await hydrateCouponsFromFirestoreOnce()); } catch { return false; }
+  function hydrateCouponsFromLocalDump(){
+    try {
+      if (window.COUPONS instanceof Map && window.COUPONS.size > 0) return false;
+      const dump = JSON.parse(localStorage.getItem("gufa:COUPONS") || "[]");
+      if (!Array.isArray(dump) || dump.length === 0) return false;
+      window.COUPONS = new Map(dump.map(([cid, meta]) => [String(cid), defaultTrueTargets(meta||{})]));
+      window.dispatchEvent(new CustomEvent("promotions:hydrated"));
+      return true;
+    } catch { return false; }
   }
+
+  async function hydrateCouponsFromFirestoreOnce() {
+    try {
+      if (window.COUPONS instanceof Map && window.COUPONS.size > 0) return false;
+      const db = window.db;
+      if (!db || !db.collection) return false;
+
+      const snap = await db.collection("promotions").where("active", "==", true).get();
+      if (!snap || snap.empty) return false;
+
+      if (!(window.COUPONS instanceof Map)) window.COUPONS = new Map();
+      let added = 0;
+
+      snap.forEach(doc => {
+        const d = doc.data() || {};
+        const kind = String(d.kind || "coupon").toLowerCase();
+        if (kind !== "coupon") return;
+
+        const targetsRaw = d.channels || d.targets || {};
+        const meta = {
+          code:      d.code ? String(d.code) : undefined,
+          type:      String(d.type || "flat").toLowerCase(), // 'percent' | 'flat'
+          value:     Number(d.value || 0),
+          minOrder:  Number(d.minOrder || 0),
+          targets:   { delivery: (targetsRaw.delivery ?? true), dining: (targetsRaw.dining ?? true) },
+          eligibleItemIds: Array.isArray(d.eligibleItemIds) ? d.eligibleItemIds : undefined,
+          usageLimit: d.usageLimit ?? undefined,
+          usedCount:  d.usedCount  ?? undefined
+        };
+
+        window.COUPONS.set(String(doc.id), meta);
+        added++;
+      });
+
+      if (added > 0) {
+        try {
+          localStorage.setItem("gufa:COUPONS", JSON.stringify(Array.from(window.COUPONS.entries())));
+        } catch {}
+        window.dispatchEvent(new CustomEvent("promotions:hydrated"));
+        return true;
+      }
+      return false;
+    } catch (err) {
+      console.warn("[Firestore promo hydrate] failed:", err);
+      return false;
+    }
+  }
+
+  window.ensureCouponsReady = async function ensureCouponsReady(){
+    if (window.COUPONS instanceof Map && window.COUPONS.size > 0) return true;
+    try { if (hydrateCouponsFromInlineJson()) return true; } catch {}
+    try { if (hydrateCouponsFromLocalDump()) return true; } catch {}
+    try { return !!(await hydrateCouponsFromFirestoreOnce()); } catch { return false; }
+  };
 
   /* ===================== Coupon Lock ===================== */
   const getLock = () => { try { return JSON.parse(localStorage.getItem(COUPON_KEY) || "null"); } catch { return null; } };
@@ -400,14 +403,6 @@ function writeCouponLockFromMeta(couponId, meta){
     } catch { return ""; }
   }
 
-  function findCouponByCode(codeUpp) {
-    if (!(window.COUPONS instanceof Map)) return null;
-    for (const [cid, meta] of window.COUPONS) {
-      const mcode = (meta?.code || "").toString().trim().toUpperCase();
-      if (mcode && mcode === codeUpp) return { cid: String(cid), meta };
-    }
-    return null;
-  }
   function findCouponByIdOrCode(input) {
     const needle = String(input || "").trim().toUpperCase();
     if (!needle || !(window.COUPONS instanceof Map)) return null;
@@ -474,17 +469,18 @@ function writeCouponLockFromMeta(couponId, meta){
       type:  String(meta?.type || "flat").toLowerCase(),
       value: Number(meta?.value || 0),
       minOrder: Number(meta?.minOrder || 0),
-      valid: meta?.targets ? { delivery: !!meta.targets.delivery, dining: !!meta.targets.dining } : undefined,
+      valid: meta?.targets ? { delivery: (meta.targets.delivery ?? true), dining: (meta.targets.dining ?? true) } : undefined,
       code: (meta?.code ? String(meta.code).toUpperCase() : undefined),
+      source: "auto"
     };
   }
 
   function checkUsageAvailable(meta){
     if (!meta) return true;
-    if (typeof meta.usageLimit === "number" && meta.usageLimit <= 0) return false;
     if (typeof meta.usageLimit === "number" && typeof meta.usedCount === "number") {
       return meta.usedCount < meta.usageLimit;
     }
+    if (typeof meta.usageLimit === "number" && meta.usageLimit <= 0) return false;
     return true;
   }
 
@@ -514,111 +510,6 @@ function writeCouponLockFromMeta(couponId, meta){
     return new Set();
   }
 
-  /* ===================== FCFS promo enforcement + Next-Eligible pivot ===================== */
-  const PIVOT_KEY = "gufa:promoPivot"; // tracks first eligible baseKey currently “owning” the promo
-
-  function calcPivotFor(eligSet){
-    if (!(eligSet instanceof Set) || eligSet.size === 0) return "";
-    const order = syncBaseOrderWithCart();
-    for (const bKey of order){
-      // bKey form: "{itemId}:{variant}" — allow match by itemId or full baseKey
-      const parts = String(bKey).toLowerCase().split(":");
-      const itemId = parts[0];
-      if (eligSet.has(itemId) || eligSet.has(bKey.toLowerCase())) return bKey;
-    }
-    return "";
-  }
-
-  function storePivot(bKey){ try { localStorage.setItem(PIVOT_KEY, String(bKey||"")); } catch {} }
-  function readPivot(){ try { return String(localStorage.getItem(PIVOT_KEY)||""); } catch { return ""; } }
-
-  function pivotStillValid(pivot, eligSet){
-    if (!pivot) return false;
-    if (!(eligSet instanceof Set) || eligSet.size===0) return false;
-    const parts = String(pivot).toLowerCase().split(":");
-    const itemId = parts[0];
-    // Is pivot in cart and eligible?
-    const bag = window?.Cart?.get?.() || {};
-    const live = bag[pivot]?.qty > 0;
-    const eligible = eligSet.has(itemId) || eligSet.has(pivot.toLowerCase());
-    return live && eligible;
-  }
-
-  function findFirstApplicableCouponForCart(){
-    const es = entries();
-    if (!es.length) return null;
-    if (!(window.COUPONS instanceof Map)) return null;
-
-    const { base } = splitBaseVsAddons();
-    const order = syncBaseOrderWithCart();
-    const seen = new Set(order);
-    for (const [key] of es){
-      if (isAddonKey(key)) continue;
-      const b = baseKeyOf(key);
-      if (!seen.has(b)) order.push(b), seen.add(b);
-    }
-
-    for (const bKey of order){
-      for (const [cid, meta] of window.COUPONS){
-        if (!checkUsageAvailable(meta)) continue;
-        const lock = buildLockFromMeta(String(cid), meta);
-        lock.source = "auto";
-        const { discount } = computeDiscount(lock, base);
-        if (discount > 0) return lock;
-      }
-    }
-    return null;
-  }
-
-  function clearOrRepivotLockIfNeeded(){
-    const lock = getLock();
-    if (!lock) return;
-
-    const elig = resolveEligibilitySet(lock);
-    // If nothing is eligible at all, clear lock
-    if (!elig.size){
-      setLock(null);
-      window.dispatchEvent(new CustomEvent("cart:update"));
-      return;
-    }
-
-    // If pivot invalid, try to repivot to next eligible base (Next-Eligible behaviour)
-    let pivot = readPivot();
-    if (!pivotStillValid(pivot, elig)) {
-      const next = calcPivotFor(elig);
-      if (next) storePivot(next);
-      else {
-        // No eligible base remains -> drop lock
-        setLock(null);
-        window.dispatchEvent(new CustomEvent("cart:update"));
-      }
-    }
-  }
-
-  function enforceFirstComeLock(){
-    clearOrRepivotLockIfNeeded();
-
-    const kept = getLock();
-    const { base } = splitBaseVsAddons();
-    if (kept) {
-      const { discount } = computeDiscount(kept, base);
-      if (discount > 0) return; // still valid with current pivot
-      setLock(null);
-    }
-
-    // No kept lock — pick first applicable coupon respecting arrival rail
-    const fcfs = findFirstApplicableCouponForCart();
-    if (!fcfs) return;
-    const test = computeDiscount(fcfs, base);
-    if (test.discount > 0) {
-      // Seed pivot for this coupon
-      const elig = resolveEligibilitySet(fcfs);
-      const pivot = calcPivotFor(elig);
-      storePivot(pivot || "");
-      setLock(fcfs);
-    }
-  }
-
   /* ===================== Discount computation ===================== */
   function computeDiscount(locked, baseSubtotal){
     if (!locked) return { discount:0 };
@@ -644,7 +535,6 @@ function writeCouponLockFromMeta(couponId, meta){
     }
     if (!elig.size) return { discount:0 };
 
-    // Discount across all eligible base lines (non-stackable: single coupon at a time)
     let eligibleBase = 0;
     let eligibleQty  = 0;
     for (const [key, it] of entries()){
@@ -668,7 +558,90 @@ function writeCouponLockFromMeta(couponId, meta){
     return { discount: Math.max(0, Math.round(d)) };
   }
 
-  /* ===================== Grouping & rows (steppers intact) ===================== */
+  /* ===================== FUNNEL: next-eligible across banners (FCFS) ===================== */
+  function readPivot(){ try { return String(localStorage.getItem(PIVOT_KEY)||""); } catch { return ""; } }
+  function storePivot(bKey){ try { localStorage.setItem(PIVOT_KEY, String(bKey||"")); } catch {} }
+
+  function pivotStillValid(pivot, eligSet){
+    if (!pivot) return false;
+    if (!(eligSet instanceof Set) || eligSet.size===0) return false;
+    const parts = String(pivot).toLowerCase().split(":");
+    const itemId = parts[0];
+
+    const bag = window?.Cart?.get?.() || {};
+    const live = bag[pivot]?.qty > 0;
+    const eligible = eligSet.has(itemId) || eligSet.has(pivot.toLowerCase());
+    return live && eligible;
+  }
+
+  function computeFunnelCandidates(baseSubtotal){
+    if (!(window.COUPONS instanceof Map)) return [];
+
+    const order = syncBaseOrderWithCart(); // baseKeys in arrival order
+    const bag   = window?.Cart?.get?.() || {};
+    const presentBaseKeys = order.filter(bk => (bag[bk]?.qty|0) > 0);
+
+    const candidates = [];
+    for (const [cid, meta] of window.COUPONS){
+      if (!checkUsageAvailable(meta)) continue;
+
+      const lock = buildLockFromMeta(String(cid), meta);
+      const elig = resolveEligibilitySet(lock);
+      if (!elig.size) continue;
+
+      // find earliest baseKey in arrival order that intersects elig
+      let earliestIdx = Infinity;
+      let pivotKey = "";
+      for (let i = 0; i < presentBaseKeys.length; i++){
+        const bKey = presentBaseKeys[i];
+        const parts = bKey.toLowerCase().split(":");
+        const itemId = parts[0];
+        if (elig.has(itemId) || elig.has(bKey.toLowerCase())){
+          earliestIdx = i; pivotKey = bKey; break;
+        }
+      }
+      if (earliestIdx === Infinity) continue;
+
+      // verify discount > 0 for this cart
+      const { discount } = computeDiscount(lock, baseSubtotal);
+      if (discount <= 0) continue;
+
+      candidates.push({ cid, meta, lock, elig, earliestIdx, pivotKey, discount });
+    }
+
+    // FCFS: smallest earliestIdx wins
+    candidates.sort((a,b)=> a.earliestIdx - b.earliestIdx);
+    return candidates;
+  }
+
+  function enforceFunnelFCFS(){
+    const { base } = splitBaseVsAddons();
+    const candidates = computeFunnelCandidates(base);
+
+    // Keep current lock if still valid (FCFS sticks to its owner)
+    const kept = getLock();
+    if (kept){
+      const elig = resolveEligibilitySet(kept);
+      const { discount } = computeDiscount(kept, base);
+      if (discount > 0 && pivotStillValid(readPivot(), elig)) return; // keep
+      // otherwise release and try funnel
+      setLock(null);
+    }
+
+    // Choose first candidate in the funnel
+    if (candidates.length){
+      const first = candidates[0];
+      storePivot(first.pivotKey || "");
+      const locked = { ...first.lock, source: "auto" };
+      setLock(locked);
+      return;
+    }
+
+    // No candidates → ensure cleared
+    setLock(null);
+  }
+  
+    /* ===================== Grouping & rows (steppers intact) ===================== */
   function buildGroups(){
     const gs = new Map(); // baseKey -> { base, addons[] }
     for (const [key, it] of entries()){
@@ -908,7 +881,7 @@ function writeCouponLockFromMeta(couponId, meta){
   /* ===================== Render ===================== */
   function render(){
     if (!resolveLayout()) return;
-    enforceFirstComeLock();
+    enforceFunnelFCFS();
 
     const n = itemCount();
     if (R.badge)   R.badge.textContent = String(n);
@@ -973,7 +946,7 @@ function writeCouponLockFromMeta(couponId, meta){
       if (e) e.textContent = "";
     }
 
-    // Next-eligible hint (only when a valid manual code is set but no eligible base in cart yet)
+    // Next-eligible hint (when a valid manual code is set but no eligible base in cart yet)
     (function nextEligibleHint(){
       try {
         const targetId = localStorage.getItem("gufa:nextEligibleItem");
@@ -1017,8 +990,8 @@ function writeCouponLockFromMeta(couponId, meta){
   /* ===================== Boot & subscriptions ===================== */
   async function boot(){
     resolveLayout();
-    const inlined = hydrateCouponsFromInlineJson();
-    if (!inlined) { try { await ensureCouponsReady(); } catch {} }
+    const inlined = (function(){ try { return hydrateCouponsFromInlineJson(); } catch { return false; }})();
+    if (!inlined) { try { await window.ensureCouponsReady(); } catch {} }
     render();
 
     window.addEventListener("cart:update", render, false);
@@ -1026,7 +999,7 @@ function writeCouponLockFromMeta(couponId, meta){
     window.addEventListener("promotions:hydrated", render, false);
     window.addEventListener("storage", (e) => {
       if (!e) return;
-      if (e.key === "gufa_cart" || e.key === COUPON_KEY || e.key === ADDR_KEY || e.key === "gufa_mode") {
+      if (e.key === "gufa_cart" || e.key === "gufa_coupon" || e.key === "gufa:deliveryAddress" || e.key === "gufa_mode") {
         render();
       }
     }, false);
