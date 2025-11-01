@@ -767,7 +767,7 @@ const hasDirectHit =
     bKey.toLowerCase().startsWith(String(x).toLowerCase() + ":")
   );
 
-(hasDirectHit ? preferred : fallback).push(lock);
+(hasDirectHit ? preferred : fallback).push(lock);}
 
     // Preferred first (banner-affiliated)
     for (const L of preferred){
