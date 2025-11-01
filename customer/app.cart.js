@@ -760,8 +760,7 @@ const hasDirectHit =
   Array.from(eligSet).some(x => !String(x).includes(":") && bKey.toLowerCase().startsWith(String(x).toLowerCase() + ":"));
 
 (hasDirectHit ? preferred : fallback).push(lock);
-
-
+  }
 
     // Preferred first (banner-affiliated)
     for (const L of preferred){
@@ -773,8 +772,7 @@ const hasDirectHit =
       const { discount } = computeDiscount(L, base);
       if (discount > 0) return L;
     }
-  }
-
+  
   return null;
 }
 
