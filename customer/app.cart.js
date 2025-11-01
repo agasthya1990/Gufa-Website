@@ -426,7 +426,7 @@ async function ensureCouponsReady() {
     }
   } catch {}
 
-  // 2) Try inline JSON on this page (non-async).  :contentReference[oaicite:1]{index=1}
+  // 2) Try inline JSON (non-async).
   try {
     if (typeof hydrateCouponsFromInlineJson === "function") {
       const ok = !!hydrateCouponsFromInlineJson();
@@ -434,7 +434,7 @@ async function ensureCouponsReady() {
     }
   } catch {}
 
-  // 3) Try Firestore once.  
+  // 3) Try Firestore once.
   try {
     if (typeof hydrateCouponsFromFirestoreOnce === "function") {
       const ok = !!(await hydrateCouponsFromFirestoreOnce());
@@ -442,7 +442,7 @@ async function ensureCouponsReady() {
     }
   } catch {}
 
-  // 4) Last resort: synthesize from banners keyed like couponCode:CODE.  
+  // 4) Last resort: synthesize from banners with couponCode.
   try {
     if (typeof synthesizeCouponsFromBannersByCode === "function") {
       const ok = !!synthesizeCouponsFromBannersByCode();
@@ -453,7 +453,7 @@ async function ensureCouponsReady() {
   return false;
 }
 
-// Boot once on checkout: hydrate coupons from LS → inline → Firestore → synthesize
+// Boot once on checkout: hydrate coupons (LS → inline → Firestore → synthesize)
 (async function bootCouponsOnce(){
   try {
     const ok = await ensureCouponsReady();
