@@ -197,7 +197,6 @@
   window.CART_UI.list = Object.assign({
     items:      "#cart-items",
     empty:      "#cart-empty",
-    // no 'count' element in this layout
     subtotal:   "#subtotal-amt",
     servicetax: "#servicetax-amt",
     total:      "#total-amt",
@@ -212,7 +211,6 @@
 </script>
   
 <script>
-  try { localStorage.removeItem("gufa:COUPONS"); } catch (e) {}
   if (!localStorage.getItem("gufa_mode")) localStorage.setItem("gufa_mode", "delivery");
 </script>
 <script id="promo-data" type="application/json">
@@ -228,6 +226,7 @@
 <script src="./app.cart.js"></script>
 </body>
 </html>
+
 
 
 
