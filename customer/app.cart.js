@@ -735,21 +735,25 @@ function findFirstApplicableCouponForCart(){
       const lock = buildLockFromMeta(String(cid), meta);
       lock.source = "auto";
 
-      // derive once for this bKey (used by both fallback and hasDirectHit)
-const baseId = String(bKey).split(":")[0].toLowerCase();
-
 // --- SAFETY: resolver → meta/lock fallback → LAST-MILE FCFS fallback
-let eligSet = (typeof resolveEligibilitySet === "function") ? resolveEligibilitySet(lock) : new Set();
+let eligSet = (typeof resolveEligibilitySet === "function")
+  ? resolveEligibilitySet(lock)
+  : new Set();
 
 if (!eligSet || eligSet.size === 0) {
-  const metaElig = Array.isArray(meta?.eligibleItemIds) ? meta.eligibleItemIds.map(s=>String(s).toLowerCase()) : [];
-  const lockElig = Array.isArray(lock?.scope?.eligibleItemIds) ? lock.scope.eligibleItemIds.map(s=>String(s).toLowerCase()) : [];
-  const merged   = Array.from(new Set([...metaElig, ...lockElig]));
+  const metaElig = Array.isArray(meta?.eligibleItemIds)
+    ? meta.eligibleItemIds.map(s => String(s).toLowerCase())
+    : [];
+  const lockElig = Array.isArray(lock?.scope?.eligibleItemIds)
+    ? lock.scope.eligibleItemIds.map(s => String(s).toLowerCase())
+    : [];
+  const merged = Array.from(new Set([...metaElig, ...lockElig]));
+
   if (merged.length) {
     lock.scope = Object.assign({}, lock.scope, { eligibleItemIds: merged });
     eligSet = new Set(merged);
   } else {
-    // last-mile FCFS: try the current baseId
+    // NEW: last-mile fallback — optimistically try the current FCFS baseId
     lock.scope = Object.assign({}, lock.scope, { eligibleItemIds: [baseId] });
     eligSet = new Set([baseId]);
   }
@@ -758,11 +762,13 @@ if (!eligSet || eligSet.size === 0) {
 const hasDirectHit =
   eligSet.has(baseId) ||
   eligSet.has(bKey.toLowerCase()) ||
-  Array.from(eligSet).some(x => !String(x).includes(":") && bKey.toLowerCase().startsWith(String(x).toLowerCase() + ":"));
+  Array.from(eligSet).some(x =>
+    !String(x).includes(":") &&
+    bKey.toLowerCase().startsWith(String(x).toLowerCase() + ":")
+  );
 
 (hasDirectHit ? preferred : fallback).push(lock);
 
-  }
     // Preferred first (banner-affiliated)
     for (const L of preferred){
       const { discount } = computeDiscount(L, base);
