@@ -1,159 +1,80 @@
-// /customer/coupon-engine.js
-// Tiny pure coupon engine: FCFS-ready, mode-gated, banner-scoped.
-// Exports: CouponEngine.computeDiscount(cart, couponMeta, mode)
-//          CouponEngine.nextLock(cart, coupons[], mode, priorityFn?)
+// customer/coupon-engine.js
+// Pure, framework-free engine. No DOM. No storage.
+// Input:
+//   cart:    { lines: [{id, qty, price}] }  // lowercase ids recommended
+//   coupons: [{ id, code, type, value, targets, eligibleItemIds }]
+//   mode:    "delivery" | "dining"
+//   priority(a,b): optional comparator; if omitted, preserve input order
+//
+// Output (or null):
+//   { couponId, code, type, value, elig: [itemIds present in cart], discount, reason?:string }
 
-(function (root) {
-  "use strict";
+(function (g) {
+  function clamp0(n){ n = Number(n)||0; return n < 0 ? 0 : n; }
 
-  // ---------- utils (pure) ----------
-  const clamp0 = (n) => Math.max(0, Number(n) || 0);
+  // compute per-coupon discount strictly on eligible base lines
+  function computeDiscountFor(cart, coupon) {
+    const type = String(coupon.type||"flat").toLowerCase();
+    const v    = Number(coupon.value||0);
+    const elig = new Set((coupon.eligibleItemIds||[]).map(s=>String(s).toLowerCase()));
 
-  function normalizeMode(mode) {
-    const m = String(mode || "delivery").toLowerCase();
-    return m === "dining" ? "dining" : "delivery";
-  }
-
-  // Iterate base lines from a variety of cart shapes
-  // Supports:
-  //   - { lines: [{id, price, qty, key}] }
-  //   - { items: { "<baseKey>": {id, price, qty, ...}, ... } }
-  //   - { "<baseKey>": {id, price, qty, ...}, ... }
-  function iterBase(cart) {
-    if (!cart) return [];
-    // lines array
-    if (Array.isArray(cart.lines)) {
-      return cart.lines
-        .filter((L) => clamp0(L.qty) > 0 && !isAddonKey(L.key))
-        .map((L) => ({
-          itemId: String(L.id ?? String(L.key || "").split(":")[0]).toLowerCase(),
-          baseKey: String(L.key || `${L.id}:${L.variant || ""}`).toLowerCase(),
-          qty: clamp0(L.qty),
-          price: clamp0(L.price),
-        }));
-    }
-
-    // items object
-    const bag = typeof cart.items === "object" && cart.items ? cart.items : cart;
-    return Object.entries(bag || {})
-      .filter(([k, it]) => clamp0(it?.qty) > 0 && !isAddonKey(k))
-      .map(([k, it]) => ({
-        itemId: String(it?.id ?? String(k).split(":")[0]).toLowerCase(),
-        baseKey: String(k).toLowerCase(),
-        qty: clamp0(it?.qty),
-        price: clamp0(it?.price),
-      }));
-  }
-
-  function isAddonKey(key) {
-    return String(key).split(":").length >= 3;
-  }
-
-  function modeAllowed(meta, mode) {
-    const t = meta?.targets || {};
-    if (t.delivery === true || t.dining === true) {
-      return mode === "delivery" ? !!t.delivery : !!t.dining;
-    }
-    // default permissive if targets not specified
-    return true;
-  }
-
-  // Build eligibility set (lowercased) from coupon meta
-  // Expects meta.eligibleItemIds (preferred) OR caller pre-merges banner map into it.
-  function buildElig(meta) {
-    const arr =
-      Array.isArray(meta?.eligibleItemIds) ? meta.eligibleItemIds :
-      Array.isArray(meta?.eligibleIds) ? meta.eligibleIds :
-      Array.isArray(meta?.itemIds) ? meta.itemIds : [];
-    const s = new Set();
-    for (const x of arr) {
-      const v = String(x || "").trim().toLowerCase();
-      if (v) s.add(v);
-    }
-    return s;
-  }
-
-  // Compute discount for one coupon against current cart (base-only)
-  function computeDiscount(cart, couponMeta, mode) {
-    if (!couponMeta) return { discount: 0, eligibleBase: 0, eligibleQty: 0 };
-
-    const m = normalizeMode(mode);
-    if (!modeAllowed(couponMeta, m)) return { discount: 0, eligibleBase: 0, eligibleQty: 0 };
-
-    const minOrder = clamp0(couponMeta.minOrder);
-    const elig = buildElig(couponMeta);
-    if (!elig.size) return { discount: 0, eligibleBase: 0, eligibleQty: 0 };
+    if (!elig.size) return { discount:0, eligHits:[] };
 
     let eligibleBase = 0;
-    let eligibleQty = 0;
-
-    for (const L of iterBase(cart)) {
-      const match =
-        elig.has(L.itemId) ||
-        elig.has(L.baseKey) ||
-        // allow prefix match when elig contains bare itemId and baseKey is "id:variant"
-        Array.from(elig).some((x) => x && !x.includes(":") && L.baseKey.startsWith(x + ":"));
-
-      if (match) {
-        eligibleBase += L.price * L.qty;
-        eligibleQty += L.qty;
+    let eligibleQty  = 0;
+    const hits = [];
+    for (const L of (cart.lines||[])) {
+      const id = String(L.id||"").toLowerCase();
+      const q  = clamp0(L.qty);
+      const p  = clamp0(L.price);
+      if (!q || !p) continue;
+      if (elig.has(id)) {
+        eligibleBase += p * q;
+        eligibleQty  += q;
+        if (!hits.includes(id)) hits.push(id);
       }
     }
+    if (eligibleBase <= 0) return { discount:0, eligHits:[] };
 
-    if (eligibleBase <= 0) return { discount: 0, eligibleBase: 0, eligibleQty: 0 };
-    if (minOrder > 0 && eligibleBase < minOrder) return { discount: 0, eligibleBase, eligibleQty };
-
-    const type = String(couponMeta.type || "flat").toLowerCase();
-    const value = clamp0(couponMeta.value);
     let d = 0;
-
-    if (type === "percent") {
-      d = Math.round(eligibleBase * (value / 100));
-    } else if (type === "flat") {
-      // flat per unit, capped by eligible base total
-      d = Math.min(value * eligibleQty, eligibleBase);
-    }
-
-    return { discount: Math.max(0, Math.round(d)), eligibleBase, eligibleQty };
+    if (type === "percent") d = Math.round(eligibleBase * (v/100));
+    else if (type === "flat") d = Math.min(v * eligibleQty, eligibleBase); // flat per unit, cap at subtotal
+    return { discount: clamp0(Math.round(d)), eligHits: hits };
   }
 
-  // Pick first applicable coupon by provided priority
-  // coupons: array of { id, code, type, value, targets, eligibleItemIds[] }
-  // priorityFn(aMeta, bMeta) => number (ascending). If omitted, natural order.
-  function nextLock(cart, coupons, mode, priorityFn) {
-    const m = normalizeMode(mode);
+  function nextLock(cart, coupons, mode, priority) {
     const list = Array.isArray(coupons) ? coupons.slice() : [];
+    if (!list.length || !Array.isArray(cart?.lines) || !cart.lines.length) return null;
 
-    // Filter to those that can possibly apply (mode + has elig)
-    const candidates = list.filter((c) => modeAllowed(c, m) && buildElig(c).size > 0);
+    // mode gate
+    const filtered = list.filter(c => {
+      const t = c?.targets || {};
+      if (mode === "dining")   return (t.dining   ?? true);
+      if (mode === "delivery") return (t.delivery ?? true);
+      return true;
+    });
 
-    if (typeof priorityFn === "function") {
-      candidates.sort((a, b) => {
-        try { return priorityFn(a, b); } catch { return 0; }
-      });
+    // optional ordering (FCFS “first-seen” can be supplied by caller)
+    if (typeof priority === "function") {
+      filtered.sort(priority);
     }
 
-    for (const meta of candidates) {
-      const res = computeDiscount(cart, meta, m);
-      if (res.discount > 0) {
-        const elig = Array.from(buildElig(meta));
+    // pick first coupon that yields a non-zero discount
+    for (const c of filtered) {
+      const { discount, eligHits } = computeDiscountFor(cart, c);
+      if (discount > 0 && eligHits.length) {
         return {
-          couponId: meta.id,
-          code: (meta.code || meta.id || "").toString().toUpperCase(),
-          type: (meta.type || "flat").toLowerCase(),
-          value: clamp0(meta.value),
-          elig,
-          discount: res.discount,
+          couponId: c.id,        // id can be an internal id or the code itself
+          code: (c.code||"").toString().toUpperCase(),
+          type: (c.type||"flat").toLowerCase(),
+          value: Number(c.value||0),
+          elig: eligHits.slice(),
+          discount
         };
       }
     }
     return null;
   }
 
-  // export
-  root.CouponEngine = {
-    computeDiscount,
-    nextLock,
-  };
-})(typeof window !== "undefined" ? window : globalThis);
-
+  g.CouponEngine = { nextLock };
+})(window);
