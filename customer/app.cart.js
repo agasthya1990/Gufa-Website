@@ -735,20 +735,22 @@ function findFirstApplicableCouponForCart(){
       const lock = buildLockFromMeta(String(cid), meta);
       lock.source = "auto";
 
-      // --- SAFETY: if resolver returns empty, fall back to eligibleItemIds from meta/lock
+      // --- SAFETY: resolver → meta/lock fallback → LAST-MILE FCFS fallback
       let eligSet = (typeof resolveEligibilitySet === "function") ? resolveEligibilitySet(lock) : new Set();
       if (!eligSet || eligSet.size === 0) {
         const metaElig = Array.isArray(meta?.eligibleItemIds) ? meta.eligibleItemIds.map(s=>String(s).toLowerCase()) : [];
         const lockElig = Array.isArray(lock?.scope?.eligibleItemIds) ? lock.scope.eligibleItemIds.map(s=>String(s).toLowerCase()) : [];
         const merged   = Array.from(new Set([...metaElig, ...lockElig]));
         if (merged.length) {
-          // ensure computeDiscount can use it
           lock.scope = Object.assign({}, lock.scope, { eligibleItemIds: merged });
           eligSet = new Set(merged);
         } else {
-          eligSet = new Set(); // stays empty => no hit
+          // NEW: last-mile fallback — optimistically try the current FCFS baseId
+          lock.scope = Object.assign({}, lock.scope, { eligibleItemIds: [baseId] });
+          eligSet = new Set([baseId]);
         }
       }
+
 
       const hasDirectHit =
         eligSet.has(baseId) ||
