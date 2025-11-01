@@ -692,7 +692,7 @@ function findFirstApplicableCouponForCart(){
   const { base } = splitBaseVsAddons();
 
   // 1) Build FCFS scan order of base lines (first arrival → first scan)
-  const order = syncBaseOrderWithCart(); // array of baseKeys like "<itemId>:<variant>"
+  const order = syncBaseOrderWithCart(); // ["<itemId>:<variant>", ...]
   const seen = new Set(order);
   for (const [key] of es){
     if (isAddonKey(key)) continue;
@@ -701,7 +701,7 @@ function findFirstApplicableCouponForCart(){
   }
 
   // 2) For each baseKey in FCFS order, prefer coupons whose eligibility
-  //    explicitly includes this base item (banner-affiliated), then fall back.
+  //    explicitly includes this base item (banner-affiliated), then fallback.
   for (const bKey of order){
     const itemId = String(bKey).split(":")[0].toLowerCase();
 
@@ -714,7 +714,7 @@ function findFirstApplicableCouponForCart(){
       const lock = buildLockFromMeta(String(cid), meta);
       lock.source = "auto";
 
-      // Use project eligibility resolver (no new helpers)
+      // Use existing resolver; no new helpers.
       const elig = resolveEligibilitySet(lock); // Set of eligible ids/keys
       const hasDirectHit =
         elig.has(itemId) ||
@@ -738,6 +738,7 @@ function findFirstApplicableCouponForCart(){
 
   return null;
 }
+
 
 
   function clearLockIfNoLongerApplicable(){
@@ -1260,9 +1261,8 @@ async function boot(){
   // 3) First paint — Apply & FCFS are deterministic now
   render();
 
-
     // Normal reactive paints
-    window.addEventListener("cart:update", render, false);
+    window.addEventListener("cart:update", () => { try { enforceFirstComeLock(); } catch {} render(); }, false);
     window.addEventListener("serviceMode:changed", render, false);
     window.addEventListener("storage", (e) => {
   if (!e) return;
