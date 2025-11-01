@@ -691,7 +691,7 @@ function findFirstApplicableCouponForCart(){
 
   const { base } = splitBaseVsAddons();
 
-  // 1) Build FCFS order of base lines (first arrival → first scan)
+  // 1) Build FCFS scan order of base lines (first arrival → first scan)
   const order = syncBaseOrderWithCart(); // array of baseKeys like "<itemId>:<variant>"
   const seen = new Set(order);
   for (const [key] of es){
@@ -700,21 +700,22 @@ function findFirstApplicableCouponForCart(){
     if (!seen.has(b)) { order.push(b); seen.add(b); }
   }
 
-  // 2) For each baseKey in FCFS order, prefer coupons whose eligibility explicitly
-  //    includes this base item (banner-affiliated), then fall back to any coupon.
+  // 2) For each baseKey in FCFS order, prefer coupons whose eligibility
+  //    explicitly includes this base item (banner-affiliated), then fall back.
   for (const bKey of order){
     const itemId = String(bKey).split(":")[0].toLowerCase();
 
-    // 2a) Preferred: coupons whose eligibility set contains this item/base
     const preferred = [];
     const fallback  = [];
+
     for (const [cid, meta] of window.COUPONS){
       if (!checkUsageAvailable(meta)) continue;
+
       const lock = buildLockFromMeta(String(cid), meta);
       lock.source = "auto";
 
-      // Use the same resolver the engine uses, no new helpers.
-      const elig = resolveEligibilitySet(lock);
+      // Use project eligibility resolver (no new helpers)
+      const elig = resolveEligibilitySet(lock); // Set of eligible ids/keys
       const hasDirectHit =
         elig.has(itemId) ||
         elig.has(bKey.toLowerCase()) ||
@@ -723,12 +724,12 @@ function findFirstApplicableCouponForCart(){
       (hasDirectHit ? preferred : fallback).push(lock);
     }
 
-    // Try preferred first
+    // Try banner-affiliated coupons first
     for (const lock of preferred){
       const { discount } = computeDiscount(lock, base);
       if (discount > 0) return lock;
     }
-    // Then any remaining coupon, as before
+    // Then any other coupon that actually discounts
     for (const lock of fallback){
       const { discount } = computeDiscount(lock, base);
       if (discount > 0) return lock;
@@ -737,9 +738,6 @@ function findFirstApplicableCouponForCart(){
 
   return null;
 }
-
-
-
 
 
   function clearLockIfNoLongerApplicable(){
