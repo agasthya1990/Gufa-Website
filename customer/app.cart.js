@@ -57,12 +57,28 @@ function enforceNextLock(reason = '') {
   const next = window.CouponEngine?.nextLock?.(cart, coupons, mode, priority);
   if (next && next.couponId && next.elig?.length) {
     // build a FULL lock using your existing meta so computeDiscount works
-    const meta = (window.COUPONS instanceof Map) ? window.COUPONS.get(next.couponId) || window.COUPONS.get(next.code) : null;
-    const full = buildLockFromMeta(String(next.couponId), meta);
-    full.source = 'auto';
-    // persist
-    localStorage.setItem('gufa_coupon', JSON.stringify(full));
-    document.dispatchEvent?.(new CustomEvent('coupon:lock', { detail: { lock: full, reason } }));
+const meta =
+  (window.COUPONS instanceof Map)
+    ? (window.COUPONS.get(next.couponId) ||
+       Array.from(window.COUPONS.values()).find(m => String(m?.code||'').toUpperCase() === String(next.code||'').toUpperCase()))
+    : null;
+
+// Use exported builder if available; otherwise construct a minimal lock inline
+const full = (window.buildLockFromMeta
+  ? window.buildLockFromMeta(String(next.couponId || next.code), meta)
+  : {
+      scope: { couponId: String(next.couponId || next.code), eligibleItemIds: Array.from(next.elig || []) },
+      type:  String(meta?.type || 'flat').toLowerCase(),
+      value: Number(meta?.value || 0),
+      minOrder: Number(meta?.minOrder || 0),
+      valid: meta?.targets ? { delivery: !!meta.targets.delivery, dining: !!meta.targets.dining } : undefined,
+      code:  (meta?.code ? String(meta.code).toUpperCase() : String(next.code || '').toUpperCase())
+    });
+full.source = 'auto';
+
+localStorage.setItem('gufa_coupon', JSON.stringify(full));
+document.dispatchEvent?.(new CustomEvent('coupon:lock', { detail: { lock: full, reason } }));
+
   } else {
     // if nothing applies, ensure we’re not stuck with an empty/invalid lock
     const cur = JSON.parse(localStorage.getItem('gufa_coupon') || 'null');
@@ -611,6 +627,8 @@ function buildLockFromMeta(cid, meta) {
   };
 }
 
+// expose for callers defined above the IIFE (e.g., enforceNextLock)
+try { window.buildLockFromMeta = buildLockFromMeta; } catch {}
 
 // Create/find a small error line under the input (single-line, red, compact)
 function ensurePromoErrorHost() {
