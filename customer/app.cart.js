@@ -491,6 +491,34 @@ async function ensureCouponsReady() {
   }
 }
 
+// === synthesize coupons from banners keyed by couponCode:CODE (no hard-wired IDs) ===
+function synthesizeCouponsFromBannersByCode() {
+  try {
+    const B = (window.BANNERS instanceof Map) ? window.BANNERS : null;
+    if (!B) return false;
+    if (!(window.COUPONS instanceof Map)) window.COUPONS = new Map();
+    let added = 0;
+
+    for (const [key, ids] of B.entries()) {
+      const m = String(key||"").match(/^couponCode:(.+)$/i);
+      if (!m) continue;
+      const code = m[1].toUpperCase();
+      const meta = window.COUPONS.get(code) || {
+        code, type: 'flat', value: 100, targets: { delivery: true, dining: true }
+      };
+      const set = new Set((meta.eligibleItemIds || []).map(s => String(s).toLowerCase()));
+      (Array.isArray(ids) ? ids : []).forEach(x => set.add(String(x).toLowerCase()));
+      meta.eligibleItemIds = [...set];
+      window.COUPONS.set(code, meta);
+      added++;
+    }
+    if (added > 0) {
+      try { localStorage.setItem("gufa:COUPONS", JSON.stringify(Array.from(window.COUPONS.entries()))); } catch {}
+      document.dispatchEvent?.(new CustomEvent("promotions:hydrated"));
+    }
+    return added > 0;
+  } catch { return false; }
+}
 
   /* ===================== Coupon Lock ===================== */
   const getLock = () => { try { return JSON.parse(localStorage.getItem(COUPON_KEY) || "null"); } catch { return null; } };
@@ -1287,8 +1315,12 @@ async function boot(){
     try { await ensureCouponsReady(); } catch {}
   }
 
+  // 2.5) Synthesize coupons from banners keyed by couponCode:*
+  try { synthesizeCouponsFromBannersByCode(); } catch {}
+
   // 3) First paint — Apply & FCFS are deterministic now
   render();
+
 
 
     // Normal reactive paints
