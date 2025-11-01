@@ -2,6 +2,65 @@
 // Add-on steppers + auto-prune, Promo totals row, and Delivery Address form.
 // Refactor-friendly: clear seams for minOrder & usageLimit coming from Admin/promotions.js.
 
+// --- FCFS first-seen tracking ---
+const FIRST_SEEN_KEY = 'gufa:COUPON_FIRST_SEEN';
+function _firstSeenMap() {
+  try { return JSON.parse(localStorage.getItem(FIRST_SEEN_KEY) || '{}'); } catch { return {}; }
+}
+function markFirstSeen(couponId) {
+  const m = _firstSeenMap();
+  if (!(couponId in m)) {
+    m[couponId] = Date.now();
+    localStorage.setItem(FIRST_SEEN_KEY, JSON.stringify(m));
+  }
+}
+function getFirstSeenIndex(couponId) {
+  const m = _firstSeenMap();
+  return m[couponId] ?? Number.MAX_SAFE_INTEGER;
+}
+
+// normalize coupon meta → always have eligibleItemIds on checkout
+function _normalizedCoupons() {
+  const src = window.COUPONS instanceof Map ? window.COUPONS : new Map(Object.entries(window.COUPONS || {}));
+  return Array.from(src.entries()).map(([id, meta]) => {
+    const elig = meta?.eligibleItemIds?.length
+      ? meta.eligibleItemIds
+      : (window.BANNERS instanceof Map ? (window.BANNERS.get(`coupon:${id}`) || []) : []);
+    return { id, ...meta, eligibleItemIds: elig };
+  });
+}
+
+
+function enforceNextLock(reason = '') {
+  // 1) drop stale lock if its eligible items are gone
+  try { Cart.enforceLockIntegrity?.(); } catch {}
+
+  const cart = Cart.get?.() || JSON.parse(localStorage.getItem('gufa_cart') || '{}');
+  const coupons = _normalizedCoupons();
+  const mode = (localStorage.getItem('gufa_mode') || 'delivery').toLowerCase();
+
+  if (!Array.isArray(cart?.lines) || !coupons.length) return;
+
+  // FCFS priority by first-seen time
+  const priority = (a, b) => getFirstSeenIndex(a.id) - getFirstSeenIndex(b.id);
+
+  const next = window.CouponEngine?.nextLock?.(cart, coupons, mode, priority);
+  if (next && next.couponId && next.elig?.length) {
+    // persist lock as your existing lock shape
+    const lock = { code: next.code, couponId: next.couponId, elig: next.elig, mode, source: 'auto' };
+    localStorage.setItem('gufa_coupon', JSON.stringify(lock));
+    document.dispatchEvent?.(new CustomEvent('coupon:lock', { detail: { lock, reason } }));
+  } else {
+    // if nothing applies, ensure we’re not stuck with an empty/invalid lock
+    const cur = JSON.parse(localStorage.getItem('gufa_coupon') || 'null');
+    if (!cur || !cur.elig?.length) {
+      localStorage.removeItem('gufa_coupon');
+      document.dispatchEvent?.(new Event('coupon:unlock'));
+    }
+  }
+}
+
+
 let lastSnapshotAt = 0;
 function persistCartSnapshotThrottled() {
   const now = Date.now();
@@ -13,6 +72,7 @@ function persistCartSnapshotThrottled() {
   } catch {}
 }
 window.addEventListener("cart:update", persistCartSnapshotThrottled);
+window.addEventListener("cart:update", () => enforceNextLock('after:cart:update'));
 
 
 // ---- crash guards (no feature changes) ----
@@ -1193,12 +1253,19 @@ async function boot(){
     // Normal reactive paints
     window.addEventListener("cart:update", render, false);
     window.addEventListener("serviceMode:changed", render, false);
-    window.addEventListener("storage", (e) => {
+    window.addEventListener("promotions:hydrated", () => { 
+  try { enforceNextLock('after:hydrate'); } catch {} 
+  render(); 
+}, false);
+
+window.addEventListener("storage", (e) => {
   if (!e) return;
   if (e.key === "gufa_cart" || e.key === COUPON_KEY || e.key === ADDR_KEY || e.key === "gufa_mode") {
+    try { enforceNextLock('on:storage'); } catch {}
     render();
   }
 }, false);
+
 
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState === "visible") render();
