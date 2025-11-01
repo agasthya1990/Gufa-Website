@@ -158,9 +158,10 @@ function findCouponByCodeOrId(input){
   return null;
 }
 
-function computeEligibleItemIdsForCoupon(couponId){
+function computeEligibleItemIdsForCoupon(couponIdOrCode){
   try {
-    const id = String(couponId || "");
+    const raw = String(couponIdOrCode || "");
+    const id  = (window.COUPONS instanceof Map && window.COUPONS.has(raw)) ? raw : (couponIdByCode(raw) || "");
     const all = (window.ITEMS || []);
     // items list may use promotions | coupons | couponIds
     return all.filter((it) => {
@@ -281,6 +282,20 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const isUUID = (s) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s||"");
 
+// --- Coupon code index (ID <-> CODE) ---
+function couponIdByCode(codeUpp){
+  try{
+    const needle = String(codeUpp||"").trim().toUpperCase();
+    if (!needle || !(window.COUPONS instanceof Map)) return null;
+    for (const [cid, meta] of window.COUPONS) {
+      const mc = String(meta?.code||"").trim().toUpperCase();
+      if (mc && mc === needle) return String(cid);
+    }
+    return null;
+  } catch { return null; }
+}
+
+  
   /* ===================== Mode ===================== */
 function activeMode(){
   const m = String(localStorage.getItem("gufa_mode") || "delivery").toLowerCase();
@@ -542,7 +557,11 @@ function buildLockFromMeta(cid, meta) {
 
 
   return {
-    scope: { couponId: cid, eligibleItemIds: Array.from(eligSet) },
+    scope: {
+      couponId: cid,
+      couponCode: (meta?.code ? String(meta.code).toUpperCase() : undefined),
+      eligibleItemIds: Array.from(eligSet)
+    },
     type:  String(meta?.type || "flat").toLowerCase(),
     value: Number(meta?.value || 0),
     minOrder: Number(meta?.minOrder || 0),
@@ -616,6 +635,8 @@ function eligibleIdsFromBanners(scope){
 
   const bid = String(scope.bannerId||"").trim();
   const cid = String(scope.couponId||"").trim();
+  const ccode = String(scope.couponCode||"").trim().toUpperCase();
+
 
   // Helper to add ids safely
   const addAll = (arr) => {
@@ -629,7 +650,8 @@ function eligibleIdsFromBanners(scope){
   // Map form: key -> array of itemIds (or a keyed alias "coupon:<cid>")
   if (window.BANNERS instanceof Map){
     addAll(window.BANNERS.get(bid));
-    if (!out.size && cid) addAll(window.BANNERS.get(`coupon:${cid}`));
+        if (!out.size && cid)   addAll(window.BANNERS.get(`coupon:${cid}`));
+    if (!out.size && ccode) addAll(window.BANNERS.get(`couponCode:${ccode}`));
     return out;
   }
 
@@ -644,12 +666,13 @@ function eligibleIdsFromBanners(scope){
       // in strict mode, fallback is empty if no items listed—so keep it empty here.
     }
 
-    // if only the couponId is known, look for a banner that links this coupon
-    if (!out.size && cid) {
-      const byCoupon = window.BANNERS.find(b =>
-        Array.isArray(b?.linkedCouponIds) &&
-        b.linkedCouponIds.map(String).some(x => x.trim() === cid)
-      );
+    // if only the couponId/code is known, look for a banner that links it
+    if (!out.size && (cid || ccode)) {
+      const byCoupon = window.BANNERS.find(b => {
+        const ids = Array.isArray(b?.linkedCouponIds) ? b.linkedCouponIds.map(String) : [];
+        const codes = Array.isArray(b?.linkedCouponCodes) ? b.linkedCouponCodes.map(s=>String(s).toUpperCase()) : [];
+        return (cid && ids.some(x => x.trim() === cid)) || (ccode && codes.some(x => x.trim().toUpperCase() === ccode));
+      });
       addAll(byCoupon?.items || byCoupon?.eligibleItemIds || byCoupon?.itemIds);
     }
   }
@@ -657,7 +680,7 @@ function eligibleIdsFromBanners(scope){
 }
 
 
-  // explicit eligibleItemIds > banner-derived > empty (strict)
+   // explicit eligibleItemIds > banner-derived (by id/code) > ITEMS scan by code > empty (strict)
   function resolveEligibilitySet(locked){
     const scope = locked?.scope || {};
     const explicit = (
@@ -671,7 +694,22 @@ function eligibleIdsFromBanners(scope){
     const byBanner = eligibleIdsFromBanners(scope);
     if (byBanner.size) return byBanner;
 
-    return new Set();
+    // Fallback: infer by COUPON CODE directly from ITEMS.promotions/coupons arrays
+    try {
+      const code = String(scope.couponCode || locked?.code || "").trim().toUpperCase();
+      if (!code) return new Set();
+      const items = Array.isArray(window.ITEMS) ? window.ITEMS : [];
+      const ids = [];
+      for (const it of items) {
+        const pools = []
+          .concat(Array.isArray(it.promotions) ? it.promotions : [])
+          .concat(Array.isArray(it.coupons)    ? it.coupons    : [])
+          .concat(Array.isArray(it.couponIds)  ? it.couponIds  : []);
+        const hit = pools.map(x=>String(x).toUpperCase()).includes(code);
+        if (hit && it.id) ids.push(String(it.id).toLowerCase());
+      }
+      return new Set(ids);
+    } catch { return new Set(); }
   }
 
 // Provenance: did this base line come from the currently locked banner/coupon?
