@@ -772,7 +772,7 @@ const hasDirectHit =
       const { discount } = computeDiscount(L, base);
       if (discount > 0) return L;
     }
-  
+  }
   return null;
 }
 
