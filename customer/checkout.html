@@ -215,11 +215,14 @@
   try { localStorage.removeItem("gufa:COUPONS"); } catch (e) {}
   if (!localStorage.getItem("gufa_mode")) localStorage.setItem("gufa_mode", "delivery");
 </script>
-
-
   <script src="./app.cart.js"></script>
+  <script id="promo-data" type="application/json">
+{ "coupons": [ ["XMAS100", {"code":"XMAS100","type":"flat","value":100,"eligibleItemIds":["..."],"targets":{"delivery":true,"dining":true}}], ... ] }
+</script>
+
 </body>
 </html>
+
 
 
 
