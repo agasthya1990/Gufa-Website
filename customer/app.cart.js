@@ -404,15 +404,66 @@ function activeMode(){
 
 /* ========== ensure coupons exist on Checkout (Firestore-only) ========== */
 async function ensureCouponsReady() {
+  // If already hydrated, done.
   if (window.COUPONS instanceof Map && window.COUPONS.size > 0) return true;
+
+  // 1) Try LocalStorage snapshot written by menu (gufa:COUPONS).
   try {
-    const ok = await hydrateCouponsFromFirestoreOnce();
-    return !!ok;
-  } catch {
-    return false;
-  }
+    const raw = localStorage.getItem("gufa:COUPONS");
+    if (raw) {
+      const dump = JSON.parse(raw);
+      if (!(window.COUPONS instanceof Map)) window.COUPONS = new Map();
+      if (Array.isArray(dump)) {
+        dump.forEach(([id, meta]) => window.COUPONS.set(String(id), meta || {}));
+      } else if (dump && typeof dump === "object") {
+        Object.entries(dump).forEach(([id, meta]) => window.COUPONS.set(String(id), meta || {}));
+      }
+      if (window.COUPONS.size > 0) {
+        try { localStorage.setItem("gufa:COUPONS", JSON.stringify(Array.from(window.COUPONS.entries()))); } catch {}
+        window.dispatchEvent(new CustomEvent("promotions:hydrated"));
+        return true;
+      }
+    }
+  } catch {}
+
+  // 2) Try inline JSON on this page (non-async).  :contentReference[oaicite:1]{index=1}
+  try {
+    if (typeof hydrateCouponsFromInlineJson === "function") {
+      const ok = !!hydrateCouponsFromInlineJson();
+      if (ok && window.COUPONS instanceof Map && window.COUPONS.size > 0) return true;
+    }
+  } catch {}
+
+  // 3) Try Firestore once.  
+  try {
+    if (typeof hydrateCouponsFromFirestoreOnce === "function") {
+      const ok = !!(await hydrateCouponsFromFirestoreOnce());
+      if (ok && window.COUPONS instanceof Map && window.COUPONS.size > 0) return true;
+    }
+  } catch {}
+
+  // 4) Last resort: synthesize from banners keyed like couponCode:CODE.  
+  try {
+    if (typeof synthesizeCouponsFromBannersByCode === "function") {
+      const ok = !!synthesizeCouponsFromBannersByCode();
+      if (ok && window.COUPONS instanceof Map && window.COUPONS.size > 0) return true;
+    }
+  } catch {}
+
+  return false;
 }
 
+// Boot once on checkout: hydrate coupons from LS → inline → Firestore → synthesize
+(async function bootCouponsOnce(){
+  try {
+    const ok = await ensureCouponsReady();
+    if (ok) {
+      try { localStorage.setItem("gufa:COUPONS", JSON.stringify(Array.from(window.COUPONS.entries()))); } catch {}
+      window.dispatchEvent(new CustomEvent("promotions:hydrated"));
+      window.dispatchEvent(new CustomEvent("cart:update"));
+    }
+  } catch {}
+})();
 
   /* ===================== Coupon Lock ===================== */
   const getLock = () => { try { return JSON.parse(localStorage.getItem(COUPON_KEY) || "null"); } catch { return null; } };
