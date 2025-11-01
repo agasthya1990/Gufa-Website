@@ -404,13 +404,15 @@ function activeMode(){
         added++;
       });
 
-      if (added > 0) {
+        if (added > 0) {
         try {
           localStorage.setItem("gufa:COUPONS", JSON.stringify(Array.from(window.COUPONS.entries())));
         } catch {}
+        window.dispatchEvent(new CustomEvent("promotions:hydrated"));
         window.dispatchEvent(new CustomEvent("cart:update"));
         return true;
       }
+
       return false;
     } catch (err) {
       console.warn("[Firestore promo hydrate] failed:", err);
@@ -447,13 +449,14 @@ function activeMode(){
         }
       }
 
-      // Persist a lightweight snapshot for future tabs/pages
+       // Persist a lightweight snapshot for future tabs/pages
       try {
         const dump = Array.from(window.COUPONS.entries());
         if (dump.length) localStorage.setItem("gufa:COUPONS", JSON.stringify(dump));
       } catch {}
 
-      // One immediate repaint (no timers)
+      // Signal readiness, then repaint
+      window.dispatchEvent(new CustomEvent("promotions:hydrated"));
       window.dispatchEvent(new CustomEvent("cart:update"));
       return true;
     } catch (e) {
