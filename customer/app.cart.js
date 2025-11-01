@@ -1330,7 +1330,7 @@ async function boot(){
   render();
 
     // Normal reactive paints
-    window.addEventListener("cart:update", () => { try { enforceFirstComeLock(); } catch {} render(); }, false);
+    window.addEventListener("cart:update", render, false);
     window.addEventListener("serviceMode:changed", render, false);
     window.addEventListener("storage", (e) => {
   if (!e) return;
