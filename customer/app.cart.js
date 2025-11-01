@@ -762,7 +762,7 @@ const hasDirectHit =
 
 (hasDirectHit ? preferred : fallback).push(lock);
 
-
+  }
     // Preferred first (banner-affiliated)
     for (const L of preferred){
       const { discount } = computeDiscount(L, base);
