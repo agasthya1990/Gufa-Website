@@ -891,11 +891,22 @@ for (const [key, it] of entries()){
 const t = String(locked?.type||"").toLowerCase();
 const v = Number(locked?.value||0);
 let d = 0;
-if (t === "percent") d = Math.round(eligibleBase * (v/100));
-else if (t === "flat") d = Math.min(v * eligibleQty, eligibleBase); // stack flat per unit, cap at line value;
-return { discount: Math.max(0, Math.round(d)) };
-    
+
+if (t === "percent") {
+  d = Math.round(eligibleBase * (v/100));
+} else if (t === "flat") {
+  d = Math.min(v * eligibleQty, eligibleBase);
+} else {
+  // Safety: infer type only when admin/meta didn't specify it.
+  // Heuristic: <=100 looks like percent, >100 behaves like per-unit flat.
+  if (v > 0) {
+    if (v <= 100) d = Math.round(eligibleBase * (v/100));
+    else d = Math.min(v * eligibleQty, eligibleBase);
   }
+}
+return { discount: Math.max(0, Math.round(d)) };
+
+ }
 
 
 
