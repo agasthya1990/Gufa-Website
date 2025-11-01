@@ -1373,8 +1373,7 @@ window.CartDebug = window.CartDebug || {};
       findCouponByIdOrCode
     });
   } catch {}
-})();
-
+};
   const lock = getLock();
   const { base, add } = splitBaseVsAddons();
   const elig = Array.from(lock ? resolveEligibilitySet(lock) : new Set());
