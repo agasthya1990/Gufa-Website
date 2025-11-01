@@ -817,10 +817,19 @@ function computeDiscount(locked, baseSubtotal){
     const minOrder = Number(locked?.minOrder || 0);
     if (minOrder > 0 && baseSubtotal < minOrder) return { discount:0 };
 
-    // Eligibility set (strict)
-let elig = resolveEligibilitySet(locked);
+// Eligibility set (resolver → meta/scope fallback → manual-any-base fallback)
+let elig = (typeof resolveEligibilitySet === "function") ? resolveEligibilitySet(locked) : new Set();
 
-// Manual-apply fallback: if no eligibility could be derived, allow any base line in cart
+// Fallback 1: use explicit eligibleItemIds present on lock/scope/meta when resolver is empty
+if (!elig || elig.size === 0) {
+  const scopeElig = Array.isArray(locked?.scope?.eligibleItemIds) ? locked.scope.eligibleItemIds : [];
+  const lockElig  = Array.isArray(locked?.eligibleItemIds)        ? locked.eligibleItemIds        : [];
+  const metaElig  = Array.isArray(locked?.meta?.eligibleItemIds)  ? locked.meta.eligibleItemIds   : [];
+  const merged    = Array.from(new Set([...scopeElig, ...lockElig, ...metaElig].map(s => String(s).toLowerCase())));
+  if (merged.length) elig = new Set(merged);
+}
+
+// Fallback 2: for manual source, allow any base line if still empty (keeps your current behavior)
 if (!elig.size && String(locked?.source||"") === "manual") {
   try {
     const bases = [];
@@ -835,6 +844,7 @@ if (!elig.size && String(locked?.source||"") === "manual") {
 }
 
 if (!elig.size) return { discount:0 };
+
 
 
 // Eligible base subtotal only
