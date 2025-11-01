@@ -35,21 +35,34 @@ function enforceNextLock(reason = '') {
   // 1) drop stale lock if its eligible items are gone
   try { Cart.enforceLockIntegrity?.(); } catch {}
 
-  const cart = Cart.get?.() || JSON.parse(localStorage.getItem('gufa_cart') || '{}');
+  // normalize your map-like cart into the engine’s {lines:[]} shape
+  const bag = window.Cart?.get?.() || JSON.parse(localStorage.getItem('gufa_cart') || '{}') || {};
+  const lines = Object.entries(bag)
+    .filter(([k,it]) => String(k).split(':').length >= 2 && Number(it?.qty) > 0) // base lines only
+    .map(([k,it]) => ({
+      id: String(it?.id ?? String(k).split(':')[0]).toLowerCase(),
+      qty: Number(it?.qty)||0,
+      price: Number(it?.price)||0
+    }));
+  const cart = { lines };
+
   const coupons = _normalizedCoupons();
   const mode = (localStorage.getItem('gufa_mode') || 'delivery').toLowerCase();
 
-  if (!Array.isArray(cart?.lines) || !coupons.length) return;
+  if (!lines.length || !coupons.length) return;
 
   // FCFS priority by first-seen time
   const priority = (a, b) => getFirstSeenIndex(a.id) - getFirstSeenIndex(b.id);
 
   const next = window.CouponEngine?.nextLock?.(cart, coupons, mode, priority);
   if (next && next.couponId && next.elig?.length) {
-    // persist lock as your existing lock shape
-    const lock = { code: next.code, couponId: next.couponId, elig: next.elig, mode, source: 'auto' };
-    localStorage.setItem('gufa_coupon', JSON.stringify(lock));
-    document.dispatchEvent?.(new CustomEvent('coupon:lock', { detail: { lock, reason } }));
+    // build a FULL lock using your existing meta so computeDiscount works
+    const meta = (window.COUPONS instanceof Map) ? window.COUPONS.get(next.couponId) || window.COUPONS.get(next.code) : null;
+    const full = buildLockFromMeta(String(next.couponId), meta);
+    full.source = 'auto';
+    // persist
+    localStorage.setItem('gufa_coupon', JSON.stringify(full));
+    document.dispatchEvent?.(new CustomEvent('coupon:lock', { detail: { lock: full, reason } }));
   } else {
     // if nothing applies, ensure we’re not stuck with an empty/invalid lock
     const cur = JSON.parse(localStorage.getItem('gufa_coupon') || 'null');
