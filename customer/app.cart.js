@@ -1360,17 +1360,3 @@ window.CartDebug.eval = function(){
   const { discount } = computeDiscount(lock, base);
   return { lock, mode:activeMode(), base, add, elig, discount };
 };
-
-// Expose internal helpers for checkout console & interop (no behavior change)
-try {
-  if (typeof findFirstApplicableCouponForCart === "function")
-    window.CartDebug.choose = findFirstApplicableCouponForCart;
-  if (typeof computeDiscount === "function")
-    window.CartDebug.computeDiscount = computeDiscount;
-  if (typeof buildLockFromMeta === "function")
-    window.CartDebug.buildLockFromMeta = buildLockFromMeta;
-  if (typeof resolveEligibilitySet === "function")
-    window.CartDebug.resolveEligibilitySet = resolveEligibilitySet;
-  if (typeof modeAllowed === "function")
-    window.CartDebug.modeAllowed = modeAllowed;
-} catch {}
