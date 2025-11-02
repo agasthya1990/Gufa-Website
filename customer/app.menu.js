@@ -1758,38 +1758,187 @@ function initServiceMode(){
   w.GUFA.serviceMode = api;
 })();
 
- /* ---------- Boot ---------- */
+/* ===== NEW: Coupon hydration & index builders for Menu ===== */
+
+// Hydrate coupons on the Menu page (LS → inline → Firestore → synthesize), mirroring checkout
+async function ensureCouponsReadyOnMenu(){
+  try {
+    if (window.COUPONS instanceof Map && window.COUPONS.size > 0) return true;
+
+    // 1) LocalStorage snapshot (written by checkout or previous runs)
+    try {
+      const raw = localStorage.getItem("gufa:COUPONS");
+      if (raw) {
+        const dump = JSON.parse(raw);
+        if (!(window.COUPONS instanceof Map)) window.COUPONS = new Map();
+        if (Array.isArray(dump)) {
+          dump.forEach(([id, meta]) => window.COUPONS.set(String(id), meta || {}));
+        } else if (dump && typeof dump === "object") {
+          Object.entries(dump).forEach(([id, meta]) => window.COUPONS.set(String(id), meta || {}));
+        }
+        if (window.COUPONS.size > 0) {
+          window.dispatchEvent(new CustomEvent("promotions:hydrated"));
+          return true;
+        }
+      }
+    } catch {}
+
+    // 2) Inline JSON (if you embed promos on Home)
+    try {
+      if (typeof hydrateCouponsFromInlineJson === "function") {
+        const ok = !!hydrateCouponsFromInlineJson();
+        if (ok && window.COUPONS instanceof Map && window.COUPONS.size > 0) {
+          window.dispatchEvent(new CustomEvent("promotions:hydrated"));
+          return true;
+        }
+      }
+    } catch {}
+
+    // 3) Firestore once (if available on Menu)
+    try {
+      if (typeof hydrateCouponsFromFirestoreOnce === "function") {
+        const ok = !!(await hydrateCouponsFromFirestoreOnce());
+        if (ok && window.COUPONS instanceof Map && window.COUPONS.size > 0) {
+          window.dispatchEvent(new CustomEvent("promotions:hydrated"));
+          return true;
+        }
+      }
+    } catch {}
+
+    // 4) Last resort — synthesize from banners with couponCode
+    try {
+      if (typeof synthesizeCouponsFromBannersByCode === "function") {
+        const ok = !!synthesizeCouponsFromBannersByCode();
+        if (ok && window.COUPONS instanceof Map && window.COUPONS.size > 0) {
+          window.dispatchEvent(new CustomEvent("promotions:hydrated"));
+          return true;
+        }
+      }
+    } catch {}
+
+    return false;
+  } catch { return false; }
+}
+
+// Persist code → id map so checkout/cart can resolve "WELCOME20" → UUID
+function persistCouponCodes(){
+  try {
+    if (!(window.COUPONS instanceof Map) || window.COUPONS.size === 0) return;
+    const codes = {}; // { codeLower : idLower }
+    for (const [id, meta] of window.COUPONS) {
+      const code = String(meta?.code || "").trim();
+      if (!code) continue;
+      codes[code.toLowerCase()] = String(id).toLowerCase();
+    }
+    if (Object.keys(codes).length) {
+      localStorage.setItem("gufa:COUPON_CODES", JSON.stringify(codes));
+    }
+  } catch {}
+}
+
+// Build coupon → [itemIds] index from the live catalog/cards and write gufa:COUPON_INDEX
+function buildAndPersistCouponIndex(){
+  try {
+    // Prefer a real catalog if present
+    const ITEMS = Array.isArray(window.ITEMS) ? window.ITEMS : null;
+
+    // Fallback: derive item ids from rendered cards
+    const domIds = Array.from(document.querySelectorAll('.menu-item[data-id]'))
+      .map(el => String(el.getAttribute('data-id')||'').toLowerCase())
+      .filter(Boolean);
+
+    // Build a quick item map if ITEMS exists
+    const itemById = {};
+    if (ITEMS) {
+      for (const it of ITEMS) {
+        const iid = String(it?.id || "").toLowerCase();
+        if (iid) itemById[iid] = it;
+      }
+    }
+
+    // Get code→id map (helps when items list codes not UUIDs)
+    const codes = JSON.parse(localStorage.getItem("gufa:COUPON_CODES") || "{}");
+
+    const idx = {}; // key(lower) -> Set(itemIdLower)
+    const add = (key, itemId) => {
+      if (!key || !itemId) return;
+      const k = String(key).toLowerCase();
+      const idLower = String(itemId).toLowerCase();
+      (idx[k] ||= new Set()).add(idLower);
+      const viaCode = codes[k];
+      if (viaCode) (idx[viaCode] ||= new Set()).add(idLower);
+    };
+
+    // Walk ITEMS if available
+    if (ITEMS && Object.keys(itemById).length) {
+      for (const it of ITEMS) {
+        const iid = String(it?.id || "").toLowerCase();
+        if (!iid) continue;
+        const raw = Array.isArray(it.couponIds) ? it.couponIds
+                  : Array.isArray(it.coupons)   ? it.coupons
+                  : Array.isArray(it.promotions)? it.promotions
+                  : [];
+        for (const v of raw) add(v, iid);
+      }
+    }
+
+    // Also add from DOM cards as a safety net (data-coupons attr if present)
+    document.querySelectorAll('.menu-item[data-id]').forEach(card => {
+      const iid = String(card.getAttribute('data-id')||'').toLowerCase();
+      const raw = (card.getAttribute('data-coupons')||'')
+        .split(',').map(s=>s.trim()).filter(Boolean);
+      raw.forEach(v => add(v, iid));
+    });
+
+    if (Object.keys(idx).length) {
+      const out = Object.fromEntries(Object.entries(idx).map(([k,s]) => [k, Array.from(s)]));
+      localStorage.setItem("gufa:COUPON_INDEX", JSON.stringify(out));
+      // Let dependents repaint
+      window.dispatchEvent(new CustomEvent("promotions:hydrated"));
+      window.dispatchEvent(new CustomEvent("cart:update"));
+    }
+  } catch {}
+}
+
+/* ---------- Boot ---------- */
 async function boot(){
   showHome(); // renders tiles on load if sections present
   updateCartLink();
   initServiceMode();
   await listenAll();
+
+  // NEW: make coupons available on Menu, then persist codes + index
+  await ensureCouponsReadyOnMenu();
+  persistCouponCodes();
+  buildAndPersistCouponIndex();
 }
 document.addEventListener("DOMContentLoaded", boot);
+
+
 
 // Service mode change → keep Menu & global mirrors in lockstep with Cart
 window.addEventListener("serviceMode:changed", () => {
   try {
-    // Keep global mirror fresh so checkout/cart can derive eligibility from banners
     if (typeof BANNERS !== "undefined") { window.BANNERS = BANNERS; }
 
-    // If we’re on Home, repaint the deals rail (filters banners by mode)
     if (typeof view !== "undefined" ? view === "home" : true) {
       renderDeals?.();
     }
 
-    // If we’re inside a banner-filtered list, re-render and re-decorate badges
     if (typeof view !== "undefined" && view === "list" &&
         typeof listKind !== "undefined" && listKind === "banner") {
       renderContentView?.();
       decorateBannerDealBadges?.();
     }
+
+    // NEW: promo artifacts may differ by mode
+    persistCouponCodes();
+    buildAndPersistCouponIndex();
   } catch {}
 });
 
 
   
- // Keep header & badges in sync whenever the cart store updates
 window.addEventListener("cart:update", () => {
   updateAllMiniCartBadges();
   updateCartLink();
@@ -1799,7 +1948,12 @@ window.addEventListener("cart:update", () => {
     const itemId = el.getAttribute("data-id");
     updateAddonsButtonState(itemId);
   });
+
+  // NEW: keep promo artifacts fresh
+  persistCouponCodes();
+  buildAndPersistCouponIndex();
 });
+
 
 })();
 
