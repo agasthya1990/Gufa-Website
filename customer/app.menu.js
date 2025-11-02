@@ -1046,6 +1046,32 @@ if (!item) return;
     }
   } catch {}
 
+  // NEW: Persist a coupon -> [itemIds] index so checkout can rebuild eligibility strictly
+  try {
+    const catalog = (typeof ITEMS !== "undefined" && Array.isArray(ITEMS) && ITEMS.length)
+      ? ITEMS : (window.ITEMS || []);
+    if (catalog && catalog.length) {
+      const idx = {}; // { couponIdLower: Set(itemIdLower) }
+      for (const it of catalog) {
+        const itemId = String(it?.id ?? "").toLowerCase();
+        if (!itemId) continue;
+        const raw = Array.isArray(it.couponIds) ? it.couponIds
+                : Array.isArray(it.coupons)    ? it.coupons
+                : Array.isArray(it.promotions) ? it.promotions
+                : [];
+        for (const cid of raw.map(s => String(s).trim()).filter(Boolean)) {
+          const key = cid.toLowerCase();
+          if (!idx[key]) idx[key] = new Set();
+          idx[key].add(itemId);
+        }
+      }
+      // serialize sets to arrays
+      const out = Object.fromEntries(Object.entries(idx).map(([k,v]) => [k, Array.from(v)]));
+      localStorage.setItem("gufa:COUPON_INDEX", JSON.stringify(out));
+    }
+  } catch {}
+
+
   try { localStorage.setItem("gufa_coupon", JSON.stringify(payload)); } catch {}
   window.dispatchEvent(new CustomEvent("cart:update"));
 }
