@@ -144,47 +144,20 @@ if (!Array.isArray(window.BANNERS)) window.BANNERS = [];
   } catch {}
 })();
 
-/* NEW: Persist coupon → [itemIds] index for the cart (FCFS eligibility) */
-(function persistCouponIndexThrottled(){
-  let last = 0;
-  function buildAndPersist(){
-    try {
-      const now = Date.now();
-      if (now - last < 250) return;  // throttle
-      last = now;
-
-      const items = (typeof window.ITEMS !== "undefined" && Array.isArray(window.ITEMS)) ? window.ITEMS : [];
-      if (!items.length) return; // wait until catalog is ready
-
-      const idx = {}; // couponIdLower -> [itemIdLower]
-      for (const it of items){
-        const itemId = String(it.id || "").toLowerCase();
-        if (!itemId) continue;
-
-        const raw = Array.isArray(it.couponIds) ? it.couponIds
-                  : Array.isArray(it.coupons)   ? it.coupons
-                  : Array.isArray(it.promotions)? it.promotions
-                  : [];
-        for (const c of raw){
-          const cid = String(c || "").trim().toLowerCase();
-          if (!cid) continue;
-          (idx[cid] ||= []).push(itemId);
-        }
-      }
-      if (Object.keys(idx).length){
-        localStorage.setItem("gufa:COUPON_INDEX", JSON.stringify(idx));
-        // help cart recompute immediately after first write
-        window.dispatchEvent(new CustomEvent("promotions:hydrated"));
-        window.dispatchEvent(new CustomEvent("cart:update"));
-      }
-    } catch {}
-  }
-
-  // Try soon and also on relevant signals
-  setTimeout(buildAndPersist, 200);
-  document.addEventListener("cart:update", buildAndPersist);
-  window.addEventListener("promotions:hydrated", buildAndPersist);
+// NEW —— Persist code→id map so checkout/cart can resolve "WELCOME20" → real ID
+(function persistCouponCodes(){
+  try {
+    if (!(window.COUPONS instanceof Map) || window.COUPONS.size === 0) return;
+    const codes = {}; // { codeLower : idLower }
+    for (const [id, meta] of window.COUPONS) {
+      const code = String(meta?.code || "").trim();
+      if (!code) continue;
+      codes[code.toLowerCase()] = String(id).toLowerCase();
+    }
+    localStorage.setItem("gufa:COUPON_CODES", JSON.stringify(codes));
+  } catch {}
 })();
+
 
 
 
