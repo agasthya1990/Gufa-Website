@@ -14,6 +14,36 @@ function persistCartSnapshotThrottled() {
 }
 window.addEventListener("cart:update", persistCartSnapshotThrottled);
 
+// —— Service mode sync (Cart) ——
+(function ensureCartModeSync(){
+  const readMode = () => {
+    const ms = (localStorage.getItem("gufa:serviceMode") || "").toLowerCase();
+    const m  = (localStorage.getItem("gufa_mode")       || "").toLowerCase();
+    return (ms === "dining" || ms === "delivery") ? ms
+         : (m  === "dining" || m  === "delivery") ? m
+         : "delivery";
+  };
+
+  // Mirror keys once on load so all code paths see the same thing
+  const modeNow = readMode();
+  try { localStorage.setItem("gufa_mode", modeNow); } catch {}
+  try { localStorage.setItem("gufa:serviceMode", modeNow); } catch {}
+
+  // When Menu flips the mode, Cart re-evaluates discount lock + render
+  window.addEventListener("serviceMode:changed", () => {
+    const m = readMode();
+    try { localStorage.setItem("gufa_mode", m); } catch {}
+    // If your FCFS helper exists, re-pick; else just re-render.
+    try {
+      if (typeof findFirstApplicableCouponForCart === "function") {
+        const pick = findFirstApplicableCouponForCart();
+        if (pick) localStorage.setItem("gufa_coupon", JSON.stringify(pick));
+      }
+    } catch {}
+    document.dispatchEvent(new CustomEvent("cart:update", { detail: { source: "mode-change" }}));
+  });
+})();
+
 
 // ---- crash guards (no feature changes) ----
 // 1) Ensure we have a deterministic UI selector map that matches checkout.html
