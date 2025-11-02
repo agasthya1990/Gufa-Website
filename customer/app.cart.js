@@ -832,14 +832,36 @@ const hasDirectHit =
 
     // Preferred first (banner-affiliated)
     for (const L of preferred){
-      const { discount } = computeDiscount(L, base);
-      if (discount > 0) return L;
+      // Bind the concrete base we’re evaluating and preserve eligibility on the lock
+      const eSet = (typeof resolveEligibilitySet === "function") ? resolveEligibilitySet(L) : new Set();
+      const bound = Object.assign({}, L, {
+        baseId,
+        scope: Object.assign({}, L.scope || {}, {
+          baseId,
+          eligibleItemIds: Array.isArray(L?.scope?.eligibleItemIds) && L.scope.eligibleItemIds.length
+            ? L.scope.eligibleItemIds
+            : Array.from(eSet || [])
+        })
+      });
+      const { discount } = computeDiscount(bound, base);
+      if (discount > 0) return bound;
     }
     // Otherwise any coupon that actually discounts
     for (const L of fallback){
-      const { discount } = computeDiscount(L, base);
-      if (discount > 0) return L;
+      const eSet = (typeof resolveEligibilitySet === "function") ? resolveEligibilitySet(L) : new Set();
+      const bound = Object.assign({}, L, {
+        baseId,
+        scope: Object.assign({}, L.scope || {}, {
+          baseId,
+          eligibleItemIds: Array.isArray(L?.scope?.eligibleItemIds) && L.scope.eligibleItemIds.length
+            ? L.scope.eligibleItemIds
+            : Array.from(eSet || [])
+        })
+      });
+      const { discount } = computeDiscount(bound, base);
+      if (discount > 0) return bound;
     }
+
   }
   return null;
 }
