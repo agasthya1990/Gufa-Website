@@ -1374,7 +1374,7 @@ if (R.promoApply && !R.promoApply._wired){
 }
 }
 
-  /* ===================== Boot & subscriptions ===================== */
+/* ===================== Boot & subscriptions ===================== */
 async function boot(){
   resolveLayout();
 
@@ -1386,24 +1386,66 @@ async function boot(){
     try { await ensureCouponsReady(); } catch {}
   }
 
+  // NEW — clear stale/invalid coupon lock after hydration, before first paint
+  try {
+    (function(){
+      const lock = JSON.parse(localStorage.getItem("gufa_coupon") || "null");
+      if (!lock?.scope?.couponId) return;
+
+      // coupons must be hydrated now; if not, drop ambiguous lock
+      if (!(window.COUPONS instanceof Map) || window.COUPONS.size === 0) {
+        localStorage.removeItem("gufa_coupon"); return;
+      }
+
+      // find current base line
+      const bag = window.Cart?.get?.() || {};
+      const baseKey = Object.keys(bag).find(k => String(k).split(":").length < 3);
+      if (!baseKey) return;
+      const baseId = String(baseKey).split(":")[0].toLowerCase();
+
+      // resolve coupon meta by id or by code
+      const want = String(lock.scope.couponId).toLowerCase();
+      let meta = null, cidReal = null;
+
+      for (const [k,m] of window.COUPONS) {
+        if (String(k).toLowerCase() === want) { meta = m; cidReal = k; break; }
+      }
+      if (!meta) {
+        for (const [k,m] of window.COUPONS) {
+          const code = String(m?.code || "").toLowerCase();
+          if (code && code === want) { meta = m; cidReal = k; break; }
+        }
+      }
+      if (!meta) { localStorage.removeItem("gufa_coupon"); return; }
+
+      // require eligibility to include the live base item
+      const testLock = buildLockFromMeta(String(cidReal), meta);
+      const elig = resolveEligibilitySet(testLock);
+      if (!(elig instanceof Set) || !elig.has(baseId)) {
+        localStorage.removeItem("gufa_coupon");
+      }
+    })();
+  } catch {}
+
   // 3) First paint — Apply & FCFS are deterministic now
   render();
 
-    // Normal reactive paints
-   window.addEventListener("cart:update", () => { try { enforceFirstComeLock(); } catch {} render(); }, false);
-    window.addEventListener("serviceMode:changed", render, false);
-    window.addEventListener("storage", (e) => {
-  if (!e) return;
-  if (e.key === "gufa_cart" || e.key === COUPON_KEY || e.key === ADDR_KEY || e.key === "gufa_mode") {
-    render();
-  }
-}, false);
+  // Normal reactive paints
+  window.addEventListener("cart:update", () => { try { enforceFirstComeLock(); } catch {} render(); }, false);
+  window.addEventListener("serviceMode:changed", render, false);
+  window.addEventListener("storage", (e) => {
+    if (!e) return;
+    if (e.key === "gufa_cart" || e.key === COUPON_KEY || e.key === ADDR_KEY || e.key === "gufa_mode") {
+      render();
+    }
+  }, false);
 
-    document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState === "visible") render();
-    }, false);
-    window.addEventListener("pageshow", (ev) => { if (ev && ev.persisted) render(); }, false);
-  }
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") render();
+  }, false);
+  window.addEventListener("pageshow", (ev) => { if (ev && ev.persisted) render(); }, false);
+}
+
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", () => { boot(); }, { once:true });
   } else {
