@@ -754,6 +754,7 @@ function findFirstApplicableCouponForCart(){
 let eligSet = (typeof resolveEligibilitySet === "function") 
   ? resolveEligibilitySet(lock) 
   : new Set();
+
 if (!eligSet || eligSet.size === 0) {
   const metaElig = Array.isArray(meta?.eligibleItemIds) ? meta.eligibleItemIds.map(s=>String(s).toLowerCase()) : [];
   const lockElig = Array.isArray(lock?.scope?.eligibleItemIds) ? lock.scope.eligibleItemIds.map(s=>String(s).toLowerCase()) : [];
