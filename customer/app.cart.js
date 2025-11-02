@@ -1454,13 +1454,25 @@ async function boot(){
 
   // Normal reactive paints
   window.addEventListener("cart:update", () => { try { enforceFirstComeLock(); } catch {} render(); }, false);
-  window.addEventListener("serviceMode:changed", render, false);
+
+  // Mode flips must also re-evaluate lock (targets/minOrder/mode-gates can change)
+  window.addEventListener("serviceMode:changed", () => {
+    try { enforceFirstComeLock(); } catch {}
+    render();
+  }, false);
+
   window.addEventListener("storage", (e) => {
     if (!e) return;
-    if (e.key === "gufa_cart" || e.key === COUPON_KEY || e.key === ADDR_KEY || e.key === "gufa_mode") {
+    if (e.key === "gufa_cart" || e.key === COUPON_KEY || e.key === ADDR_KEY) {
+      render();
+      return;
+    }
+    if (e.key === "gufa_mode") {
+      try { enforceFirstComeLock(); } catch {}
       render();
     }
   }, false);
+
 
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible") render();
