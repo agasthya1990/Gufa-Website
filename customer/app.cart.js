@@ -681,8 +681,22 @@ function resolveEligibilitySet(locked){
     } catch {}
   }
 
+  // NEW: persisted coupon->items index from menu (gufa:COUPON_INDEX)
+  try {
+    const cid = String(scope.couponId || "").toLowerCase();
+    if (cid) {
+      const raw = localStorage.getItem("gufa:COUPON_INDEX");
+      if (raw) {
+        const idx = JSON.parse(raw); // { couponIdLower: [itemIdLower...] }
+        const arr = Array.isArray(idx?.[cid]) ? idx[cid] : [];
+        if (arr.length) return new Set(arr.map(s => String(s).toLowerCase()));
+      }
+    }
+  } catch {}
+
   return new Set();
 }
+
 
 
 // Provenance: did this base line come from the currently locked banner/coupon?
@@ -736,7 +750,7 @@ function findFirstApplicableCouponForCart(){
       lock.source = "auto";
 
 
-// --- SAFETY: resolver → meta/lock fallback → LAST-MILE FCFS fallback
+// --- SAFETY: resolver → meta/lock fallback (no baseId injection for auto)
 let eligSet = (typeof resolveEligibilitySet === "function") 
   ? resolveEligibilitySet(lock) 
   : new Set();
@@ -748,9 +762,8 @@ if (!eligSet || eligSet.size === 0) {
     lock.scope = Object.assign({}, lock.scope, { eligibleItemIds: merged });
     eligSet = new Set(merged);
   } else {
-    // NEW: last-mile fallback — optimistically try the current FCFS baseId
-    lock.scope = Object.assign({}, lock.scope, { eligibleItemIds: [baseId] });
-    eligSet = new Set([baseId]);
+    // strict: leave empty; this coupon is not eligible for this base in auto selection
+    eligSet = new Set();
   }
 }
 
