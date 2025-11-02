@@ -193,12 +193,11 @@ if (!Array.isArray(window.BANNERS)) window.BANNERS = [];
       }
     }
 
-    // If nothing found, leave any prior index intact.
+     // If nothing found, leave any prior index intact.
     const out = Object.fromEntries(Object.entries(idx).map(([k,s]) => [k, Array.from(s)]));
     if (Object.keys(out).length) {
       localStorage.setItem("gufa:COUPON_INDEX", JSON.stringify(out));
-      // Help downstream listeners (cart/menu) re-evaluate promos
-      try { window.dispatchEvent(new CustomEvent("promotions:hydrated")); } catch {}
+      // NOTE: intentionally no broadcast here; prevents re-entry loops
     }
   } catch {}
 })();
