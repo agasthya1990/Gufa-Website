@@ -158,18 +158,6 @@ if (!Array.isArray(window.BANNERS)) window.BANNERS = [];
   } catch {}
 })();
 
-/* —— Guarded broadcast to avoid re-entry storms from the index builder —— */
-(function(){
-  let pending = false;
-  window.__GUFA_PROMOS_NOTIFY = function(){
-    if (pending) return;               // debounce multi-writes in the same frame
-    pending = true;
-    requestAnimationFrame(() => {
-      pending = false;
-      try { window.dispatchEvent(new CustomEvent("promotions:hydrated")); } catch {}
-    });
-  };
-})();
 
 // NEW —— Persist coupon→items index from catalog (codes & ids accepted)
 (function buildAndPersistCouponIndex(){
@@ -208,17 +196,10 @@ if (!Array.isArray(window.BANNERS)) window.BANNERS = [];
 // If nothing found, leave any prior index intact.
 const out = Object.fromEntries(Object.entries(idx).map(([k,s]) => [k, Array.from(s)]));
 if (Object.keys(out).length) {
-  // simple re-entry guard so listeners that re-trigger this builder don't spiral
-  if (window.__IDX_BUILDING) return;
-  window.__IDX_BUILDING = true;
-  try {
-    localStorage.setItem("gufa:COUPON_INDEX", JSON.stringify(out));
-    // debounced, no-reentry broadcast
-    (window.__GUFA_PROMOS_NOTIFY || function(){})();
-  } finally {
-    // release after listeners have a chance to run
-    Promise.resolve().then(() => { window.__IDX_BUILDING = false; });
-  }
+  localStorage.setItem("gufa:COUPON_INDEX", JSON.stringify(out));
+  // Help downstream listeners (cart/menu) re-evaluate promos
+  try { window.dispatchEvent(new CustomEvent("promotions:hydrated")); } catch {}
+ }
 }
 
   } catch {}
