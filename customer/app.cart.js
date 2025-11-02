@@ -469,6 +469,48 @@ async function ensureCouponsReady() {
   const getLock = () => { try { return JSON.parse(localStorage.getItem(COUPON_KEY) || "null"); } catch { return null; } };
   const setLock = (obj) => { try { obj ? localStorage.setItem(COUPON_KEY, JSON.stringify(obj)) : localStorage.removeItem(COUPON_KEY); } catch {} };
 
+  // === STALE LOCK GUARD (NEW) ===
+(function guardStaleCouponLock(){
+  try {
+    const lock = JSON.parse(localStorage.getItem("gufa_coupon") || "null");
+    if (!lock?.scope?.couponId) return;
+
+    // find meta by id or by code
+    const map = (window.COUPONS instanceof Map) ? window.COUPONS : null;
+    if (!map) { localStorage.removeItem("gufa_coupon"); return; }
+
+    const cidLower = String(lock.scope.couponId).toLowerCase();
+    let meta = null, cidReal = null;
+
+    // direct id hit
+    for (const [k, m] of map) {
+      if (String(k).toLowerCase() === cidLower) { meta = m; cidReal = k; break; }
+    }
+    // by code
+    if (!meta) {
+      for (const [k, m] of map) {
+        const code = String(m?.code || "").toLowerCase();
+        if (code && code === cidLower) { meta = m; cidReal = k; break; }
+      }
+    }
+    if (!meta) { localStorage.removeItem("gufa_coupon"); return; }
+
+    // eligibility must include current base
+    const bag = window.Cart?.get?.() || {};
+    const baseKey = Object.keys(bag).find(k => k.split(":").length < 3);
+    if (!baseKey) return;
+    const baseId = baseKey.split(":")[0].toLowerCase();
+
+    const baseLock = (typeof buildLockFromMeta==="function") ? buildLockFromMeta(String(cidReal), meta)
+                     : { scope: { couponId: String(cidReal) } };
+    const elig = (typeof resolveEligibilitySet==="function") ? resolveEligibilitySet(baseLock) : new Set();
+
+    if (!elig.has(baseId)) {
+      localStorage.removeItem("gufa_coupon");
+    }
+  } catch {}
+})();
+
 
   function displayCode(locked){
   try {
@@ -657,7 +699,7 @@ function eligibleIdsFromBanners(scope){
 }
 
 
-  // explicit eligibleItemIds > banner-derived > empty (strict)
+// explicit eligibleItemIds > banner-derived > catalog > LS index (strict)
 function resolveEligibilitySet(locked){
   const scope = locked?.scope || {};
   const explicit = (
@@ -671,7 +713,7 @@ function resolveEligibilitySet(locked){
   const byBanner = eligibleIdsFromBanners(scope);
   if (byBanner.size) return byBanner;
 
-  // NEW: last-mile fallback via product catalog (ITEMS) using couponId
+  // Catalog fallback
   if (typeof computeEligibleItemIdsForCoupon === "function" && scope.couponId) {
     try {
       const via = computeEligibleItemIdsForCoupon(String(scope.couponId));
@@ -681,21 +723,32 @@ function resolveEligibilitySet(locked){
     } catch {}
   }
 
-  // NEW: persisted coupon->items index from menu (gufa:COUPON_INDEX)
+  // NEW: localStorage coupon→items index (supports code or id)
   try {
-    const cid = String(scope.couponId || "").toLowerCase();
-    if (cid) {
-      const raw = localStorage.getItem("gufa:COUPON_INDEX");
-      if (raw) {
-        const idx = JSON.parse(raw); // { couponIdLower: [itemIdLower...] }
-        const arr = Array.isArray(idx?.[cid]) ? idx[cid] : [];
-        if (arr.length) return new Set(arr.map(s => String(s).toLowerCase()));
+    const rawIdx = localStorage.getItem("gufa:COUPON_INDEX");
+    if (rawIdx) {
+      const idx = JSON.parse(rawIdx); // { tokenLower: [itemIdLower...] }
+      let key = String(scope.couponId || "").toLowerCase();
+
+      // Try mapping code -> id if needed
+      if (!idx[key]) {
+        const codesRaw = localStorage.getItem("gufa:COUPON_CODES");
+        if (codesRaw) {
+          const codes = JSON.parse(codesRaw); // { codeLower: idLower }
+          const mapped = codes[key];
+          if (mapped && idx[mapped]) key = mapped;
+        }
+      }
+      const arr = idx[key] || [];
+      if (Array.isArray(arr) && arr.length) {
+        return new Set(arr.map(s => String(s).toLowerCase()));
       }
     }
   } catch {}
 
   return new Set();
 }
+
 
 
 
@@ -750,11 +803,10 @@ function findFirstApplicableCouponForCart(){
       lock.source = "auto";
 
 
-// --- SAFETY: resolver → meta/lock fallback (no baseId injection for auto)
+// --- SAFETY: resolver → meta/lock fallback (strict; no baseId injection)
 let eligSet = (typeof resolveEligibilitySet === "function") 
   ? resolveEligibilitySet(lock) 
   : new Set();
-
 if (!eligSet || eligSet.size === 0) {
   const metaElig = Array.isArray(meta?.eligibleItemIds) ? meta.eligibleItemIds.map(s=>String(s).toLowerCase()) : [];
   const lockElig = Array.isArray(lock?.scope?.eligibleItemIds) ? lock.scope.eligibleItemIds.map(s=>String(s).toLowerCase()) : [];
@@ -763,10 +815,11 @@ if (!eligSet || eligSet.size === 0) {
     lock.scope = Object.assign({}, lock.scope, { eligibleItemIds: merged });
     eligSet = new Set(merged);
   } else {
-    // strict: leave empty; this coupon is not eligible for this base in auto selection
+    // strict: leave empty; coupon not eligible for this base in auto selection
     eligSet = new Set();
   }
 }
+
 
 const hasDirectHit =
   eligSet.has(baseId) ||
