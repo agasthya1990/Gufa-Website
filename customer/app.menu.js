@@ -159,6 +159,49 @@ if (!Array.isArray(window.BANNERS)) window.BANNERS = [];
 })();
 
 
+// NEW —— Persist coupon→items index from catalog (codes & ids accepted)
+(function buildAndPersistCouponIndex(){
+  try {
+    const catalog = (Array.isArray(ITEMS) && ITEMS.length) ? ITEMS : (Array.isArray(window.ITEMS) ? window.ITEMS : []);
+    if (!catalog.length) return;
+
+    // Build { tokenLower -> Set(itemIdLower) }, where token is either a coupon CODE or ID
+    const idx = {}; // token -> Set(itemId)
+    const put = (token, itemId) => {
+      if (!token || !itemId) return;
+      const k = String(token).toLowerCase();
+      const v = String(itemId).toLowerCase();
+      (idx[k] ||= new Set()).add(v);
+    };
+
+    // Walk catalog: accept promotions | coupons | couponIds (any present)
+    for (const it of catalog) {
+      const itemId = it?.id;
+      const ids = Array.isArray(it.promotions) ? it.promotions
+               : Array.isArray(it.coupons)    ? it.coupons
+               : Array.isArray(it.couponIds)  ? it.couponIds
+               : [];
+      for (const raw of ids) {
+        const cid = String(raw);
+        put(cid, itemId);
+        // also index by human code if we can map id->meta with code
+        if (window.COUPONS instanceof Map && window.COUPONS.has(cid)) {
+          const meta = window.COUPONS.get(cid);
+          const code = (meta?.code || "").toString().trim();
+          if (code) put(code, itemId);
+        }
+      }
+    }
+
+    // If nothing found, leave any prior index intact.
+    const out = Object.fromEntries(Object.entries(idx).map(([k,s]) => [k, Array.from(s)]));
+    if (Object.keys(out).length) {
+      localStorage.setItem("gufa:COUPON_INDEX", JSON.stringify(out));
+      // Help downstream listeners (cart/menu) re-evaluate promos
+      try { window.dispatchEvent(new CustomEvent("promotions:hydrated")); } catch {}
+    }
+  } catch {}
+})();
 
 
 
