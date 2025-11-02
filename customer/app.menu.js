@@ -1,5 +1,4 @@
 // app.menu.js — align menu cards with the real Cart store and folder paths (no UI changes)
-
 // Cart store is now always pre-loaded via index.html (before this script),
 // so no dynamic injection needed — just verify readiness.
 (function ensureCartReady(){
@@ -133,16 +132,58 @@ function updateAllMiniCartBadges(){
 if (!(window.COUPONS instanceof Map)) window.COUPONS = new Map();
 if (!Array.isArray(window.BANNERS)) window.BANNERS = [];
 
+
 // —— Persist a lightweight coupons snapshot for checkout hydration ——//
 
 (function persistCouponsSnapshot(){
   try {
-    // Store only when we actually have some coupons
     if (window.COUPONS instanceof Map && window.COUPONS.size > 0) {
       const dump = Array.from(window.COUPONS.entries());
       localStorage.setItem("gufa:COUPONS", JSON.stringify(dump));
     }
   } catch {}
+})();
+
+/* NEW: Persist coupon → [itemIds] index for the cart (FCFS eligibility) */
+(function persistCouponIndexThrottled(){
+  let last = 0;
+  function buildAndPersist(){
+    try {
+      const now = Date.now();
+      if (now - last < 250) return;  // throttle
+      last = now;
+
+      const items = (typeof window.ITEMS !== "undefined" && Array.isArray(window.ITEMS)) ? window.ITEMS : [];
+      if (!items.length) return; // wait until catalog is ready
+
+      const idx = {}; // couponIdLower -> [itemIdLower]
+      for (const it of items){
+        const itemId = String(it.id || "").toLowerCase();
+        if (!itemId) continue;
+
+        const raw = Array.isArray(it.couponIds) ? it.couponIds
+                  : Array.isArray(it.coupons)   ? it.coupons
+                  : Array.isArray(it.promotions)? it.promotions
+                  : [];
+        for (const c of raw){
+          const cid = String(c || "").trim().toLowerCase();
+          if (!cid) continue;
+          (idx[cid] ||= []).push(itemId);
+        }
+      }
+      if (Object.keys(idx).length){
+        localStorage.setItem("gufa:COUPON_INDEX", JSON.stringify(idx));
+        // help cart recompute immediately after first write
+        window.dispatchEvent(new CustomEvent("promotions:hydrated"));
+        window.dispatchEvent(new CustomEvent("cart:update"));
+      }
+    } catch {}
+  }
+
+  // Try soon and also on relevant signals
+  setTimeout(buildAndPersist, 200);
+  document.addEventListener("cart:update", buildAndPersist);
+  window.addEventListener("promotions:hydrated", buildAndPersist);
 })();
 
 
