@@ -200,8 +200,6 @@ if (Object.keys(out).length) {
   // Help downstream listeners (cart/menu) re-evaluate promos
   try { window.dispatchEvent(new CustomEvent("promotions:hydrated")); } catch {}
  }
-}
-
   } catch {}
 })();
 
