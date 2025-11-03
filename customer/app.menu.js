@@ -583,45 +583,49 @@ function updateCartLink(){
 
  
 
-  function updateItemMiniCartBadge(itemId, rock=false){
-    const btn = document.querySelector(`.menu-item[data-id="${itemId}"] .mini-cart-btn`);
-    if (!btn) return;
-  // include all cart entries starting with this itemId (covers add-ons)
-const bag = window?.Cart?.get?.() || {};
-let q = 0;
-for (const [k, entry] of Object.entries(bag)) {
-  if (k.startsWith(itemId + ":")) q += Number(entry?.qty || 0);
+  // Helper aligns with header's total
+function __globalCartTotal__(){
+  try {
+    const bag = window?.Cart?.get?.() || JSON.parse(localStorage.getItem("gufa_cart") || "{}");
+    return Object.values(bag).reduce((sum, it) => sum + (Number(it?.qty || 0) || 0), 0);
+  } catch { return 0; }
 }
 
-// fallback: if cart not updated yet, use DOM steppers to show immediate feedback
-if (q === 0) {
-  const nodes = document.querySelectorAll(`.stepper[data-item="${itemId}"] .qty .num`);
-  q = Array.from(nodes).reduce((a,el)=> a + (parseInt(el.textContent||"0",10)||0), 0);
+function updateItemMiniCartBadge(itemId, rock=false){
+  const btn = document.querySelector(`.menu-item[data-id="${itemId}"] .mini-cart-btn`);
+  if (!btn) return;
+
+  const total = __globalCartTotal__();
+
+  btn.classList.toggle("active", total > 0);
+
+  let badge = btn.querySelector(".badge");
+  if (total > 0) {
+    if (!badge) {
+      badge = document.createElement("span");
+      badge.className = "badge";
+      btn.appendChild(badge);
+    }
+    badge.textContent = String(total);
+
+    if (rock) {
+      btn.classList.remove("rock");
+      void btn.offsetWidth;
+      btn.classList.add("rock");
+      setTimeout(() => btn.classList.remove("rock"), 350);
+    }
+  } else {
+    if (badge) badge.remove();
+  }
 }
 
-btn.classList.toggle("active", q>0);
-let b = btn.querySelector(".badge");
-if (q>0){
-  if (!b){ b = document.createElement("span"); b.className = "badge"; btn.appendChild(b); }
-  const prev = Number(b.textContent||"0");
-  b.textContent = String(q);
-  if (rock){
-    btn.classList.remove("rock");
-    void btn.offsetWidth; // reflow
-    btn.classList.add("rock");
-    setTimeout(()=>btn.classList.remove("rock"), 350);
-  }
-} else {
-  if (b) b.remove();
- }
-}  
-  function updateAllMiniCartBadges(){
-    document.querySelectorAll(".menu-item").forEach(card=>{
-      const id = card.getAttribute("data-id");
-      updateItemMiniCartBadge(id);
-    });
-  }
-
+function updateAllMiniCartBadges(){
+  document.querySelectorAll(".menu-item[data-id]").forEach(card => {
+    const id = card.getAttribute("data-id");
+    updateItemMiniCartBadge(id);
+  });
+}
+  
 function setQty(found, variantKey, price, nextQty) {
   const key  = `${found.id}:${variantKey}`;
   const next = Math.max(0, Number(nextQty || 0));
