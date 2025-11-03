@@ -4,8 +4,13 @@
 
 // === Live Mode & Coupon Sync for Cart (cross-tab safe) ===
 (function cartLiveModeSync(){
-  const readMode = () => (localStorage.getItem("gufa_mode") || "delivery").toLowerCase();
-
+  const readMode = () => {
+    const ms = (localStorage.getItem("gufa:serviceMode") || "").toLowerCase();
+    const m  = (localStorage.getItem("gufa_mode")       || "").toLowerCase();
+    return (ms === "dining" || ms === "delivery") ? ms
+         : (m  === "dining" || m  === "delivery") ? m
+         : "delivery";
+  };
   function clearIncompatibleLockIfNeeded(mode){
     try {
       const lock = JSON.parse(localStorage.getItem("gufa_coupon") || "null");
@@ -41,6 +46,11 @@
   
 function onFlip(reason){
   const mode = readMode();
+
+  // Keep keys in lockstep to avoid split-brain during cross-tab writes
+  try { localStorage.setItem("gufa_mode", mode); } catch {}
+  try { localStorage.setItem("gufa:serviceMode", mode); } catch {}
+
   clearIncompatibleLockIfNeeded(mode);
 
   // Repaint immediately (prefer render(), fall back to renderCart())
@@ -49,9 +59,9 @@ function onFlip(reason){
     else { window.renderCart?.(); }
   } catch {}
 
-  // Continue broadcasting so totals/snapshots stay in sync
   window.dispatchEvent(new CustomEvent("cart:update", { detail: { reason } }));
 }
+
 
 
   // Same-tab custom events (Menu broadcasts both)
