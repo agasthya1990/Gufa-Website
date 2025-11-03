@@ -238,17 +238,44 @@ window.addEventListener("cart:update", () => {
 // Cross-tab sync for Menu (badges/link + mode mirrors)
 window.addEventListener("storage", (e) => {
   try {
-    if (e.key === "gufa_cart") {
-      // another tab changed the cart — refresh badges/link
-      updateAllMiniCartBadges();
-      updateCartLink();
-    }
+if (e.key === "gufa_cart") {
+  // another tab changed the cart — refresh badges/link + steppers
+  try {
+    updateAllMiniCartBadges();
+    updateCartLink();
+
+    const bag = JSON.parse(localStorage.getItem("gufa_cart") || "{}");
+    document.querySelectorAll(".stepper[data-item]").forEach(stepper => {
+      const itemId = stepper.getAttribute("data-item");
+      const total = Object.entries(bag)
+        .filter(([k]) => k.startsWith(itemId + ":"))
+        .reduce((a,[,v]) => a + (Number(v?.qty || 0)), 0);
+      const num = stepper.querySelector(".qty .num");
+      if (num) num.textContent = String(total || 0);
+    });
+  } catch (err) {
+    console.warn("[menu] cross-tab cart sync failed", err);
+  }
+}
+
     if (e.key === "gufa_mode" || e.key === "gufa:serviceMode") {
       // mirror + re-decorate deals/badges for new mode
       const m = getActiveMode();
       // rebroadcast locally so current tab behaves like the flipper tab
-      window.dispatchEvent(new CustomEvent("mode:change",         { detail:{ mode:m }}));
-      window.dispatchEvent(new CustomEvent("serviceMode:changed", { detail:{ mode:m }}));
+window.dispatchEvent(new CustomEvent("mode:change",         { detail:{ mode:m }}));
+window.dispatchEvent(new CustomEvent("serviceMode:changed", { detail:{ mode:m }}));
+
+// ensure UI toggle reflects latest mode
+try {
+  const toggle = document.querySelector("#serviceModeToggle, .mode-toggle, [data-mode-switch]");
+  if (toggle) {
+    toggle.classList.toggle("active", m === "dining");
+    if ("checked" in toggle) toggle.checked = (m === "dining");
+  }
+} catch (err) {
+  console.warn("[menu] mode toggle sync failed", err);
+}
+
     }
     if (e.key === "gufa_coupon") {
       // coupon lock changed elsewhere; re-decorate banner badges if relevant
