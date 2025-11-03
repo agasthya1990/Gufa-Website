@@ -196,10 +196,22 @@ if (!Array.isArray(window.BANNERS)) window.BANNERS = [];
 // If nothing found, leave any prior index intact.
 const out = Object.fromEntries(Object.entries(idx).map(([k,s]) => [k, Array.from(s)]));
 if (Object.keys(out).length) {
-  localStorage.setItem("gufa:COUPON_INDEX", JSON.stringify(out));
-  // Help downstream listeners (cart/menu) re-evaluate promos
-  try { window.dispatchEvent(new CustomEvent("promotions:hydrated")); } catch {}
- }
+  // Re-entry guard + single-tick debounce for broadcast
+  if (window.__IDX_BUILDING) return;
+  window.__IDX_BUILDING = true;
+  try {
+    localStorage.setItem("gufa:COUPON_INDEX", JSON.stringify(out));
+    // Defer notify to next frame; coalesce multiple writes into one event
+    cancelAnimationFrame(window.__IDX_NOTIFY_RAF || 0);
+    window.__IDX_NOTIFY_RAF = requestAnimationFrame(() => {
+      try { window.dispatchEvent(new CustomEvent("promotions:hydrated")); } catch {}
+    });
+  } finally {
+    // release guard on microtask so any sync listeners finish first
+    Promise.resolve().then(() => { window.__IDX_BUILDING = false; });
+  }
+}
+
   } catch {}
 })();
 
@@ -209,18 +221,20 @@ if (Object.keys(out).length) {
 let lastCartUpdate = 0;
 window.addEventListener("cart:update", () => {
   const now = Date.now();
-  if (now - lastCartUpdate < 80) return; // ignore quick duplicates
+  if (now - lastCartUpdate < 80) return;
   lastCartUpdate = now;
 
+  // ⚠️ IMPORTANT: Never call buildAndPersistCouponIndex() here.
+  // This handler is UI-only to avoid loops with the builder’s broadcast.
   updateAllMiniCartBadges();
   updateCartLink();
 
-  // Keep Add-ons button state in sync with cart
   document.querySelectorAll(".menu-item[data-id]").forEach(el => {
     const itemId = el.getAttribute("data-id");
     updateAddonsButtonState(itemId);
   });
 });
+
 
 (function () {
   const $  = (s, r=document) => r.querySelector(s);
