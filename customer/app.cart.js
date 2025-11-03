@@ -44,12 +44,22 @@
 })();
 
   
+let __CART_MODE_APPLYING__ = false;
 function onFlip(reason){
+  if (__CART_MODE_APPLYING__) return;
+  __CART_MODE_APPLYING__ = true;
+
   const mode = readMode();
 
   // Keep keys in lockstep to avoid split-brain during cross-tab writes
   try { localStorage.setItem("gufa_mode", mode); } catch {}
   try { localStorage.setItem("gufa:serviceMode", mode); } catch {}
+
+  // Rebroadcast locally so Cart-only listeners repaint symmetrically
+  try {
+    window.dispatchEvent(new CustomEvent("mode:change",         { detail:{ mode } }));
+    window.dispatchEvent(new CustomEvent("serviceMode:changed", { detail:{ mode } }));
+  } catch {}
 
   clearIncompatibleLockIfNeeded(mode);
 
@@ -60,6 +70,8 @@ function onFlip(reason){
   } catch {}
 
   window.dispatchEvent(new CustomEvent("cart:update", { detail: { reason } }));
+
+  __CART_MODE_APPLYING__ = false;
 }
 
 
