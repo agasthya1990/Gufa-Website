@@ -56,20 +56,36 @@ function updateAddonsButtonState(itemId){
   const btn = card.querySelector(".addons-btn");
   if (!btn) return;
 
-  const any = selectedVariantsForItem(itemId).length > 0;
+  // Read from the real Cart store so cross-tab removals are reflected
+  const bag = (window?.Cart?.get?.() || {});
 
-  // Gold pill stays always; glow/shimmer only when usable
-  btn.classList.toggle("gold", true);      // always show gold pill
-  btn.classList.toggle("glow", any);
-  btn.classList.toggle("shimmer", any);
+  // Base present?  (keys like "item:variant", i.e., exactly 2 segments)
+  let hasBase = false;
+  // Any add-ons present? (keys like "item:variant:addon", 3+ segments)
+  let hasAddons = false;
 
-  // Accessibility + cleanup when unusable
-  btn.setAttribute("aria-disabled", String(!any));
-  if (!any) {
-    btn.classList.remove("rock", "pulse"); // kill any lingering animations
+  for (const [k, it] of Object.entries(bag)) {
+    if (!k.startsWith(itemId + ":")) continue;
+    const parts = k.split(":");
+    const q = Number(it?.qty || 0) > 0;
+    if (q && parts.length === 2) hasBase = true;
+    if (q && parts.length >= 3) hasAddons = true;
+    if (hasBase && hasAddons) break;
+  }
+
+  // Gold pill is always visible; glow/shimmer only when add-ons exist
+  btn.classList.add("gold"); // persistent style
+  btn.classList.toggle("glow",    hasAddons);
+  btn.classList.toggle("shimmer", hasAddons);
+
+  // Accessibility: clickable if base exists; otherwise dimmed (no animations)
+  btn.setAttribute("aria-disabled", String(!hasBase));
+  if (!hasBase || !hasAddons) {
+    btn.classList.remove("rock", "pulse");
     btn.setAttribute("aria-expanded", "false");
   }
 }
+
 
 
 
