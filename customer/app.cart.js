@@ -331,8 +331,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
   /* ===================== Mode ===================== */
 function activeMode(){
-  const m = String(localStorage.getItem("gufa_mode") || "delivery").toLowerCase();
-  return m === "dining" ? "dining" : "delivery";
+  const ms = (localStorage.getItem("gufa:serviceMode") || "").toLowerCase();
+  const m  = (localStorage.getItem("gufa_mode")       || "").toLowerCase();
+  if (ms === "dining" || ms === "delivery") return ms;
+  if (m  === "dining" || m  === "delivery") return m;
+  return "delivery";
 }
 
 
