@@ -594,27 +594,43 @@ async function ensureCouponsReady() {
   const setLock = (obj) => { try { obj ? localStorage.setItem(COUPON_KEY, JSON.stringify(obj)) : localStorage.removeItem(COUPON_KEY); } catch {} };
 
   // === STALE LOCK GUARD (NEW) ===
-(function guardStaleCouponLockBannerOnly(){
+(function guardStaleCouponLock(){
   try {
     const lock = JSON.parse(localStorage.getItem("gufa_coupon") || "null");
     if (!lock?.scope?.couponId) return;
 
-    const elig = (typeof resolveEligibilitySet === "function")
-      ? resolveEligibilitySet(lock) : new Set();
+    // find meta by id or by code
+    const map = (window.COUPONS instanceof Map) ? window.COUPONS : null;
+    if (!map) { localStorage.removeItem("gufa_coupon"); return; }
 
+    const cidLower = String(lock.scope.couponId).toLowerCase();
+    let meta = null, cidReal = null;
+
+    // direct id hit
+    for (const [k, m] of map) {
+      if (String(k).toLowerCase() === cidLower) { meta = m; cidReal = k; break; }
+    }
+    // by code
+    if (!meta) {
+      for (const [k, m] of map) {
+        const code = String(m?.code || "").toLowerCase();
+        if (code && code === cidLower) { meta = m; cidReal = k; break; }
+      }
+    }
+    if (!meta) { localStorage.removeItem("gufa_coupon"); return; }
+
+    // eligibility must include current base
     const bag = window.Cart?.get?.() || {};
-    const baseKeys = Object.keys(bag).filter(k => k.split(":").length < 3);
+    const baseKey = Object.keys(bag).find(k => k.split(":").length < 3);
+    if (!baseKey) return;
+    const baseId = baseKey.split(":")[0].toLowerCase();
 
-    const bannerEligiblePresent = baseKeys.some(k => {
-      const baseId = k.split(":")[0].toLowerCase();
-      const origin = String(bag[k]?.origin || "");
-      return elig.has(baseId) && origin.startsWith("banner:");
-    });
+    const baseLock = (typeof buildLockFromMeta==="function") ? buildLockFromMeta(String(cidReal), meta)
+                     : { scope: { couponId: String(cidReal) } };
+    const elig = (typeof resolveEligibilitySet==="function") ? resolveEligibilitySet(baseLock) : new Set();
 
-    if (!bannerEligiblePresent) {
+    if (!elig.has(baseId)) {
       localStorage.removeItem("gufa_coupon");
-      // let FCFS try again (it will respect banner-first now)
-      window.dispatchEvent(new CustomEvent("cart:update", { detail: { reason: "stale-lock-cleared" }}));
     }
   } catch {}
 })();
