@@ -104,75 +104,41 @@ function updateCartLink(){
 
 
 
-// ===== Mini-cart Badge =====
-// Global cart total (header-compatible)
-function getGlobalCartTotal(){
-  try {
-    const bag = window?.Cart?.get?.() || JSON.parse(localStorage.getItem("gufa_cart") || "{}");
-    return Object.values(bag).reduce((a, it) => a + (Number(it?.qty || 0) || 0), 0);
-  } catch { return 0; }
-}
 
-// Backward-compatible API: keep signature but paint GLOBAL total on this card's button
+// ===== Mini-cart Badge =====
 function updateItemMiniCartBadge(itemId, rock=false){
   const card = document.querySelector(`.menu-item[data-id="${itemId}"]`);
   if (!card) return;
   const btn = card.querySelector(".mini-cart-btn");
   if (!btn) return;
 
-  const total = getGlobalCartTotal();
+  const qty = sumQtyByPrefix(`${itemId}:`);
+  let badge = btn.querySelector(".badge");
+  if (!badge) {
+    badge = document.createElement("span");
+    badge.className = "badge";
+    btn.appendChild(badge);
+  }
 
-  const nuke = () => {
-    btn.classList.remove("active", "rock");
-    btn.querySelectorAll(".badge").forEach(n => n.remove());
-  };
-
-  if (total > 0) {
-    let badge = btn.querySelector(".badge");
-    if (!badge) {
-      badge = document.createElement("span");
-      badge.className = "badge";
-      btn.appendChild(badge);
-    }
-    badge.textContent = String(total);
+  if (qty > 0) {
+    badge.textContent = String(qty);
     btn.classList.add("active");
     if (rock) {
-      btn.classList.remove("rock"); // re-trigger micro animation on the card you touched
-      void btn.offsetWidth;
       btn.classList.add("rock");
       setTimeout(() => btn.classList.remove("rock"), 300);
     }
   } else {
-    nuke();
+    badge.textContent = "";
+    btn.classList.remove("active");
   }
 }
 
-
 function updateAllMiniCartBadges(){
-  const total = getGlobalCartTotal();
-  const cards = document.querySelectorAll(".menu-item[data-id]");
-  cards.forEach(card => {
-    const btn = card.querySelector(".mini-cart-btn");
-    if (!btn) return;
-
-    // Ensure consistent paint on every card
-    btn.classList.toggle("active", total > 0);
-
-    let badge = btn.querySelector(".badge");
-    if (total > 0) {
-      if (!badge) {
-        badge = document.createElement("span");
-        badge.className = "badge";
-        btn.appendChild(badge);
-      }
-      badge.textContent = String(total);
-    } else {
-      if (badge) badge.remove();
-      btn.classList.remove("rock");
-    }
+  document.querySelectorAll(".menu-item[data-id]").forEach(el => {
+    const id = el.getAttribute("data-id");
+    updateItemMiniCartBadge(id);
   });
 }
-
 
 // Keep coupons & banners available to cart and locker
 if (!(window.COUPONS instanceof Map)) window.COUPONS = new Map();
