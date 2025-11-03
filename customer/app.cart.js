@@ -2,6 +2,42 @@
 // Add-on steppers + auto-prune, Promo totals row, and Delivery Address form.
 // Refactor-friendly: clear seams for minOrder & usageLimit coming from Admin/promotions.js.
 
+// === Live Mode & Coupon Sync for Cart (cross-tab safe) ===
+(function cartLiveModeSync(){
+  const readMode = () => (localStorage.getItem("gufa_mode") || "delivery").toLowerCase();
+
+  function clearIncompatibleLockIfNeeded(mode){
+    try {
+      const lock = JSON.parse(localStorage.getItem("gufa_coupon") || "null");
+      if (lock && lock.valid && lock.valid[mode] === false) {
+        localStorage.removeItem("gufa_coupon");
+      }
+    } catch {}
+  }
+
+  function onFlip(reason){
+    const mode = readMode();
+    clearIncompatibleLockIfNeeded(mode);
+
+    // Let your existing cart UI react in one place
+    try { window.renderCart?.(); } catch {}
+    window.dispatchEvent(new CustomEvent("cart:update", { detail: { reason } }));
+  }
+
+  // Same-tab custom events (Menu broadcasts both)
+  window.addEventListener("mode:change",          () => onFlip("mode:change"));
+  window.addEventListener("serviceMode:changed",  () => onFlip("serviceMode:changed"));
+
+  // Cross-tab/localStorage changes
+  window.addEventListener("storage", (e) => {
+    const keys = new Set([
+      "gufa_mode", "gufa:serviceMode",
+      "gufa:COUPONS", "gufa:COUPON_CODES", "gufa:COUPON_INDEX"
+    ]);
+    if (keys.has(e.key)) onFlip("storage:"+e.key);
+  });
+})();
+
 let lastSnapshotAt = 0;
 function persistCartSnapshotThrottled() {
   const now = Date.now();
