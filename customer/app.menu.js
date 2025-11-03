@@ -58,18 +58,19 @@ function updateAddonsButtonState(itemId){
 
   const any = selectedVariantsForItem(itemId).length > 0;
 
-  // A11y + visual state
-  btn.setAttribute("aria-disabled", String(!any));
-  btn.classList.toggle("glow",   any);
+  // Gold pill stays always; glow/shimmer only when usable
+  btn.classList.toggle("gold", true);      // always show gold pill
+  btn.classList.toggle("glow", any);
   btn.classList.toggle("shimmer", any);
-  btn.classList.toggle("gold",    any);  // ← was always 'true' before (bug)
 
-  // If nothing selected, make sure no lingering animation classes remain
+  // Accessibility + cleanup when unusable
+  btn.setAttribute("aria-disabled", String(!any));
   if (!any) {
-    btn.classList.remove("rock");     // in case a previous pulse/rock was applied
-    btn.setAttribute("aria-expanded","false");
+    btn.classList.remove("rock", "pulse"); // kill any lingering animations
+    btn.setAttribute("aria-expanded", "false");
   }
 }
+
 
 
 // --- Initialize popover quantities from Cart for the chosen variant ---
