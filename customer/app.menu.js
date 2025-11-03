@@ -55,13 +55,22 @@ function updateAddonsButtonState(itemId){
   if (!card) return;
   const btn = card.querySelector(".addons-btn");
   if (!btn) return;
+
   const any = selectedVariantsForItem(itemId).length > 0;
+
+  // A11y + visual state
   btn.setAttribute("aria-disabled", String(!any));
-  btn.classList.toggle("glow", any);
+  btn.classList.toggle("glow",   any);
   btn.classList.toggle("shimmer", any);
-  // Highlight only when usable
-  btn.classList.toggle("gold", true);
+  btn.classList.toggle("gold",    any);  // ← was always 'true' before (bug)
+
+  // If nothing selected, make sure no lingering animation classes remain
+  if (!any) {
+    btn.classList.remove("rock");     // in case a previous pulse/rock was applied
+    btn.setAttribute("aria-expanded","false");
+  }
 }
+
 
 // --- Initialize popover quantities from Cart for the chosen variant ---
 function primeAddonQuantities(pop, itemId, variantKey){
@@ -251,26 +260,42 @@ if (e.key === "gufa_cart") {
     updateAllMiniCartBadges();
     updateCartLink();
 
-    const bag = JSON.parse(localStorage.getItem("gufa_cart") || "{}");
-    document.querySelectorAll(".stepper[data-item]").forEach(stepper => {
-      const itemId = stepper.getAttribute("data-item");
-      const total = Object.entries(bag)
-        .filter(([k]) => k.startsWith(itemId + ":"))
-        .reduce((a,[,v]) => a + (Number(v?.qty || 0)), 0);
+const bag = JSON.parse(localStorage.getItem("gufa_cart") || "{}");
+document.querySelectorAll(".stepper[data-item]").forEach(stepper => {
+  const itemId = stepper.getAttribute("data-item");
+  const total = Object.entries(bag)
+    .filter(([k]) => k.startsWith(itemId + ":"))
+    .reduce((a,[,v]) => a + (Number(v?.qty || 0)), 0);
 
-      // write the stepper number
-      const num = stepper.querySelector(".qty .num");
-      if (num) num.textContent = String(total || 0);
+  // write the stepper number
+  const num = stepper.querySelector(".qty .num");
+  if (num) num.textContent = String(total || 0);
 
-      // sanitize the mini-cart button for this card as well
-      if (total <= 0) {
-        const btn = document.querySelector(`.menu-item[data-id="${itemId}"] .mini-cart-btn`);
-        if (btn) {
-          btn.classList.remove("active", "rock");
-          btn.querySelectorAll(".badge").forEach(n => n.remove());
-        }
-      }
-    });
+  // update Add-ons button enable/disable + animations
+  try { updateAddonsButtonState(itemId); } catch {}
+
+  // sanitize the mini-cart button for this card as well
+  if (total <= 0) {
+    const card = document.querySelector(`.menu-item[data-id="${itemId}"]`);
+    const btn  = card?.querySelector(".mini-cart-btn");
+    if (btn) {
+      btn.classList.remove("active", "rock");
+      btn.querySelectorAll(".badge").forEach(n => n.remove());
+    }
+
+    // if an Add-ons popover is open for this card, close it to stop shimmer/pulse
+    const pop = card?.querySelector(".addons-popover[aria-hidden='false']");
+    const ab  = card?.querySelector(".addons-btn");
+    if (pop) {
+      if (document.activeElement && pop.contains(document.activeElement)) document.activeElement.blur();
+      pop.setAttribute("aria-hidden","true");
+      pop.hidden = true;
+      pop._stage = undefined;                // clear staged deltas
+      if (ab) ab.setAttribute("aria-expanded","false");
+    }
+  }
+});
+
   } catch (err) {
     console.warn("[menu] cross-tab cart sync failed", err);
   }
