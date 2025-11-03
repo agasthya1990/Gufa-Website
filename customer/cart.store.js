@@ -26,35 +26,40 @@
   }
 
   // ---- public API ----
+  
   const API = {
     // Returns flat object: { "itemId:variant[:addon]": {id,name,variant,price,thumb,qty} }
     get() { return readBag(); },
 
-  // qty: number (0 removes). meta: {id,name,variant,price,thumb}
-setQty(key, qty, meta) {
-  const bag = readBag();
-  const next = Math.max(0, Number(qty) || 0);
+    // Write a single line; qty=0 removes the line
+    // meta may include: { id, name, variant, price, thumb, origin }
+    setQty(key, qty, meta) {
+      const bag  = readBag();
+      const next = Math.max(0, Number(qty) || 0);
 
-  if (next <= 0) {
-    delete bag[key];
-    writeBag(bag);
-    return;
-  }
+      if (next <= 0) {
+        delete bag[key];
+        writeBag(bag);
+        return;
+      }
 
-  const prev = bag[key] || {};
-  bag[key] = {
-    id:       meta?.id       ?? prev.id       ?? "",
-    name:     meta?.name     ?? prev.name     ?? "",
-    variant:  meta?.variant  ?? prev.variant  ?? "",
-    price:    Number(meta?.price ?? prev.price ?? 0),
-    thumb:    meta?.thumb    ?? prev.thumb    ?? "",
-    qty:      next,
-    // NEW: persist provenance if provided; keep existing if already set
-    origin:   (meta?.origin ?? prev.origin ?? "")
-  };
+      const prev = bag[key] || {};
+      bag[key] = {
+        id:      meta?.id      ?? prev.id      ?? "",
+        name:    meta?.name    ?? prev.name    ?? "",
+        variant: meta?.variant ?? prev.variant ?? "",
+        price:   Number(meta?.price ?? prev.price ?? 0),
+        thumb:   meta?.thumb   ?? prev.thumb   ?? "",
+        qty:     next,
+        // persist provenance if provided; keep existing if already set
+        origin:  (meta?.origin ?? prev.origin ?? "")
+      };
 
+      writeBag(bag);
+    },
 
     clear() { writeBag({}); },
+
 
     count() {
       const bag = readBag();
