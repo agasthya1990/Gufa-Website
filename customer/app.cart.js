@@ -108,18 +108,19 @@ window.addEventListener("cart:update", persistCartSnapshotThrottled);
   try { localStorage.setItem("gufa:serviceMode", modeNow); } catch {}
 
   // When Menu flips the mode, Cart re-evaluates discount lock + render
-  window.addEventListener("serviceMode:changed", () => {
-    const m = readMode();
-    try { localStorage.setItem("gufa_mode", m); } catch {}
-    // If your FCFS helper exists, re-pick; else just re-render.
-    try {
-      if (typeof findFirstApplicableCouponForCart === "function") {
-        const pick = findFirstApplicableCouponForCart();
-        if (pick) localStorage.setItem("gufa_coupon", JSON.stringify(pick));
-      }
-    } catch {}
-    document.dispatchEvent(new CustomEvent("cart:update", { detail: { source: "mode-change" }}));
-  });
+window.addEventListener("serviceMode:changed", () => {
+  const m = readMode();
+  try { localStorage.setItem("gufa_mode", m); } catch {}
+  // If your FCFS helper exists, re-pick; else just re-render.
+  try {
+    if (typeof findFirstApplicableCouponForCart === "function") {
+      const pick = findFirstApplicableCouponForCart();
+      if (pick) localStorage.setItem("gufa_coupon", JSON.stringify(pick));
+    }
+  } catch {}
+  // Emit on window so all cart:update listeners respond immediately
+  window.dispatchEvent(new CustomEvent("cart:update", { detail: { source: "mode-change" }}));
+});
 })();
 
 
