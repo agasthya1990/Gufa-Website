@@ -15,6 +15,30 @@
     } catch {}
   }
 
+// --- Extra safety: when the tab wakes up, reconcile mode and repaint ---
+(function cartFocusVisibilityReconcile(){
+  let __lastMode__ = (localStorage.getItem("gufa:serviceMode") || localStorage.getItem("gufa_mode") || "delivery").toLowerCase();
+
+  function checkAndFlip(reason){
+    const m = (localStorage.getItem("gufa:serviceMode") || localStorage.getItem("gufa_mode") || "delivery").toLowerCase();
+    if (m !== __lastMode__) {
+      __lastMode__ = m;
+      // piggyback the existing renderer path
+      try {
+        if (typeof render === "function") render();
+        else window.renderCart?.();
+      } catch {}
+      window.dispatchEvent(new CustomEvent("cart:update", { detail: { reason: "tab-"+reason }}));
+    }
+  }
+
+  window.addEventListener("focus",          () => checkAndFlip("focus"));
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") checkAndFlip("visible");
+  });
+})();
+
+  
 function onFlip(reason){
   const mode = readMode();
   clearIncompatibleLockIfNeeded(mode);
