@@ -30,11 +30,13 @@
 
   // Cross-tab/localStorage changes
   window.addEventListener("storage", (e) => {
-    const keys = new Set([
-      "gufa_mode", "gufa:serviceMode",
-      "gufa:COUPONS", "gufa:COUPON_CODES", "gufa:COUPON_INDEX"
-    ]);
-    if (keys.has(e.key)) onFlip("storage:"+e.key);
+const keys = new Set([
+  "gufa_mode", "gufa:serviceMode",
+  "gufa_cart",            // NEW: cross-tab cart contents
+  "gufa_coupon",          // NEW: FCFS lock changes
+  "gufa:COUPONS", "gufa:COUPON_CODES", "gufa:COUPON_INDEX"
+]);
+if (keys.has(e.key)) onFlip("storage:"+e.key);
   });
 })();
 
