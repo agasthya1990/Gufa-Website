@@ -645,11 +645,6 @@ function setQty(found, variantKey, price, nextQty) {
   // 1️⃣ Live Cart update
   try {
     if (window.Cart && typeof window.Cart.setQty === "function") {
-// infer origin: prefer a specific banner id on the card if present
-const card = document.querySelector(`.menu-item[data-id="${found.id}"]`);
-const bannerId = card?.getAttribute("data-banner-id") || card?.dataset?.bannerId || "";
-const origin = bannerId ? `banner:${bannerId}` : "non-banner";
-
 window.Cart.setQty(key, next, {
   id: found.id, name: found.name, variant: variantKey, price: Number(price) || 0,
   origin
@@ -683,10 +678,8 @@ bag[key] = {
   variant: variantKey,
   price: Number(price) || Number(prev.price) || 0,
   thumb: prev.thumb || "",
-  qty: next,
-  origin: prev.origin || origin || "non-banner"
-};
-  
+  qty: next
+ }; 
 }
 
 
