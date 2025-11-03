@@ -1895,6 +1895,8 @@ function persistCouponCodes(){
 
 // Build coupon → [itemIds] index from the live catalog/cards and write gufa:COUPON_INDEX
 function buildAndPersistCouponIndex(){
+  if (window.__IDX_BUILDING) return;
+  window.__IDX_BUILDING = true;
   try {
     // Prefer a real catalog if present
     const ITEMS = Array.isArray(window.ITEMS) ? window.ITEMS : null;
@@ -1954,7 +1956,10 @@ function buildAndPersistCouponIndex(){
       window.dispatchEvent(new CustomEvent("promotions:hydrated"));
       window.dispatchEvent(new CustomEvent("cart:update"));
     }
-  } catch {}
+  } catch {}finally {
+    // release after sync listeners run, so nested handlers still see the guard
+    Promise.resolve().then(() => { window.__IDX_BUILDING = false; });
+  }
 }
 
 /* ---------- Boot ---------- */
@@ -1973,15 +1978,10 @@ document.addEventListener("DOMContentLoaded", boot);
 
 
 
-// Service mode change → keep Menu & global mirrors in lockstep with Cart
 window.addEventListener("serviceMode:changed", () => {
   try {
     if (typeof BANNERS !== "undefined") { window.BANNERS = BANNERS; }
-
-    if (typeof view !== "undefined" ? view === "home" : true) {
-      renderDeals?.();
-    }
-
+    if (typeof view !== "undefined" ? view === "home" : true) { renderDeals?.(); }
     if (typeof view !== "undefined" && view === "list" &&
         typeof listKind !== "undefined" && listKind === "banner") {
       renderContentView?.();
@@ -1989,10 +1989,13 @@ window.addEventListener("serviceMode:changed", () => {
     }
 
     // NEW: promo artifacts may differ by mode
-    persistCouponCodes();
-    buildAndPersistCouponIndex();
+    if (!window.__IDX_BUILDING) {
+      persistCouponCodes();
+      buildAndPersistCouponIndex();
+    }
   } catch {}
 });
+
 
 
   
