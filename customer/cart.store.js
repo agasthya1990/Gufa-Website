@@ -30,6 +30,17 @@
     // Returns flat object: { "itemId:variant[:addon]": {id,name,variant,price,thumb,qty} }
     get() { return readBag(); },
 
+  // qty: number (0 removes). meta: {id,name,variant,price,thumb}
+setQty(key, qty, meta) {
+  const bag = readBag();
+  const next = Math.max(0, Number(qty) || 0);
+
+  if (next <= 0) {
+    delete bag[key];
+    writeBag(bag);
+    return;
+  }
+
   const prev = bag[key] || {};
   bag[key] = {
     id:       meta?.id       ?? prev.id       ?? "",
