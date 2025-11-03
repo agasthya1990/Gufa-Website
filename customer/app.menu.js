@@ -642,16 +642,27 @@ function setQty(found, variantKey, price, nextQty) {
   const badge = document.querySelector(`.qty[data-key="${key}"] .num`);
   if (badge) badge.textContent = String(next);
 
-  // 1️⃣ Live Cart update
-  try {
-    if (window.Cart && typeof window.Cart.setQty === "function") {
-window.Cart.setQty(key, next, {
-  id: found.id, name: found.name, variant: variantKey, price: Number(price) || 0,
-  origin
-});
+// 1️⃣ Live Cart update
+try {
+  if (window.Cart && typeof window.Cart.setQty === "function") {
+    // Infer banner provenance from the card or its container
+    const card     = document.querySelector(`.menu-item[data-id="${found.id}"]`);
+    const bannerId =
+      card?.getAttribute("data-banner-id") ||
+      card?.dataset?.bannerId ||
+      card?.closest("[data-banner-id]")?.getAttribute("data-banner-id") ||
+      document.querySelector("#globalResults")?.id ||  // safe fallback from your page
+      document.querySelector(".deals")?.className ||   // secondary fallback
+      "";
+    const origin = bannerId ? `banner:${bannerId}` : "non-banner";
 
-    }
-  } catch {}
+    window.Cart.setQty(key, next, {
+      id: found.id, name: found.name, variant: variantKey, price: Number(price) || 0,
+      origin
+    });
+  }
+} catch {}
+
 
     // 2️⃣ Persistent mirror for checkout hydration (single-key, flat)
 try {
@@ -672,14 +683,26 @@ if (next <= 0) {
   delete bag[key];
 } else {
   const prev = bag[key] || {};
-bag[key] = {
-  id: found.id,
-  name: found.name,
-  variant: variantKey,
-  price: Number(price) || Number(prev.price) || 0,
-  thumb: prev.thumb || "",
-  qty: next
- }; 
+  // Reuse the same origin we computed above if available
+  const card     = document.querySelector(`.menu-item[data-id="${found.id}"]`);
+  const bannerId =
+    card?.getAttribute("data-banner-id") ||
+    card?.dataset?.bannerId ||
+    card?.closest("[data-banner-id]")?.getAttribute("data-banner-id") ||
+    document.querySelector("#globalResults")?.id ||
+    document.querySelector(".deals")?.className ||
+    "";
+  const origin = prev.origin || (bannerId ? `banner:${bannerId}` : "non-banner");
+
+  bag[key] = {
+    id: found.id,
+    name: found.name,
+    variant: variantKey,
+    price: Number(price) || Number(prev.price) || 0,
+    thumb: prev.thumb || "",
+    qty: next,
+    origin
+  };
 }
 
 
