@@ -235,6 +235,39 @@ window.addEventListener("cart:update", () => {
   });
 });
 
+// Cross-tab sync for Menu (badges/link + mode mirrors)
+window.addEventListener("storage", (e) => {
+  try {
+    if (e.key === "gufa_cart") {
+      // another tab changed the cart — refresh badges/link
+      updateAllMiniCartBadges();
+      updateCartLink();
+    }
+    if (e.key === "gufa_mode" || e.key === "gufa:serviceMode") {
+      // mirror + re-decorate deals/badges for new mode
+      const m = getActiveMode();
+      // rebroadcast locally so current tab behaves like the flipper tab
+      window.dispatchEvent(new CustomEvent("mode:change",         { detail:{ mode:m }}));
+      window.dispatchEvent(new CustomEvent("serviceMode:changed", { detail:{ mode:m }}));
+    }
+    if (e.key === "gufa_coupon") {
+      // coupon lock changed elsewhere; re-decorate banner badges if relevant
+      updateAllMiniCartBadges();
+    }
+  } catch {}
+});
+
+// One-time reconcile on load (makes both keys consistent and updates UI once)
+document.addEventListener("DOMContentLoaded", () => {
+  try {
+    const m = getActiveMode();
+    localStorage.setItem("gufa_mode", m);
+    localStorage.setItem("gufa:serviceMode", m);
+    updateAllMiniCartBadges();
+    updateCartLink();
+  } catch {}
+});
+
 
 (function () {
   const $  = (s, r=document) => r.querySelector(s);
