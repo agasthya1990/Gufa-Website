@@ -896,29 +896,6 @@ function hasBannerProvenance(baseKey) {
   }
 }
 
-  function pickEligibleBaseIdForCouponBannerFirst(eligibleSet) {
-  try {
-    const bag = window.Cart?.get?.() || {};
-    const baseKeys = Object.keys(bag).filter(k => k.split(":").length < 3); // base lines only
-
-    // Split candidates by origin
-    const banners = [];
-    const others  = [];
-
-    for (const k of baseKeys) {
-      const baseId = k.split(":")[0].toLowerCase();
-      if (!eligibleSet.has(baseId)) continue;
-      const origin = String(bag[k]?.origin || "");
-      (origin.startsWith("banner:") ? banners : others).push({ baseId, key: k, origin });
-    }
-
-    // Prefer banner candidates
-    if (banners.length) return banners[0].baseId;
-
-    // No banner candidates → enforce banner-only rule (don’t spill)
-    return null;
-  } catch { return null; }
-}
 
   // FCFS: pick the first base item in the cart that matches any coupon eligibility,
   // and use that coupon exclusively (non-stackable).
@@ -979,16 +956,12 @@ const hasDirectHit =
   }
 
 for (const L of preferred){
+  // Bind the concrete base we’re evaluating and preserve eligibility on the lock
   const eSet = (typeof resolveEligibilitySet === "function") ? resolveEligibilitySet(L) : new Set();
-
-  // NEW: choose a banner-origin base for this coupon; if none, skip this coupon
-  const chosenBaseId = pickEligibleBaseIdForCouponBannerFirst(eSet);
-  if (!chosenBaseId) continue;
-
   const bound = Object.assign({}, L, {
-    baseId: chosenBaseId,
+    baseId,
     scope: Object.assign({}, L.scope || {}, {
-      baseId: chosenBaseId,
+      baseId,
       eligibleItemIds: Array.isArray(L?.scope?.eligibleItemIds) && L.scope.eligibleItemIds.length
         ? L.scope.eligibleItemIds
         : Array.from(eSet || [])
@@ -997,6 +970,7 @@ for (const L of preferred){
   const { discount } = computeDiscount(bound, base);
   if (discount > 0) return bound;
 }
+
 
     // Otherwise any coupon that actually discounts
 for (const L of fallback){
