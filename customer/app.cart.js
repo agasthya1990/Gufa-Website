@@ -15,14 +15,20 @@
     } catch {}
   }
 
-  function onFlip(reason){
-    const mode = readMode();
-    clearIncompatibleLockIfNeeded(mode);
+function onFlip(reason){
+  const mode = readMode();
+  clearIncompatibleLockIfNeeded(mode);
 
-    // Let your existing cart UI react in one place
-    try { window.renderCart?.(); } catch {}
-    window.dispatchEvent(new CustomEvent("cart:update", { detail: { reason } }));
-  }
+  // Repaint immediately (prefer render(), fall back to renderCart())
+  try {
+    if (typeof render === "function") { render(); }
+    else { window.renderCart?.(); }
+  } catch {}
+
+  // Continue broadcasting so totals/snapshots stay in sync
+  window.dispatchEvent(new CustomEvent("cart:update", { detail: { reason } }));
+}
+
 
   // Same-tab custom events (Menu broadcasts both)
   window.addEventListener("mode:change",          () => onFlip("mode:change"));
