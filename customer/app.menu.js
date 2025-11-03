@@ -366,8 +366,13 @@ document.addEventListener("DOMContentLoaded", () => {
     localStorage.setItem("gufa:serviceMode", m);
     updateAllMiniCartBadges();
     updateCartLink();
+
+    // One-time broadcast so background Cart tabs repaint if storage was coalesced
+    window.dispatchEvent(new CustomEvent("mode:change",         { detail:{ mode:m }}));
+    window.dispatchEvent(new CustomEvent("serviceMode:changed", { detail:{ mode:m }}));
   } catch {}
 });
+
 
 
 (function () {
