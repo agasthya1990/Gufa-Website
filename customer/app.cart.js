@@ -594,46 +594,31 @@ async function ensureCouponsReady() {
   const setLock = (obj) => { try { obj ? localStorage.setItem(COUPON_KEY, JSON.stringify(obj)) : localStorage.removeItem(COUPON_KEY); } catch {} };
 
   // === STALE LOCK GUARD (NEW) ===
-(function guardStaleCouponLock(){
+(function guardStaleCouponLockBannerOnly(){
   try {
     const lock = JSON.parse(localStorage.getItem("gufa_coupon") || "null");
     if (!lock?.scope?.couponId) return;
 
-    // find meta by id or by code
-    const map = (window.COUPONS instanceof Map) ? window.COUPONS : null;
-    if (!map) { localStorage.removeItem("gufa_coupon"); return; }
+    const elig = (typeof resolveEligibilitySet === "function")
+      ? resolveEligibilitySet(lock) : new Set();
 
-    const cidLower = String(lock.scope.couponId).toLowerCase();
-    let meta = null, cidReal = null;
-
-    // direct id hit
-    for (const [k, m] of map) {
-      if (String(k).toLowerCase() === cidLower) { meta = m; cidReal = k; break; }
-    }
-    // by code
-    if (!meta) {
-      for (const [k, m] of map) {
-        const code = String(m?.code || "").toLowerCase();
-        if (code && code === cidLower) { meta = m; cidReal = k; break; }
-      }
-    }
-    if (!meta) { localStorage.removeItem("gufa_coupon"); return; }
-
-    // eligibility must include current base
     const bag = window.Cart?.get?.() || {};
-    const baseKey = Object.keys(bag).find(k => k.split(":").length < 3);
-    if (!baseKey) return;
-    const baseId = baseKey.split(":")[0].toLowerCase();
+    const baseKeys = Object.keys(bag).filter(k => k.split(":").length < 3);
 
-    const baseLock = (typeof buildLockFromMeta==="function") ? buildLockFromMeta(String(cidReal), meta)
-                     : { scope: { couponId: String(cidReal) } };
-    const elig = (typeof resolveEligibilitySet==="function") ? resolveEligibilitySet(baseLock) : new Set();
+    const bannerEligiblePresent = baseKeys.some(k => {
+      const baseId = k.split(":")[0].toLowerCase();
+      const origin = String(bag[k]?.origin || "");
+      return elig.has(baseId) && origin.startsWith("banner:");
+    });
 
-    if (!elig.has(baseId)) {
+    if (!bannerEligiblePresent) {
       localStorage.removeItem("gufa_coupon");
+      // let FCFS try again (it will respect banner-first now)
+      window.dispatchEvent(new CustomEvent("cart:update", { detail: { reason: "stale-lock-cleared" }}));
     }
   } catch {}
 })();
+
 
 
   function displayCode(locked){
@@ -895,7 +880,30 @@ function hasBannerProvenance(baseKey) {
   }
 }
 
-  
+  function pickEligibleBaseIdForCouponBannerFirst(eligibleSet) {
+  try {
+    const bag = window.Cart?.get?.() || {};
+    const baseKeys = Object.keys(bag).filter(k => k.split(":").length < 3); // base lines only
+
+    // Split candidates by origin
+    const banners = [];
+    const others  = [];
+
+    for (const k of baseKeys) {
+      const baseId = k.split(":")[0].toLowerCase();
+      if (!eligibleSet.has(baseId)) continue;
+      const origin = String(bag[k]?.origin || "");
+      (origin.startsWith("banner:") ? banners : others).push({ baseId, key: k, origin });
+    }
+
+    // Prefer banner candidates
+    if (banners.length) return banners[0].baseId;
+
+    // No banner candidates → enforce banner-only rule (don’t spill)
+    return null;
+  } catch { return null; }
+}
+
   // FCFS: pick the first base item in the cart that matches any coupon eligibility,
   // and use that coupon exclusively (non-stackable).
 function findFirstApplicableCouponForCart(){
@@ -954,37 +962,47 @@ const hasDirectHit =
       
   }
 
-    // Preferred first (banner-affiliated)
-    for (const L of preferred){
-      // Bind the concrete base we’re evaluating and preserve eligibility on the lock
-      const eSet = (typeof resolveEligibilitySet === "function") ? resolveEligibilitySet(L) : new Set();
-      const bound = Object.assign({}, L, {
-        baseId,
-        scope: Object.assign({}, L.scope || {}, {
-          baseId,
-          eligibleItemIds: Array.isArray(L?.scope?.eligibleItemIds) && L.scope.eligibleItemIds.length
-            ? L.scope.eligibleItemIds
-            : Array.from(eSet || [])
-        })
-      });
-      const { discount } = computeDiscount(bound, base);
-      if (discount > 0) return bound;
-    }
+for (const L of preferred){
+  const eSet = (typeof resolveEligibilitySet === "function") ? resolveEligibilitySet(L) : new Set();
+
+  // NEW: choose a banner-origin base for this coupon; if none, skip this coupon
+  const chosenBaseId = pickEligibleBaseIdForCouponBannerFirst(eSet);
+  if (!chosenBaseId) continue;
+
+  const bound = Object.assign({}, L, {
+    baseId: chosenBaseId,
+    scope: Object.assign({}, L.scope || {}, {
+      baseId: chosenBaseId,
+      eligibleItemIds: Array.isArray(L?.scope?.eligibleItemIds) && L.scope.eligibleItemIds.length
+        ? L.scope.eligibleItemIds
+        : Array.from(eSet || [])
+    })
+  });
+  const { discount } = computeDiscount(bound, base);
+  if (discount > 0) return bound;
+}
+
     // Otherwise any coupon that actually discounts
-    for (const L of fallback){
-      const eSet = (typeof resolveEligibilitySet === "function") ? resolveEligibilitySet(L) : new Set();
-      const bound = Object.assign({}, L, {
-        baseId,
-        scope: Object.assign({}, L.scope || {}, {
-          baseId,
-          eligibleItemIds: Array.isArray(L?.scope?.eligibleItemIds) && L.scope.eligibleItemIds.length
-            ? L.scope.eligibleItemIds
-            : Array.from(eSet || [])
-        })
-      });
-      const { discount } = computeDiscount(bound, base);
-      if (discount > 0) return bound;
-    }
+for (const L of fallback){
+  const eSet = (typeof resolveEligibilitySet === "function") ? resolveEligibilitySet(L) : new Set();
+
+  // NEW: enforce banner-only even for fallback
+  const chosenBaseId = pickEligibleBaseIdForCouponBannerFirst(eSet);
+  if (!chosenBaseId) continue;
+
+  const bound = Object.assign({}, L, {
+    baseId: chosenBaseId,
+    scope: Object.assign({}, L.scope || {}, {
+      baseId: chosenBaseId,
+      eligibleItemIds: Array.isArray(L?.scope?.eligibleItemIds) && L.scope.eligibleItemIds.length
+        ? L.scope.eligibleItemIds
+        : Array.from(eSet || [])
+    })
+  });
+  const { discount } = computeDiscount(bound, base);
+  if (discount > 0) return bound;
+}
+
 
   }
   return null;
