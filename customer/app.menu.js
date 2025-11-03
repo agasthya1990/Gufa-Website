@@ -101,25 +101,33 @@ function updateItemMiniCartBadge(itemId, rock=false){
   if (!btn) return;
 
   const qty = sumQtyByPrefix(`${itemId}:`);
-  let badge = btn.querySelector(".badge");
-  if (!badge) {
-    badge = document.createElement("span");
-    badge.className = "badge";
-    btn.appendChild(badge);
-  }
+
+  // Ensure we never leave a stray dot/badge when qty == 0
+  const nukeBadge = () => {
+    btn.classList.remove("active", "rock");
+    btn.querySelectorAll(".badge").forEach(n => n.remove());
+  };
 
   if (qty > 0) {
+    let badge = btn.querySelector(".badge");
+    if (!badge) {
+      badge = document.createElement("span");
+      badge.className = "badge";
+      btn.appendChild(badge);
+    }
     badge.textContent = String(qty);
     btn.classList.add("active");
     if (rock) {
+      btn.classList.remove("rock"); // retrigger
+      void btn.offsetWidth;
       btn.classList.add("rock");
       setTimeout(() => btn.classList.remove("rock"), 300);
     }
   } else {
-    badge.textContent = "";
-    btn.classList.remove("active");
+    nukeBadge();
   }
 }
+
 
 function updateAllMiniCartBadges(){
   document.querySelectorAll(".menu-item[data-id]").forEach(el => {
@@ -239,7 +247,6 @@ window.addEventListener("cart:update", () => {
 window.addEventListener("storage", (e) => {
   try {
 if (e.key === "gufa_cart") {
-  // another tab changed the cart — refresh badges/link + steppers
   try {
     updateAllMiniCartBadges();
     updateCartLink();
@@ -250,13 +257,25 @@ if (e.key === "gufa_cart") {
       const total = Object.entries(bag)
         .filter(([k]) => k.startsWith(itemId + ":"))
         .reduce((a,[,v]) => a + (Number(v?.qty || 0)), 0);
+
+      // write the stepper number
       const num = stepper.querySelector(".qty .num");
       if (num) num.textContent = String(total || 0);
+
+      // sanitize the mini-cart button for this card as well
+      if (total <= 0) {
+        const btn = document.querySelector(`.menu-item[data-id="${itemId}"] .mini-cart-btn`);
+        if (btn) {
+          btn.classList.remove("active", "rock");
+          btn.querySelectorAll(".badge").forEach(n => n.remove());
+        }
+      }
     });
   } catch (err) {
     console.warn("[menu] cross-tab cart sync failed", err);
   }
 }
+
 
     if (e.key === "gufa_mode" || e.key === "gufa:serviceMode") {
       // mirror + re-decorate deals/badges for new mode
