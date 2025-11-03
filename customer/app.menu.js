@@ -398,10 +398,14 @@ document.addEventListener("DOMContentLoaded", () => {
   let searchQuery = "";
 
   // --- Mode helpers (persist + broadcast) ---
-  window.getActiveMode = function () {
-    const m = String(localStorage.getItem("gufa_mode") || "delivery").toLowerCase();
-    return (m === "dining" ? "dining" : "delivery");
-  };
+window.getActiveMode = function () {
+  const ms = (localStorage.getItem("gufa:serviceMode") || "").toLowerCase();
+  const m  = (localStorage.getItem("gufa_mode")       || "").toLowerCase();
+  if (ms === "dining" || ms === "delivery") return ms;
+  if (m  === "dining" || m  === "delivery") return m;
+  return "delivery";
+};
+
   
   window.setActiveMode = function (mode) {
   const m = (String(mode || "").toLowerCase() === "dining") ? "dining" : "delivery";
