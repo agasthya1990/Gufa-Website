@@ -92,8 +92,34 @@ if (keys.has(e.key)) onFlip("storage:"+e.key);
   });
 })();
 
+// === One-time hygiene scrub: convert fake banner provenance to non-banner ===
+(() => {
+  try {
+    const LS_KEY = "gufa_cart";
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw) return;
+    const bag = JSON.parse(raw) || {};
+    let changed = 0;
+    for (const k of Object.keys(bag)) {
+      // base lines only
+      if (k.split(":").length >= 3) continue;
+      const o = String(bag[k]?.origin || "");
+      // anything that looks like "banner:global..." or other pseudo ids
+      if (/^banner:(global|globalresults|deals)/i.test(o)) {
+        bag[k].origin = "non-banner";
+        changed++;
+      }
+    }
+    if (changed) {
+      localStorage.setItem(LS_KEY, JSON.stringify(bag));
+      window.dispatchEvent(new CustomEvent("cart:update", { detail: { reason: "origin-scrub" }}));
+    }
+  } catch {}
+})();
+
 let lastSnapshotAt = 0;
 function persistCartSnapshotThrottled() {
+
   const now = Date.now();
   if (now - lastSnapshotAt < 1000) return; // 1s debounce
   lastSnapshotAt = now;
@@ -599,47 +625,43 @@ async function ensureCouponsReady() {
     const lock = JSON.parse(localStorage.getItem("gufa_coupon") || "null");
     if (!lock?.scope?.couponId) return;
 
-    // find meta by id or by code
     const map = (window.COUPONS instanceof Map) ? window.COUPONS : null;
     if (!map) { localStorage.removeItem("gufa_coupon"); return; }
 
+    // resolve the real coupon id (id or code)
     const cidLower = String(lock.scope.couponId).toLowerCase();
     let meta = null, cidReal = null;
-
-    // direct id hit
     for (const [k, m] of map) {
       if (String(k).toLowerCase() === cidLower) { meta = m; cidReal = k; break; }
-    }
-    // by code
-    if (!meta) {
-      for (const [k, m] of map) {
-        const code = String(m?.code || "").toLowerCase();
-        if (code && code === cidLower) { meta = m; cidReal = k; break; }
-      }
+      const code = String(m?.code || "").toLowerCase();
+      if (!meta && code && code === cidLower) { meta = m; cidReal = k; }
     }
     if (!meta) { localStorage.removeItem("gufa_coupon"); return; }
 
-    // eligibility must include at least one banner-origin base currently in cart
-    const bag = window.Cart?.get?.() || {};
-    const baseKeys = Object.keys(bag).filter(k => k.split(":").length < 3);
-
-    const baseLock = (typeof buildLockFromMeta==="function")
+    // Build eligibility set for this lock
+    const baseLock = (typeof buildLockFromMeta === "function")
       ? buildLockFromMeta(String(cidReal), meta)
       : { scope: { couponId: String(cidReal) } };
+    const elig = (typeof resolveEligibilitySet === "function") ? resolveEligibilitySet(baseLock) : new Set();
 
-    const elig = (typeof resolveEligibilitySet==="function") ? resolveEligibilitySet(baseLock) : new Set();
+    // Keep lock ONLY if at least one banner-origin eligible base exists
+    const bag = window.Cart?.get?.() || {};
+    const bannerOk = Object.keys(bag)
+      .filter(k => k.split(":").length < 3)
+      .some(k => {
+        const id = k.split(":")[0].toLowerCase();
+        const o  = String(bag[k]?.origin || "");
+        return elig.has(id) && o.startsWith("banner:");
+      });
 
-    const bannerEligiblePresent = baseKeys.some(k => {
-      const baseId = k.split(":")[0].toLowerCase();
-      const origin = String(bag[k]?.origin || "");
-      return elig.has(baseId) && origin.startsWith("banner:");
-    });
-
-    if (!bannerEligiblePresent) {
+    if (!bannerOk) {
       localStorage.removeItem("gufa_coupon");
+      // optional: broadcast so UI and FCFS recompute immediately
+      try { window.dispatchEvent(new CustomEvent("cart:update", { detail:{ reason:"stale-lock-cleared" } })); } catch {}
     }
   } catch {}
 })();
+
 
 
 
@@ -886,15 +908,12 @@ function resolveEligibilitySet(locked){
 // Provenance: did this base line come from the currently locked banner/coupon?
 function hasBannerProvenance(baseKey) {
   try {
-    // Current persisted lock (if any)
     const lock = getLock && getLock();
     if (!lock) return false;
 
-    // Build the eligibility set the banner/coupon declared
-    const eligible = resolveEligibilitySet(lock); // Set of item ids (lowercased)
+    const eligible = resolveEligibilitySet(lock);
     if (!(eligible instanceof Set) || eligible.size === 0) return false;
 
-    // baseKey looks like "<itemId>:<variant>"
     const itemId = String(baseKey || "").split(":")[0].toLowerCase();
     return eligible.has(itemId);
   } catch {
@@ -902,44 +921,35 @@ function hasBannerProvenance(baseKey) {
   }
 }
 
-// —— Banner-first picker (order-aware): prefer banner-origin bases present earliest in gufa:baseOrder
-function pickEligibleBaseIdForCouponBannerFirst(eSet) {
+function pickEligibleBaseIdForCouponBannerFirst(eligibleSet) {
   try {
     const bag = window.Cart?.get?.() || {};
-    // read preserved arrival order (you already maintain it)
-    let order = [];
-    try {
-      order = JSON.parse(localStorage.getItem("gufa:baseOrder") || "[]");
-      if (!Array.isArray(order)) order = [];
-    } catch {}
+    const baseKeys = Object.keys(bag).filter(k => k.split(":").length < 3); // base lines only
 
-    // Build candidate lists keyed by baseId → “banner?” flag derived from origin
-    const isBase = (k) => String(k).split(":").length < 3;
-    const toBaseId = (k) => String(k).split(":")[0].toLowerCase();
-
-    const bannerSet = new Set(
-      Object.keys(bag)
-        .filter(isBase)
-        .filter(k => eSet.has(toBaseId(k)))
-        .filter(k => String(bag[k]?.origin||"").startsWith("banner:"))
-        .map(toBaseId)
-    );
-
-    if (bannerSet.size) {
-      // Walk order, return first eligible banner base
-      for (const baseKey of order) {
-        const baseId = String(baseKey).split(":")[0].toLowerCase();
-        if (bannerSet.has(baseId)) return baseId;
+    // Build unique banner-origin candidates by baseId
+    const bannerByBase = new Map();
+    for (const k of baseKeys) {
+      const baseId = k.split(":")[0].toLowerCase();
+      if (!eligibleSet.has(baseId)) continue;
+      const origin = String(bag[k]?.origin || "");
+      if (origin.startsWith("banner:") && !bannerByBase.has(baseId)) {
+        bannerByBase.set(baseId, { baseId, key: k, origin });
       }
-      // If none from order (edge), just pick any banner candidate
-      return Array.from(bannerSet)[0] || null;
     }
 
-    // No banner candidates → enforce banner-only (no spill)
-    return null;
-  } catch {
-    return null;
-  }
+    // Enforce banner-only: if none, do not spill
+    if (bannerByBase.size === 0) return null;
+
+    // FCFS among banners using gufa:baseOrder (normalize "<id>:<variant>" → baseId)
+    const order = (typeof syncBaseOrderWithCart === "function") ? syncBaseOrderWithCart() : [];
+    for (const bKey of order) {
+      const id = String(bKey).split(":")[0].toLowerCase();
+      if (bannerByBase.has(id)) return id;
+    }
+
+    // Edge: if order didn’t include any candidate (shouldn’t happen), pick deterministically
+    return bannerByBase.values().next().value.baseId;
+  } catch { return null; }
 }
 
 
@@ -1599,46 +1609,49 @@ async function boot(){
     try { await ensureCouponsReady(); } catch {}
   }
 
-  // NEW — clear stale/invalid coupon lock after hydration, before first paint
-  try {
-    (function(){
-      const lock = JSON.parse(localStorage.getItem("gufa_coupon") || "null");
-      if (!lock?.scope?.couponId) return;
+// NEW — clear stale/invalid coupon lock after hydration, before first paint
+try {
+  (function(){
+    const lock = JSON.parse(localStorage.getItem("gufa_coupon") || "null");
+    if (!lock?.scope?.couponId) return;
 
-      // coupons must be hydrated now; if not, drop ambiguous lock
-      if (!(window.COUPONS instanceof Map) || window.COUPONS.size === 0) {
-        localStorage.removeItem("gufa_coupon"); return;
-      }
+    if (!(window.COUPONS instanceof Map) || window.COUPONS.size === 0) {
+      localStorage.removeItem("gufa_coupon"); return;
+    }
 
-      // find current base line
-      const bag = window.Cart?.get?.() || {};
-      const baseKey = Object.keys(bag).find(k => String(k).split(":").length < 3);
-      if (!baseKey) return;
-      const baseId = String(baseKey).split(":")[0].toLowerCase();
+    const want = String(lock.scope.couponId).toLowerCase();
+    let meta = null, cidReal = null;
 
-      // resolve coupon meta by id or by code
-      const want = String(lock.scope.couponId).toLowerCase();
-      let meta = null, cidReal = null;
-
+    for (const [k,m] of window.COUPONS) {
+      if (String(k).toLowerCase() === want) { meta = m; cidReal = k; break; }
+    }
+    if (!meta) {
       for (const [k,m] of window.COUPONS) {
-        if (String(k).toLowerCase() === want) { meta = m; cidReal = k; break; }
+        const code = String(m?.code || "").toLowerCase();
+        if (code && code === want) { meta = m; cidReal = k; break; }
       }
-      if (!meta) {
-        for (const [k,m] of window.COUPONS) {
-          const code = String(m?.code || "").toLowerCase();
-          if (code && code === want) { meta = m; cidReal = k; break; }
-        }
-      }
-      if (!meta) { localStorage.removeItem("gufa_coupon"); return; }
+    }
+    if (!meta) { localStorage.removeItem("gufa_coupon"); return; }
 
-      // require eligibility to include the live base item
-      const testLock = buildLockFromMeta(String(cidReal), meta);
-      const elig = resolveEligibilitySet(testLock);
-      if (!(elig instanceof Set) || !elig.has(baseId)) {
-        localStorage.removeItem("gufa_coupon");
-      }
-    })();
-  } catch {}
+    // Build eligibility set and require at least one banner-origin eligible base in cart
+    const testLock = buildLockFromMeta(String(cidReal), meta);
+    const elig = resolveEligibilitySet(testLock);
+
+    const bag = window.Cart?.get?.() || {};
+    const bannerOk = Object.keys(bag)
+      .filter(k => String(k).split(":").length < 3)
+      .some(k => {
+        const id = String(k).split(":")[0].toLowerCase();
+        const o  = String(bag[k]?.origin || "");
+        return elig.has(id) && o.startsWith("banner:");
+      });
+
+    if (!bannerOk) {
+      localStorage.removeItem("gufa_coupon");
+    }
+  })();
+} catch {}
+
 
   // 3) First paint — Apply & FCFS are deterministic now
   render();
