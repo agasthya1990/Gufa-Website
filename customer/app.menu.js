@@ -7,31 +7,6 @@
   }
 })();
 
-// === One-time hygiene scrub: convert fake banner provenance to non-banner ===
-(() => {
-  try {
-    const LS_KEY = "gufa_cart";
-    const raw = localStorage.getItem(LS_KEY);
-    if (!raw) return;
-    const bag = JSON.parse(raw) || {};
-    let changed = 0;
-    for (const k of Object.keys(bag)) {
-      // base lines only
-      if (k.split(":").length >= 3) continue;
-      const o = String(bag[k]?.origin || "");
-      // anything that looks like "banner:global..." or other pseudo ids
-      if (/^banner:(global|globalresults|deals)/i.test(o)) {
-        bag[k].origin = "non-banner";
-        changed++;
-      }
-    }
-    if (changed) {
-      localStorage.setItem(LS_KEY, JSON.stringify(bag));
-      window.dispatchEvent(new CustomEvent("cart:update", { detail: { reason: "origin-scrub" }}));
-    }
-  } catch {}
-})();
-
 
 
 // ===== Cart Helpers =====
@@ -670,21 +645,15 @@ function setQty(found, variantKey, price, nextQty) {
 // 1️⃣ Live Cart update
 try {
   if (window.Cart && typeof window.Cart.setQty === "function") {
-    const card = document.querySelector(`.menu-item[data-id="${found.id}"]`);
-
-    // Broaden banner provenance: card → banner view → focused CTA
-    let bannerId =
+    // Infer banner provenance from the card or its container
+    const card     = document.querySelector(`.menu-item[data-id="${found.id}"]`);
+    const bannerId =
       card?.getAttribute("data-banner-id") ||
       card?.dataset?.bannerId ||
       card?.closest("[data-banner-id]")?.getAttribute("data-banner-id") ||
-      // if we’re inside a banner listing page, trust its id
-      ((typeof view !== "undefined" && typeof listKind !== "undefined" && typeof listId !== "undefined" &&
-        view === "list" && listKind === "banner") ? String(listId || "") : "") ||
-      // last resort: the actively clicked CTA
-      document.activeElement?.getAttribute?.("data-banner-id") ||
-      document.activeElement?.closest?.("[data-banner-id]")?.getAttribute("data-banner-id") ||
+      document.querySelector("#globalResults")?.id ||  // safe fallback from your page
+      document.querySelector(".deals")?.className ||   // secondary fallback
       "";
-
     const origin = bannerId ? `banner:${bannerId}` : "non-banner";
 
     window.Cart.setQty(key, next, {
@@ -693,8 +662,6 @@ try {
     });
   }
 } catch {}
-
-
 
 
     // 2️⃣ Persistent mirror for checkout hydration (single-key, flat)
@@ -716,19 +683,15 @@ if (next <= 0) {
   delete bag[key];
 } else {
   const prev = bag[key] || {};
-  const card = document.querySelector(`.menu-item[data-id="${found.id}"]`);
-
-  // Same broadened provenance as above
-  let bannerId =
+  // Reuse the same origin we computed above if available
+  const card     = document.querySelector(`.menu-item[data-id="${found.id}"]`);
+  const bannerId =
     card?.getAttribute("data-banner-id") ||
     card?.dataset?.bannerId ||
     card?.closest("[data-banner-id]")?.getAttribute("data-banner-id") ||
-    ((typeof view !== "undefined" && typeof listKind !== "undefined" && typeof listId !== "undefined" &&
-      view === "list" && listKind === "banner") ? String(listId || "") : "") ||
-    document.activeElement?.getAttribute?.("data-banner-id") ||
-    document.activeElement?.closest?.("[data-banner-id]")?.getAttribute("data-banner-id") ||
+    document.querySelector("#globalResults")?.id ||
+    document.querySelector(".deals")?.className ||
     "";
-
   const origin = prev.origin || (bannerId ? `banner:${bannerId}` : "non-banner");
 
   bag[key] = {
@@ -744,20 +707,14 @@ if (next <= 0) {
 
 
 localStorage.setItem(LS_KEY, JSON.stringify(bag));
-window.dispatchEvent(new CustomEvent("cart:update", { detail: { reason: (next <= 0 ? "base-removed" : "qty-changed"), cart: { items: bag } } }));
+window.dispatchEvent(new CustomEvent("cart:update", { detail: { cart: { items: bag } } }));
+  
 } catch {}
 
-// ✅ New: on removal, politely ask cart to re-evaluate FCFS rotation
-if (next <= 0) {
-  queueMicrotask(() => {
-    try { window.dispatchEvent(new CustomEvent("coupon:maybeRotate")); } catch {}
-  });
-}
 
-if (next > 0) {
-  try { window.lockCouponForActiveBannerIfNeeded?.(found.id); } catch {}
-}
-
+  if (next > 0) {
+    try { window.lockCouponForActiveBannerIfNeeded?.(found.id); } catch {}
+  }
 
   updateItemMiniCartBadge(found.id, true);
   updateCartLink();
@@ -2171,11 +2128,10 @@ function buildAndPersistCouponIndex(){
       window.dispatchEvent(new CustomEvent("promotions:hydrated"));
       window.dispatchEvent(new CustomEvent("cart:update"));
     }
-  } catch {} finally {
+  } catch {}finally {
     // release after sync listeners run, so nested handlers still see the guard
     Promise.resolve().then(() => { window.__IDX_BUILDING = false; });
   }
-
 }
 
 /* ---------- Boot ---------- */
