@@ -1101,18 +1101,18 @@ if (!elig.size){
 }
 
 function enforceFirstComeLock(){
+  // If we still have a lock, keep it only if it actually produces a discount now.
+  const kept = getLock();
+  if (kept) {
+    const { base } = splitBaseVsAddons();
+    const { discount } = computeDiscount(kept, base);
+    if (discount > 0) return; // still valid, keep as-is
+    localStorage.removeItem(COUPON_KEY);
+  }
+
   // If there’s a current lock but it’s no longer applicable, clear it first.
   clearLockIfNoLongerApplicable();
 
-  // If we still have a lock, keep it only if it actually produces a discount now.
-  const kept = getLock();
-  const { base } = splitBaseVsAddons();
-  if (kept) {
-    const { discount } = computeDiscount(kept, base);
-    if (discount > 0) return;         // keep current non-stackable lock
-    // Otherwise fall through to try the next applicable coupon (FCFS among remaining items)
-    setLock(null);
-  }
 
   // Pick the first coupon that actually yields a non-zero discount for current cart & mode.
   const fcfs = findFirstApplicableCouponForCart();
@@ -1667,10 +1667,12 @@ try {
 
   window.addEventListener("storage", (e) => {
     if (!e) return;
-    if (e.key === "gufa_cart" || e.key === COUPON_KEY || e.key === ADDR_KEY) {
-      render();
-      return;
-    }
+if (e.key === "gufa_cart" || e.key === COUPON_KEY || e.key === ADDR_KEY) {
+  try { enforceFirstComeLock(); } catch {}
+  render();
+  return;
+}
+
     if (e.key === "gufa_mode") {
       try { enforceFirstComeLock(); } catch {}
       render();
