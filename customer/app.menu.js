@@ -7,6 +7,31 @@
   }
 })();
 
+// === One-time hygiene scrub: convert fake banner provenance to non-banner ===
+(() => {
+  try {
+    const LS_KEY = "gufa_cart";
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw) return;
+    const bag = JSON.parse(raw) || {};
+    let changed = 0;
+    for (const k of Object.keys(bag)) {
+      // base lines only
+      if (k.split(":").length >= 3) continue;
+      const o = String(bag[k]?.origin || "");
+      // anything that looks like "banner:global..." or other pseudo ids
+      if (/^banner:(global|globalresults|deals)/i.test(o)) {
+        bag[k].origin = "non-banner";
+        changed++;
+      }
+    }
+    if (changed) {
+      localStorage.setItem(LS_KEY, JSON.stringify(bag));
+      window.dispatchEvent(new CustomEvent("cart:update", { detail: { reason: "origin-scrub" }}));
+    }
+  } catch {}
+})();
+
 
 
 // ===== Cart Helpers =====
