@@ -670,13 +670,21 @@ function setQty(found, variantKey, price, nextQty) {
 // 1️⃣ Live Cart update
 try {
   if (window.Cart && typeof window.Cart.setQty === "function") {
-    // Strict: only honor a real banner container; otherwise non-banner
     const card = document.querySelector(`.menu-item[data-id="${found.id}"]`);
-    const bannerId =
+
+    // Broaden banner provenance: card → banner view → focused CTA
+    let bannerId =
       card?.getAttribute("data-banner-id") ||
       card?.dataset?.bannerId ||
       card?.closest("[data-banner-id]")?.getAttribute("data-banner-id") ||
+      // if we’re inside a banner listing page, trust its id
+      ((typeof view !== "undefined" && typeof listKind !== "undefined" && typeof listId !== "undefined" &&
+        view === "list" && listKind === "banner") ? String(listId || "") : "") ||
+      // last resort: the actively clicked CTA
+      document.activeElement?.getAttribute?.("data-banner-id") ||
+      document.activeElement?.closest?.("[data-banner-id]")?.getAttribute("data-banner-id") ||
       "";
+
     const origin = bannerId ? `banner:${bannerId}` : "non-banner";
 
     window.Cart.setQty(key, next, {
@@ -685,6 +693,7 @@ try {
     });
   }
 } catch {}
+
 
 
 
