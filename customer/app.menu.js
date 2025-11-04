@@ -673,12 +673,14 @@ try {
     // Infer banner provenance from the card or its container
     const card     = document.querySelector(`.menu-item[data-id="${found.id}"]`);
 // Strict: only honor a real banner container; otherwise non-banner
+const card     = document.querySelector(`.menu-item[data-id="${found.id}"]`);
 const bannerId =
   card?.getAttribute("data-banner-id") ||
   card?.dataset?.bannerId ||
   card?.closest("[data-banner-id]")?.getAttribute("data-banner-id") ||
   "";
 const origin = bannerId ? `banner:${bannerId}` : "non-banner";
+
 
 
     window.Cart.setQty(key, next, {
@@ -708,8 +710,8 @@ if (next <= 0) {
   delete bag[key];
 } else {
   const prev = bag[key] || {};
-  // Reuse the same origin we computed above if available
-  const card     = document.querySelector(`.menu-item[data-id="${found.id}"]`);
+ // Reuse the same origin we computed above if available
+const card     = document.querySelector(`.menu-item[data-id="${found.id}"]`);
 const bannerId =
   card?.getAttribute("data-banner-id") ||
   card?.dataset?.bannerId ||
