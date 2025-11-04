@@ -728,14 +728,20 @@ const origin = prev.origin || (bannerId ? `banner:${bannerId}` : "non-banner");
 
 
 localStorage.setItem(LS_KEY, JSON.stringify(bag));
-window.dispatchEvent(new CustomEvent("cart:update", { detail: { cart: { items: bag } } }));
-  
+window.dispatchEvent(new CustomEvent("cart:update", { detail: { reason: (next <= 0 ? "base-removed" : "qty-changed"), cart: { items: bag } } }));
 } catch {}
 
+// ✅ New: on removal, politely ask cart to re-evaluate FCFS rotation
+if (next <= 0) {
+  queueMicrotask(() => {
+    try { window.dispatchEvent(new CustomEvent("coupon:maybeRotate")); } catch {}
+  });
+}
 
-  if (next > 0) {
-    try { window.lockCouponForActiveBannerIfNeeded?.(found.id); } catch {}
-  }
+if (next > 0) {
+  try { window.lockCouponForActiveBannerIfNeeded?.(found.id); } catch {}
+}
+
 
   updateItemMiniCartBadge(found.id, true);
   updateCartLink();
