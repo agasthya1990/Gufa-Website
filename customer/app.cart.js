@@ -1012,14 +1012,33 @@ const hasDirectHit =
   }
 
 for (const L of preferred){
-const eSet = (typeof resolveEligibilitySet === "function") ? resolveEligibilitySet(L) : new Set();
+let eSet = (typeof resolveEligibilitySet === "function") ? resolveEligibilitySet(L) : new Set();
 
-// banner-first, order-aware
-const chosenBaseId = pickEligibleBaseIdForCouponBannerFirst(eSet);
-if (!chosenBaseId) { 
-  // no banner candidate → do NOT spill to non-banner
-  continue; 
+// If resolver returns empty, derive from declared eligible IDs (scope/lock/meta), then
+// intersect with cart-present base keys so pickEligible... can find a real base.
+if (!eSet || eSet.size === 0) {
+  const declared = new Set(
+    (Array.isArray(L?.scope?.eligibleItemIds) ? L.scope.eligibleItemIds : [])
+      .concat(Array.isArray(L?.eligibleItemIds) ? L.eligibleItemIds : [])
+      .concat(Array.isArray(L?.meta?.eligibleItemIds) ? L.meta.eligibleItemIds : [])
+      .map(String)
+  );
+
+  // Reduce to things actually present in the cart’s base lines, banner-first
+  const present = new Set();
+  for (const [key, it] of entries()){
+    if (isAddonKey(key)) continue;
+    const baseKey = String(key).toLowerCase().split(":").slice(0,2).join(":");
+    const itemId  = String(it?.id || baseKey.split(":")[0]); // tolerate both forms
+    if (declared.has(itemId) || declared.has(baseKey)) present.add(baseKey);
+  }
+  eSet = present;
 }
+
+// banner-first, order-aware on the effective set
+const chosenBaseId = pickEligibleBaseIdForCouponBannerFirst(eSet);
+if (!chosenBaseId) continue;
+
 
 const bound = Object.assign({}, L, {
   baseId: chosenBaseId,
@@ -1038,14 +1057,33 @@ if (discount > 0) return bound;
 
     // Otherwise any coupon that actually discounts
 for (const L of fallback){
-const eSet = (typeof resolveEligibilitySet === "function") ? resolveEligibilitySet(L) : new Set();
+let eSet = (typeof resolveEligibilitySet === "function") ? resolveEligibilitySet(L) : new Set();
 
-// banner-first, order-aware
-const chosenBaseId = pickEligibleBaseIdForCouponBannerFirst(eSet);
-if (!chosenBaseId) { 
-  // no banner candidate → do NOT spill to non-banner
-  continue; 
+// If resolver returns empty, derive from declared eligible IDs (scope/lock/meta), then
+// intersect with cart-present base keys so pickEligible... can find a real base.
+if (!eSet || eSet.size === 0) {
+  const declared = new Set(
+    (Array.isArray(L?.scope?.eligibleItemIds) ? L.scope.eligibleItemIds : [])
+      .concat(Array.isArray(L?.eligibleItemIds) ? L.eligibleItemIds : [])
+      .concat(Array.isArray(L?.meta?.eligibleItemIds) ? L.meta.eligibleItemIds : [])
+      .map(String)
+  );
+
+  // Reduce to things actually present in the cart’s base lines, banner-first
+  const present = new Set();
+  for (const [key, it] of entries()){
+    if (isAddonKey(key)) continue;
+    const baseKey = String(key).toLowerCase().split(":").slice(0,2).join(":");
+    const itemId  = String(it?.id || baseKey.split(":")[0]); // tolerate both forms
+    if (declared.has(itemId) || declared.has(baseKey)) present.add(baseKey);
+  }
+  eSet = present;
 }
+
+// banner-first, order-aware on the effective set
+const chosenBaseId = pickEligibleBaseIdForCouponBannerFirst(eSet);
+if (!chosenBaseId) continue;
+
 
 const bound = Object.assign({}, L, {
   baseId: chosenBaseId,
@@ -1101,25 +1139,26 @@ if (!elig.size){
 }
 
 function enforceFirstComeLock(){
-  // If we still have a lock, keep it only if it actually produces a discount now.
-  const kept = getLock();
-  if (kept) {
-    const { base } = splitBaseVsAddons();
-    const { discount } = computeDiscount(kept, base);
-    if (discount > 0) return; // still valid, keep as-is
-    localStorage.removeItem(COUPON_KEY);
-  }
-
-  // If there’s a current lock but it’s no longer applicable, clear it first.
+  // 1) If current lock became inapplicable, clear it (also dispatches cart:update)
   clearLockIfNoLongerApplicable();
 
+  // 2) If a lock exists, keep it only if it still yields a discount; else remove
+  {
+    const kept = getLock();
+    if (kept) {
+      const { base } = splitBaseVsAddons();
+      const { discount } = computeDiscount(kept, base);
+      if (discount > 0) return; // still valid → keep
+      localStorage.removeItem(COUPON_KEY);
+    }
+  }
 
-  // Pick the first coupon that actually yields a non-zero discount for current cart & mode.
+  // 3) Pick FCFS next promo that actually discounts now
+  const { base } = splitBaseVsAddons();
   const fcfs = findFirstApplicableCouponForCart();
-  if (!fcfs) return;
-  const test = computeDiscount(fcfs, base);
-  if (test.discount > 0) setLock(fcfs);
+  if (fcfs && computeDiscount(fcfs, base).discount > 0) setLock(fcfs);
 }
+
 
 /* ===================== Discount computation ===================== */
 function computeDiscount(locked, baseSubtotal){
