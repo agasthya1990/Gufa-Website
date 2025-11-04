@@ -670,18 +670,14 @@ function setQty(found, variantKey, price, nextQty) {
 // 1️⃣ Live Cart update
 try {
   if (window.Cart && typeof window.Cart.setQty === "function") {
-    // Infer banner provenance from the card or its container
-    const card     = document.querySelector(`.menu-item[data-id="${found.id}"]`);
-// Strict: only honor a real banner container; otherwise non-banner
-const card     = document.querySelector(`.menu-item[data-id="${found.id}"]`);
-const bannerId =
-  card?.getAttribute("data-banner-id") ||
-  card?.dataset?.bannerId ||
-  card?.closest("[data-banner-id]")?.getAttribute("data-banner-id") ||
-  "";
-const origin = bannerId ? `banner:${bannerId}` : "non-banner";
-
-
+    // Strict: only honor a real banner container; otherwise non-banner
+    const card = document.querySelector(`.menu-item[data-id="${found.id}"]`);
+    const bannerId =
+      card?.getAttribute("data-banner-id") ||
+      card?.dataset?.bannerId ||
+      card?.closest("[data-banner-id]")?.getAttribute("data-banner-id") ||
+      "";
+    const origin = bannerId ? `banner:${bannerId}` : "non-banner";
 
     window.Cart.setQty(key, next, {
       id: found.id, name: found.name, variant: variantKey, price: Number(price) || 0,
@@ -689,6 +685,7 @@ const origin = bannerId ? `banner:${bannerId}` : "non-banner";
     });
   }
 } catch {}
+
 
 
     // 2️⃣ Persistent mirror for checkout hydration (single-key, flat)
@@ -2152,10 +2149,11 @@ function buildAndPersistCouponIndex(){
       window.dispatchEvent(new CustomEvent("promotions:hydrated"));
       window.dispatchEvent(new CustomEvent("cart:update"));
     }
-  } catch {}finally {
+  } catch {} finally {
     // release after sync listeners run, so nested handlers still see the guard
     Promise.resolve().then(() => { window.__IDX_BUILDING = false; });
   }
+
 }
 
 /* ---------- Boot ---------- */
