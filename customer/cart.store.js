@@ -44,16 +44,19 @@
       }
 
       const prev = bag[key] || {};
-      bag[key] = {
-        id:      meta?.id      ?? prev.id      ?? "",
-        name:    meta?.name    ?? prev.name    ?? "",
-        variant: meta?.variant ?? prev.variant ?? "",
-        price:   Number(meta?.price ?? prev.price ?? 0),
-        thumb:   meta?.thumb   ?? prev.thumb   ?? "",
-        qty:     next,
-        // persist provenance if provided; keep existing if already set
-        origin:  (meta?.origin ?? prev.origin ?? "")
-      };
+bag[key] = {
+  id:      meta?.id      ?? prev.id      ?? "",
+  name:    meta?.name    ?? prev.name    ?? "",
+  variant: meta?.variant ?? prev.variant ?? "",
+  price:   Number(meta?.price ?? prev.price ?? 0),
+  thumb:   meta?.thumb   ?? prev.thumb   ?? "",
+  qty:     next,
+  // keep existing origin unless a non-empty origin is provided
+  origin:  ((meta && typeof meta.origin === "string" && meta.origin.trim())
+              ? meta.origin
+              : (prev.origin || ""))
+};
+
 
       writeBag(bag);
     },
