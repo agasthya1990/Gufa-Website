@@ -1718,6 +1718,10 @@ if (e.key === "gufa_cart" || e.key === COUPON_KEY || e.key === ADDR_KEY) {
     }
   }, false);
 
+    // Listen for an explicit nudge from the menu after base removal
+  window.addEventListener("coupon:maybeRotate", () => {
+    try { enforceFirstComeLock(true); render(); } catch {}
+  }, false);
 
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible") render();
