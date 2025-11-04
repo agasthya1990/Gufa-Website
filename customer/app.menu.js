@@ -716,14 +716,21 @@ if (next <= 0) {
   delete bag[key];
 } else {
   const prev = bag[key] || {};
- // Reuse the same origin we computed above if available
-const card     = document.querySelector(`.menu-item[data-id="${found.id}"]`);
-const bannerId =
-  card?.getAttribute("data-banner-id") ||
-  card?.dataset?.bannerId ||
-  card?.closest("[data-banner-id]")?.getAttribute("data-banner-id") ||
-  "";
-const origin = prev.origin || (bannerId ? `banner:${bannerId}` : "non-banner");
+  const card = document.querySelector(`.menu-item[data-id="${found.id}"]`);
+
+  // Same broadened provenance as above
+  let bannerId =
+    card?.getAttribute("data-banner-id") ||
+    card?.dataset?.bannerId ||
+    card?.closest("[data-banner-id]")?.getAttribute("data-banner-id") ||
+    ((typeof view !== "undefined" && typeof listKind !== "undefined" && typeof listId !== "undefined" &&
+      view === "list" && listKind === "banner") ? String(listId || "") : "") ||
+    document.activeElement?.getAttribute?.("data-banner-id") ||
+    document.activeElement?.closest?.("[data-banner-id]")?.getAttribute("data-banner-id") ||
+    "";
+
+  const origin = prev.origin || (bannerId ? `banner:${bannerId}` : "non-banner");
+
   bag[key] = {
     id: found.id,
     name: found.name,
