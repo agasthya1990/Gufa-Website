@@ -159,6 +159,19 @@ window.addEventListener("serviceMode:changed", () => {
   // Emit on window so all cart:update listeners respond immediately
   window.dispatchEvent(new CustomEvent("cart:update", { detail: { source: "mode-change" }}));
 });
+
+  // Mirror the exact same behavior for 'mode:change' to keep both paths symmetric
+window.addEventListener("mode:change", () => {
+  const m = readMode();
+  try { localStorage.setItem("gufa_mode", m); } catch {}
+  try {
+    if (typeof findFirstApplicableCouponForCart === "function") {
+      const pick = findFirstApplicableCouponForCart();
+      if (pick) localStorage.setItem("gufa_coupon", JSON.stringify(pick));
+    }
+  } catch {}
+  window.dispatchEvent(new CustomEvent("cart:update", { detail: { source: "mode-change" }}));
+});
 })();
 
 
@@ -621,46 +634,57 @@ async function ensureCouponsReady() {
 
   // === STALE LOCK GUARD (NEW) ===
 (function guardStaleCouponLock(){
-  try {
-    const lock = JSON.parse(localStorage.getItem("gufa_coupon") || "null");
-    if (!lock?.scope?.couponId) return;
+  function runCheck(reason){
+    try {
+      const lock = JSON.parse(localStorage.getItem("gufa_coupon") || "null");
+      if (!lock?.scope?.couponId) return;
 
-    const map = (window.COUPONS instanceof Map) ? window.COUPONS : null;
-    if (!map) { localStorage.removeItem("gufa_coupon"); return; }
+      // If promotions aren’t ready, don’t judge yet.
+      const mapReady = (window.COUPONS instanceof Map) && window.COUPONS.size > 0;
+      if (!mapReady) return; // defer until hydrated
 
-    // resolve the real coupon id (id or code)
-    const cidLower = String(lock.scope.couponId).toLowerCase();
-    let meta = null, cidReal = null;
-    for (const [k, m] of map) {
-      if (String(k).toLowerCase() === cidLower) { meta = m; cidReal = k; break; }
-      const code = String(m?.code || "").toLowerCase();
-      if (!meta && code && code === cidLower) { meta = m; cidReal = k; }
-    }
-    if (!meta) { localStorage.removeItem("gufa_coupon"); return; }
+      // resolve the real coupon id (id or code)
+      const cidLower = String(lock.scope.couponId).toLowerCase();
+      let meta = null, cidReal = null;
+      for (const [k, m] of window.COUPONS) {
+        if (String(k).toLowerCase() === cidLower) { meta = m; cidReal = k; break; }
+        const code = String(m?.code || "").toLowerCase();
+        if (!meta && code && code === cidLower) { meta = m; cidReal = k; }
+      }
+      if (!meta) { localStorage.removeItem("gufa_coupon"); return; }
 
-    // Build eligibility set for this lock
-    const baseLock = (typeof buildLockFromMeta === "function")
-      ? buildLockFromMeta(String(cidReal), meta)
-      : { scope: { couponId: String(cidReal) } };
-    const elig = (typeof resolveEligibilitySet === "function") ? resolveEligibilitySet(baseLock) : new Set();
+      // Build eligibility and ensure at least one banner-origin eligible base remains
+      const baseLock = (typeof buildLockFromMeta === "function")
+        ? buildLockFromMeta(String(cidReal), meta)
+        : { scope: { couponId: String(cidReal) } };
+      const elig = (typeof resolveEligibilitySet === "function") ? resolveEligibilitySet(baseLock) : new Set();
 
-    // Keep lock ONLY if at least one banner-origin eligible base exists
-    const bag = window.Cart?.get?.() || {};
-    const bannerOk = Object.keys(bag)
-      .filter(k => k.split(":").length < 3)
-      .some(k => {
-        const id = k.split(":")[0].toLowerCase();
-        const o  = String(bag[k]?.origin || "");
-        return elig.has(id) && o.startsWith("banner:");
-      });
+      const bag = window.Cart?.get?.() || {};
+      const bannerOk = Object.keys(bag)
+        .filter(k => k.split(":").length < 3)
+        .some(k => {
+          const id = k.split(":")[0].toLowerCase();
+          const o  = String(bag[k]?.origin || "");
+          return elig.has(id) && o.startsWith("banner:");
+        });
 
-    if (!bannerOk) {
-      localStorage.removeItem("gufa_coupon");
-      // optional: broadcast so UI and FCFS recompute immediately
-      try { window.dispatchEvent(new CustomEvent("cart:update", { detail:{ reason:"stale-lock-cleared" } })); } catch {}
-    }
-  } catch {}
+      if (!bannerOk) {
+        localStorage.removeItem("gufa_coupon");
+        try { window.dispatchEvent(new CustomEvent("cart:update", { detail:{ reason:"stale-lock-cleared:"+reason } })); } catch {}
+      }
+    } catch {}
+  }
+
+  // Initial pass (may early-return if COUPONS not ready)
+  runCheck("boot");
+
+  // Re-run once promotions arrive
+  window.addEventListener("promotions:hydrated", () => runCheck("promotions"));
+
+  // Also re-run on cart mutations (e.g., provenance changes post-add)
+  window.addEventListener("cart:update", () => runCheck("cart"));
 })();
+
 
 
 
