@@ -593,54 +593,58 @@ async function ensureCouponsReady() {
   const getLock = () => { try { return JSON.parse(localStorage.getItem(COUPON_KEY) || "null"); } catch { return null; } };
   const setLock = (obj) => { try { obj ? localStorage.setItem(COUPON_KEY, JSON.stringify(obj)) : localStorage.removeItem(COUPON_KEY); } catch {} };
 
-  // === STALE LOCK GUARD (NEW) ===
+// === STALE LOCK GUARD (hydration-aware) ===
 (function guardStaleCouponLock(){
-  try {
-    const lock = JSON.parse(localStorage.getItem("gufa_coupon") || "null");
-    if (!lock?.scope?.couponId) return;
+  function runCheck(reason){
+    try {
+      const lock = JSON.parse(localStorage.getItem("gufa_coupon") || "null");
+      if (!lock?.scope?.couponId) return;
 
-    // find meta by id or by code
-    const map = (window.COUPONS instanceof Map) ? window.COUPONS : null;
-    if (!map) { localStorage.removeItem("gufa_coupon"); return; }
+      // If promotions aren’t ready yet, do not judge; wait for hydration.
+      const mapReady = (window.COUPONS instanceof Map) && window.COUPONS.size > 0;
+      if (!mapReady) return;
 
-    const cidLower = String(lock.scope.couponId).toLowerCase();
-    let meta = null, cidReal = null;
-
-    // direct id hit
-    for (const [k, m] of map) {
-      if (String(k).toLowerCase() === cidLower) { meta = m; cidReal = k; break; }
-    }
-    // by code
-    if (!meta) {
-      for (const [k, m] of map) {
+      // Resolve coupon by id or code
+      const want = String(lock.scope.couponId).toLowerCase();
+      let meta = null, cidReal = null;
+      for (const [k, m] of window.COUPONS) {
+        if (String(k).toLowerCase() === want) { meta = m; cidReal = k; break; }
         const code = String(m?.code || "").toLowerCase();
-        if (code && code === cidLower) { meta = m; cidReal = k; break; }
+        if (!meta && code && code === want) { meta = m; cidReal = k; }
       }
-    }
-    if (!meta) { localStorage.removeItem("gufa_coupon"); return; }
+      if (!meta) { localStorage.removeItem("gufa_coupon"); return; }
 
-    // eligibility must include at least one banner-origin base currently in cart
-    const bag = window.Cart?.get?.() || {};
-    const baseKeys = Object.keys(bag).filter(k => k.split(":").length < 3);
+      // Build eligibility and require at least one banner-origin eligible base
+      const baseLock = (typeof buildLockFromMeta === "function")
+        ? buildLockFromMeta(String(cidReal), meta)
+        : { scope: { couponId: String(cidReal) } };
+      const elig = (typeof resolveEligibilitySet === "function") ? resolveEligibilitySet(baseLock) : new Set();
 
-    const baseLock = (typeof buildLockFromMeta==="function")
-      ? buildLockFromMeta(String(cidReal), meta)
-      : { scope: { couponId: String(cidReal) } };
+      const bag = window.Cart?.get?.() || {};
+      const bannerOk = Object.keys(bag)
+        .filter(k => k.split(":").length < 3)
+        .some(k => {
+          const id = k.split(":")[0].toLowerCase();
+          const o  = String(bag[k]?.origin || "");
+          return elig.has(id) && o.startsWith("banner:");
+        });
 
-    const elig = (typeof resolveEligibilitySet==="function") ? resolveEligibilitySet(baseLock) : new Set();
+      if (!bannerOk) {
+        localStorage.removeItem("gufa_coupon");
+        try { window.dispatchEvent(new CustomEvent("cart:update", { detail:{ reason:"stale-lock-cleared:"+reason } })); } catch {}
+      }
+    } catch {}
+  }
 
-    const bannerEligiblePresent = baseKeys.some(k => {
-      const baseId = k.split(":")[0].toLowerCase();
-      const origin = String(bag[k]?.origin || "");
-      return elig.has(baseId) && origin.startsWith("banner:");
-    });
+  // Initial pass (may defer if coupons aren’t ready)
+  runCheck("boot");
 
-    if (!bannerEligiblePresent) {
-      localStorage.removeItem("gufa_coupon");
-    }
-  } catch {}
+  // Re-check when promotions hydrate
+  window.addEventListener("promotions:hydrated", () => runCheck("promotions"));
+
+  // Re-check on cart churn (e.g., provenance/eligibility changed)
+  window.addEventListener("cart:update", () => runCheck("cart"));
 })();
-
 
 
   function displayCode(locked){
