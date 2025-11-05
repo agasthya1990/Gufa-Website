@@ -1153,12 +1153,15 @@ if (!elig.size && String(locked?.source||"") === "manual") {
 if (!elig.size) return { discount:0 };
 
 
-
 // Eligible base subtotal only
 let eligibleBase = 0;
 let eligibleQty  = 0; // NEW: count units across eligible base lines
 for (const [key, it] of entries()){
   if (isAddonKey(key)) continue;
+
+  // Banner-only clamp: never discount non-banner lines
+  if (!String(it?.origin || "").startsWith("banner:")) continue;
+
   const parts = String(key).split(":");
   const itemId  = String(it?.id ?? parts[0]).toLowerCase();
   const baseKey = parts.slice(0,2).join(":").toLowerCase();
@@ -1168,6 +1171,7 @@ for (const [key, it] of entries()){
     eligibleQty  += q; // count quantity
   }
 }
+
     if (eligibleBase <= 0) return { discount:0 };
 
 const t = String(locked?.type||"").toLowerCase();
@@ -1189,7 +1193,6 @@ if (t === "percent") {
 return { discount: Math.max(0, Math.round(d)) };
 
  }
-
 
 
   /* ===================== Grouping & rows ===================== */
