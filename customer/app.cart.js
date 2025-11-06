@@ -593,58 +593,57 @@ async function ensureCouponsReady() {
   const getLock = () => { try { return JSON.parse(localStorage.getItem(COUPON_KEY) || "null"); } catch { return null; } };
   const setLock = (obj) => { try { obj ? localStorage.setItem(COUPON_KEY, JSON.stringify(obj)) : localStorage.removeItem(COUPON_KEY); } catch {} };
 
-// === STALE LOCK GUARD (hydration-aware) ===
-(function guardStaleCouponLock(){
-  function runCheck(reason){
-    try {
-      const lock = JSON.parse(localStorage.getItem("gufa_coupon") || "null");
-      if (!lock?.scope?.couponId) return;
+// === STALE LOCK GUARD (NEW) ===
+function guardStaleCouponLock(){
+  try {
+    const lock = JSON.parse(localStorage.getItem("gufa_coupon") || "null");
+    if (!lock?.scope?.couponId) return;
 
-      // If promotions aren’t ready yet, do not judge; wait for hydration.
-      const mapReady = (window.COUPONS instanceof Map) && window.COUPONS.size > 0;
-      if (!mapReady) return;
+    const map = (window.COUPONS instanceof Map) ? window.COUPONS : null;
+    if (!map) { localStorage.removeItem("gufa_coupon"); return; }
 
-      // Resolve coupon by id or code
-      const want = String(lock.scope.couponId).toLowerCase();
-      let meta = null, cidReal = null;
-      for (const [k, m] of window.COUPONS) {
-        if (String(k).toLowerCase() === want) { meta = m; cidReal = k; break; }
-        const code = String(m?.code || "").toLowerCase();
-        if (!meta && code && code === want) { meta = m; cidReal = k; }
-      }
-      if (!meta) { localStorage.removeItem("gufa_coupon"); return; }
+    // resolve meta by id or by code
+    const cidLower = String(lock.scope.couponId).toLowerCase();
+    let meta = null, cidReal = null;
+    for (const [k, m] of map) {
+      if (String(k).toLowerCase() === cidLower) { meta = m; cidReal = k; break; }
+      const code = String(m?.code || "").toLowerCase();
+      if (!meta && code && code === cidLower) { meta = m; cidReal = k; }
+    }
+    if (!meta) { localStorage.removeItem("gufa_coupon"); return; }
 
-      // Build eligibility and require at least one banner-origin eligible base
-      const baseLock = (typeof buildLockFromMeta === "function")
-        ? buildLockFromMeta(String(cidReal), meta)
-        : { scope: { couponId: String(cidReal) } };
-      const elig = (typeof resolveEligibilitySet === "function") ? resolveEligibilitySet(baseLock) : new Set();
+    // eligibility must include at least one banner-origin eligible base in cart
+    const bag = window.Cart?.get?.() || {};
+    const baseLock = (typeof buildLockFromMeta === "function")
+      ? buildLockFromMeta(String(cidReal), meta)
+      : { scope: { couponId: String(cidReal) } };
 
-      const bag = window.Cart?.get?.() || {};
-      const bannerOk = Object.keys(bag)
-        .filter(k => k.split(":").length < 3)
-        .some(k => {
-          const id = k.split(":")[0].toLowerCase();
-          const o  = String(bag[k]?.origin || "");
-          return elig.has(id) && o.startsWith("banner:");
-        });
+    const elig = (typeof resolveEligibilitySet === "function") ? resolveEligibilitySet(baseLock) : new Set();
 
-      if (!bannerOk) {
-        localStorage.removeItem("gufa_coupon");
-        try { window.dispatchEvent(new CustomEvent("cart:update", { detail:{ reason:"stale-lock-cleared:"+reason } })); } catch {}
-      }
-    } catch {}
-  }
+    const bannerOk = Object.keys(bag)
+      .filter(k => k.split(":").length < 3)
+      .some(k => {
+        const id = k.split(":")[0].toLowerCase();
+        const origin = String(bag[k]?.origin || "");
+        return elig.has(id) && origin.startsWith("banner:");
+      });
 
-  // Initial pass (may defer if coupons aren’t ready)
-  runCheck("boot");
+    if (!bannerOk) {
+      localStorage.removeItem("gufa_coupon");
+      try { window.dispatchEvent(new CustomEvent("cart:update", { detail:{ reason:"stale-lock-cleared" } })); } catch {}
+    }
+  } catch {}
+}
 
-  // Re-check when promotions hydrate
-  window.addEventListener("promotions:hydrated", () => runCheck("promotions"));
+// run once now…
+guardStaleCouponLock();
+// …and re-run whenever the bag/mode changes
+try {
+  window.addEventListener("cart:update",          guardStaleCouponLock);
+  window.addEventListener("mode:change",          guardStaleCouponLock);
+  window.addEventListener("serviceMode:changed",  guardStaleCouponLock);
+} catch {}
 
-  // Re-check on cart churn (e.g., provenance/eligibility changed)
-  window.addEventListener("cart:update", () => runCheck("cart"));
-})();
 
 
   function displayCode(locked){
@@ -834,7 +833,7 @@ function eligibleIdsFromBanners(scope){
 }
 
 
-// explicit eligibleItemIds > banner-derived > catalog > LS index (strict)
+// explicit eligibleItemIds > banner-derived (STRICT) > catalog > LS index
 function resolveEligibilitySet(locked){
   const scope = locked?.scope || {};
   const explicit = (
@@ -845,18 +844,16 @@ function resolveEligibilitySet(locked){
   ).map(s=>String(s).toLowerCase());
   if (explicit.length) return new Set(explicit);
 
+  // If a banner scope exists, we are strict: only banner-listed items qualify.
   const byBanner = eligibleIdsFromBanners(scope);
   if (byBanner.size) return byBanner;
 
-  // STRICT banner scope: if a bannerId is present but yielded no items,
-  // do NOT fall back to catalog or LS index (prevents spillover).
-  const hasBannerScope = !!String(scope.bannerId || "").trim();
-  if (hasBannerScope && byBanner.size === 0) {
-    return new Set();
+  // 👇 NEW: if a bannerId is present but yielded no items, DO NOT fall back.
+  if (String(scope.bannerId||"").trim()) {
+    return new Set(); // no spillover to catalog/LS when banner scope is declared
   }
 
-  
-  // Catalog fallback
+  // Catalog fallback (only when no banner scope)
   if (typeof computeEligibleItemIdsForCoupon === "function" && scope.couponId) {
     try {
       const via = computeEligibleItemIdsForCoupon(String(scope.couponId));
@@ -866,7 +863,7 @@ function resolveEligibilitySet(locked){
     } catch {}
   }
 
-  // NEW: localStorage coupon→items index (supports code or id)
+  // LS coupon→items index (supports code or id)
   try {
     const rawIdx = localStorage.getItem("gufa:COUPON_INDEX");
     if (rawIdx) {
