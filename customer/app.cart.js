@@ -848,6 +848,14 @@ function resolveEligibilitySet(locked){
   const byBanner = eligibleIdsFromBanners(scope);
   if (byBanner.size) return byBanner;
 
+  // STRICT banner scope: if a bannerId is present but yielded no items,
+  // do NOT fall back to catalog or LS index (prevents spillover).
+  const hasBannerScope = !!String(scope.bannerId || "").trim();
+  if (hasBannerScope && byBanner.size === 0) {
+    return new Set();
+  }
+
+  
   // Catalog fallback
   if (typeof computeEligibleItemIdsForCoupon === "function" && scope.couponId) {
     try {
