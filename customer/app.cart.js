@@ -625,7 +625,7 @@ function guardStaleCouponLock(){
       .some(k => {
         const id = k.split(":")[0].toLowerCase();
         const origin = String(bag[k]?.origin || "");
-        return elig.has(id) && origin.startsWith("banner:");
+        return elig.has(id) && isKnownBannerOrigin(origin);
       });
 
     if (!bannerOk) {
@@ -786,6 +786,47 @@ function showPromoError(msg) {
     return true;
   }
 
+// --- Banner origin validation (strict) ---
+function isKnownBannerOrigin(origin) {
+  const s = String(origin || "");
+  if (!s.startsWith("banner:")) return false;
+  const key = s.slice("banner:".length).trim();
+  if (!key) return false;
+
+  // Allow only keys that exist in the current banner catalog
+  if (window.BANNERS instanceof Map) {
+    return window.BANNERS.has(key);
+  }
+  if (Array.isArray(window.BANNERS)) {
+    // array form [{id, ...}]
+    return window.BANNERS.some(b => String(b?.id || "") === key);
+  }
+  return false;
+}
+
+// Remove any unknown/stale banner origins (e.g., "banner:test-only")
+function scrubUnknownBannerOrigins() {
+  try {
+    const bag = window.Cart?.get?.() || {};
+    let mutated = false;
+    for (const [k, v] of Object.entries(bag)) {
+      if (String(k).split(":").length >= 3) continue; // skip addons
+      if (v && typeof v === "object" && String(v.origin || "").startsWith("banner:")) {
+        if (!isKnownBannerOrigin(v.origin)) {
+          // Drop bogus banner marks
+          delete v.origin;
+          mutated = true;
+        }
+      }
+    }
+    if (mutated) {
+      localStorage.setItem("gufa_cart", JSON.stringify(bag));
+      window.dispatchEvent(new CustomEvent("cart:update", { detail:{ reason:"scrub-unknown-banner-origin" }}));
+    }
+  } catch {}
+}
+
+    
 function eligibleIdsFromBanners(scope){
   const out = new Set();
   if (!scope) return out;
@@ -930,7 +971,7 @@ function pickEligibleBaseIdForCouponBannerFirst(eSet) {
       Object.keys(bag)
         .filter(isBase)
         .filter(k => eSet.has(toBaseId(k)))
-        .filter(k => String(bag[k]?.origin||"").startsWith("banner:"))
+        .filter(k => isKnownBannerOrigin(bag[k]?.origin))
         .map(toBaseId)
     );
 
@@ -1169,7 +1210,7 @@ for (const [key, it] of entries()){
   if (isAddonKey(key)) continue;
 
   // Banner-only clamp: never discount non-banner lines
-  if (!String(it?.origin || "").startsWith("banner:")) continue;
+  if (!isKnownBannerOrigin(it?.origin)) continue;
 
   const parts = String(key).split(":");
   const itemId  = String(it?.id ?? parts[0]).toLowerCase();
@@ -1611,6 +1652,9 @@ async function boot(){
     try { await ensureCouponsReady(); } catch {}
   }
 
+  scrub unknown/test banner origins before first paint
+    try { scrubUnknownBannerOrigins(); } catch {}
+  
   // NEW — clear stale/invalid coupon lock after hydration, before first paint
   try {
     (function(){
