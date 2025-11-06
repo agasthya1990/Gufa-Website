@@ -1652,7 +1652,7 @@ async function boot(){
     try { await ensureCouponsReady(); } catch {}
   }
 
-  scrub unknown/test banner origins before first paint
+  //scrub unknown/test banner origins before first paint
     try { scrubUnknownBannerOrigins(); } catch {}
   
   // NEW — clear stale/invalid coupon lock after hydration, before first paint
