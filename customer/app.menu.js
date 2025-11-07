@@ -2272,3 +2272,4 @@ document.addEventListener('click', (e) => {
   to.searchParams.set('cart', b64);
   a.href = to.toString();
 });
+})();
