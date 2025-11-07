@@ -881,12 +881,24 @@ function eligibleIdsFromBanners(scope){
     }
   };
 
-  // Map form: key -> array of itemIds (or a keyed alias "coupon:<cid>")
-  if (window.BANNERS instanceof Map){
-    addAll(window.BANNERS.get(bid));
-    if (!out.size && cid) addAll(window.BANNERS.get(`coupon:${cid}`));
-    return out;
+// Map form: key -> array of itemIds (accept bannerId, "coupon:<cid>", and "couponCode:<CODE>")
+if (window.BANNERS instanceof Map){
+  // 1) direct banner id
+  addAll(window.BANNERS.get(bid));
+
+  // 2) coupon:<id>
+  if (!out.size && cid) addAll(window.BANNERS.get(`coupon:${cid}`));
+
+  // 3) couponCode:<CODE> via COUPONS map
+  if (!out.size && cid && (window.COUPONS instanceof Map)) {
+    const code = String(window.COUPONS.get(cid)?.code || "").trim();
+    if (code) {
+      addAll(window.BANNERS.get(`couponCode:${code}`) || window.BANNERS.get(`couponCode:${code.toUpperCase()}`));
+    }
   }
+  return out;
+}
+
 
   // Array form: [{ id, linkedCouponIds, items/eligibleItemIds/itemIds }]
   if (Array.isArray(window.BANNERS)){
@@ -1249,11 +1261,12 @@ if (!elig.size) return { discount:0 };
 // Eligible base subtotal only
 let eligibleBase = 0;
 let eligibleQty  = 0; // NEW: count units across eligible base lines
+const bannerOnly = isBannerScoped(locked); // ← NEW
 for (const [key, it] of entries()){
   if (isAddonKey(key)) continue;
 
-  // Banner-only clamp: never discount non-banner lines
-  if (!isKnownBannerOrigin(it?.origin)) continue;
+  // Enforce banner-origin only when the coupon is banner-scoped
+  if (bannerOnly && !isKnownBannerOrigin(it?.origin)) continue;
 
   const parts = String(key).split(":");
   const itemId  = String(it?.id ?? parts[0]).toLowerCase();
