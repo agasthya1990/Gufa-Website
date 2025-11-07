@@ -764,6 +764,122 @@ function showPromoError(msg) {
 }
 
   /* ===================== Promotions Discipline ===================== */
+
+  // Eligibility core that tolerates Map or Array BANNERS and restores general-coupon scope
+
+// Read coupon meta by id (or fall back to code)
+function __findMetaByIdOrCode__(idOrCode){
+  const key = String(idOrCode || "").trim();
+  if (!(window.COUPONS instanceof Map)) return { cid:null, meta:null, code:"" };
+  // direct id
+  if (window.COUPONS.has(key)) {
+    const meta = window.COUPONS.get(key) || {};
+    return { cid: key, meta, code: String(meta.code||"") };
+  }
+  // by code
+  for (const [cid, meta] of window.COUPONS) {
+    const code = String(meta?.code || "");
+    if (code && code.toUpperCase() === key.toUpperCase()) {
+      return { cid:String(cid), meta, code };
+    }
+  }
+  return { cid:null, meta:null, code:"" };
+}
+
+// Build a Set of itemIds this coupon can touch from banners (Map or Array)
+function eligibleIdsFromBanners(scope){
+  try {
+    const out = new Set();
+    if (!window.BANNERS) return out;
+
+    const couponId = String(scope?.couponId || "").trim();
+    const { meta, cid, code } = __findMetaByIdOrCode__(couponId || scope?.code || "");
+    const codeU = String(code || meta?.code || "").toUpperCase();
+
+    // Helper to add all ids from a banner key
+    const addAll = (arr) => {
+      if (Array.isArray(arr)) arr.forEach(v => out.add(String(v).toLowerCase()));
+    };
+
+    if (window.BANNERS instanceof Map) {
+      if (scope?.bannerId) addAll(window.BANNERS.get(String(scope.bannerId)));
+      if (!out.size && cid)  addAll(window.BANNERS.get(`coupon:${cid}`));
+      if (!out.size && codeU) addAll(window.BANNERS.get(`couponCode:${codeU}`) || window.BANNERS.get(`couponCode:${codeU.toUpperCase()}`));
+    } else if (Array.isArray(window.BANNERS)) {
+      // Array form: [{ id, itemIds, couponId, couponCode }]
+      for (const b of window.BANNERS) {
+        const bid = String(b?.id || "");
+        const arr = Array.isArray(b?.itemIds) ? b.itemIds : [];
+        if (scope?.bannerId && bid === String(scope.bannerId)) addAll(arr);
+        if (!out.size && cid   && String(b?.couponId||"")   === cid)   addAll(arr);
+        if (!out.size && codeU && String(b?.couponCode||"").toUpperCase() === codeU) addAll(arr);
+        if (out.size) break;
+      }
+    }
+    return out;
+  } catch { return new Set(); }
+}
+
+// Resolve full eligibility: explicit → banners → local index → ITEMS catalog
+function resolveEligibilitySet(locked){
+  const set = new Set();
+
+  // 1) explicit (from meta or lock scope)
+  const explicit = Array.isArray(locked?.scope?.eligibleItemIds) ? locked.scope.eligibleItemIds : [];
+  for (const v of explicit) set.add(String(v).toLowerCase());
+
+  // 2) banners
+  if (!set.size) {
+    const viaBanners = eligibleIdsFromBanners(locked?.scope || locked);
+    viaBanners.forEach(v => set.add(v));
+  }
+
+  // 3) coupon index (persisted by menu)
+  if (!set.size) {
+    try {
+      const idxRaw = localStorage.getItem("gufa:COUPON_INDEX");
+      if (idxRaw) {
+        const idx = JSON.parse(idxRaw) || {};
+        const tokenL = (String(locked?.scope?.couponId || locked?.code || "").toLowerCase());
+        const fromCode = String(locked?.code || "").toLowerCase();
+        const arr = idx[tokenL] || idx[fromCode] || [];
+        if (Array.isArray(arr)) arr.forEach(v => set.add(String(v).toLowerCase()));
+      }
+    } catch {}
+  }
+
+  // 4) ITEMS fallback
+  if (!set.size && Array.isArray(window.ITEMS)) {
+    const cid = String(locked?.scope?.couponId || "").toLowerCase();
+    for (const it of window.ITEMS) {
+      const ids = Array.isArray(it.promotions) ? it.promotions
+                : Array.isArray(it.coupons)    ? it.coupons
+                : Array.isArray(it.couponIds)  ? it.couponIds
+                : [];
+      if (ids.map(s=>String(s).toLowerCase()).includes(cid)) {
+        set.add(String(it.id).toLowerCase());
+      }
+    }
+  }
+
+  return set;
+}
+
+// A coupon is “banner-scoped” only if tied to a specific banner (id/keys) or came from a banner source
+function isBannerScoped(locked){
+  try {
+    const scope = locked?.scope || {};
+    if (String(scope.bannerId || "").trim()) return true;
+
+    // If banners explicitly list eligible ids for this coupon id/code, treat as banner-scoped
+    const via = eligibleIdsFromBanners(scope);
+    if (via && via.size) return true;
+
+    if (String(locked?.source || "").startsWith("banner:")) return true;
+  } catch {}
+  return false;
+}
+
   // Hooks for future admin fields:
   // - minOrder: number  (already supported)
   // - usageLimit: number, usedCount: number (supported via checkUsageAvailable)
@@ -1266,8 +1382,7 @@ for (const [key, it] of entries()){
   if (isAddonKey(key)) continue;
 
   // Enforce banner-origin only when the coupon is banner-scoped
-  if (bannerOnly && !isKnownBannerOrigin(it?.origin)) continue;
-
+  if (bannerOnly && !isKnownBannerOrigin(it?.origin)) continue; // only clamp when banner coupon
   const parts = String(key).split(":");
   const itemId  = String(it?.id ?? parts[0]).toLowerCase();
   const baseKey = parts.slice(0,2).join(":").toLowerCase();
