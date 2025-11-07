@@ -179,6 +179,38 @@ function updateAllMiniCartBadges(){
 if (!(window.COUPONS instanceof Map)) window.COUPONS = new Map();
 if (!Array.isArray(window.BANNERS)) window.BANNERS = [];
 
+// publish a Map mirror from Array banners for Cart consumers
+(function normalizeAndPublishBannersMap(){
+  if (window.BANNERS instanceof Map) return;          // already a Map elsewhere
+  if (!Array.isArray(window.BANNERS)) return;          // nothing to do
+
+  // Expect array of banner objects like: { id, itemIds, linkedCouponIds, couponId, couponCode }
+  const asMap = new Map();
+
+  for (const b of window.BANNERS) {
+    if (!b) continue;
+    const itemIds = Array.isArray(b.itemIds) ? b.itemIds.map(String) : [];
+    const bid = String(b.id || "").trim();
+    if (bid) asMap.set(bid, itemIds);
+
+    const cid  = (b.couponId   != null) ? String(b.couponId)   : "";
+    const code = (b.couponCode != null) ? String(b.couponCode) : "";
+
+    // Index by coupon id and code for Cart lookups
+    if (cid)  asMap.set(`coupon:${cid}`, itemIds);
+    if (code) asMap.set(`couponCode:${code.toUpperCase()}`, itemIds);
+  }
+
+  // Replace Array with Map for downstream consumers (Cart expects Map fast-path)
+  window.BANNERS = asMap;
+
+  // Optional: persist a lightweight snapshot for checkout/cart tabs to read if needed later
+  try {
+    const dump = Array.from(asMap.entries());
+    localStorage.setItem("gufa:BANNERS_MAP", JSON.stringify(dump));
+  } catch {}
+})();
+
 
 // —— Persist a lightweight coupons snapshot for checkout hydration ——//
 
