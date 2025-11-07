@@ -158,26 +158,7 @@ window.addEventListener("serviceMode:changed", () => {
   window.CART_UI.list = Object.assign({}, defaults, root); // any page overrides still win
 })();
 
-// 2) Resolve layout once and memoize element refs. Safe even if pieces are missing.
-function resolveLayout(){
-  const Q  = sel => document.querySelector(sel);
-  const UI = (window.CART_UI && window.CART_UI.list) || {};
-  const R = {
-    items:      Q(UI.items),
-    empty:      Q(UI.empty),
-    subtotal:   Q(UI.subtotal),
-    servicetax: Q(UI.servicetax),
-    total:      Q(UI.total),
-    proceed:    Q(UI.proceed),
-    invFood:    Q(UI.invFood),
-    invAddons:  Q(UI.invAddons),
-    promoLbl:   Q(UI.promoLbl),
-    promoAmt:   Q(UI.promoAmt),
-    promoInput: Q(UI.promoInput),
-    promoApply: Q(UI.promoApply)
-  };
-  return R;
-}
+
 
 // --- Promo label pulse (visual only) ---
 let __LAST_PROMO_TAG__ = "";
@@ -820,50 +801,6 @@ function eligibleIdsFromBanners(scope){
   } catch { return new Set(); }
 }
 
-// Resolve full eligibility: explicit → banners → local index → ITEMS catalog
-function resolveEligibilitySet(locked){
-  const set = new Set();
-
-  // 1) explicit (from meta or lock scope)
-  const explicit = Array.isArray(locked?.scope?.eligibleItemIds) ? locked.scope.eligibleItemIds : [];
-  for (const v of explicit) set.add(String(v).toLowerCase());
-
-  // 2) banners
-  if (!set.size) {
-    const viaBanners = eligibleIdsFromBanners(locked?.scope || locked);
-    viaBanners.forEach(v => set.add(v));
-  }
-
-  // 3) coupon index (persisted by menu)
-  if (!set.size) {
-    try {
-      const idxRaw = localStorage.getItem("gufa:COUPON_INDEX");
-      if (idxRaw) {
-        const idx = JSON.parse(idxRaw) || {};
-        const tokenL = (String(locked?.scope?.couponId || locked?.code || "").toLowerCase());
-        const fromCode = String(locked?.code || "").toLowerCase();
-        const arr = idx[tokenL] || idx[fromCode] || [];
-        if (Array.isArray(arr)) arr.forEach(v => set.add(String(v).toLowerCase()));
-      }
-    } catch {}
-  }
-
-  // 4) ITEMS fallback
-  if (!set.size && Array.isArray(window.ITEMS)) {
-    const cid = String(locked?.scope?.couponId || "").toLowerCase();
-    for (const it of window.ITEMS) {
-      const ids = Array.isArray(it.promotions) ? it.promotions
-                : Array.isArray(it.coupons)    ? it.coupons
-                : Array.isArray(it.couponIds)  ? it.couponIds
-                : [];
-      if (ids.map(s=>String(s).toLowerCase()).includes(cid)) {
-        set.add(String(it.id).toLowerCase());
-      }
-    }
-  }
-
-  return set;
-}
 
 // A coupon is “banner-scoped” only if tied to a specific banner (id/keys) or came from a banner source
 function isBannerScoped(locked){
@@ -943,100 +880,6 @@ function scrubUnknownBannerOrigins() {
       window.dispatchEvent(new CustomEvent("cart:update", { detail:{ reason:"scrub-unknown-banner-origin" }}));
     }
   } catch {}
-}
-
-// Decide if this coupon lock is *banner-scoped* (apply discount only to banner-origin bases)
-function isBannerScoped(lock){
-  try {
-    // Optional admin/meta override
-    if (lock?.meta?.bannerOnly === true) return true;
-
-    const scope = lock?.scope || {};
-    // Explicit scope from lock
-    if (String(scope.bannerId || "").trim()) return true;
-
-    const cid = String(scope.couponId || "").trim();
-    if (!cid) return false;
-
-    // Map form: explicit coupon→banner mapping
-    if (window.BANNERS instanceof Map) {
-      return window.BANNERS.has(`coupon:${cid}`);
-    }
-
-    // Array form: banner links this coupon and lists any items
-    if (Array.isArray(window.BANNERS)) {
-      const hit = window.BANNERS.find(b =>
-        Array.isArray(b?.linkedCouponIds) &&
-        b.linkedCouponIds.map(String).some(x => x.trim() === cid) &&
-        (Array.isArray(b?.items) || Array.isArray(b?.eligibleItemIds) || Array.isArray(b?.itemIds))
-      );
-      return !!hit;
-    }
-
-    return false;
-  } catch { 
-    return false; 
-  }
-}
-
-
-  
-function eligibleIdsFromBanners(scope){
-  const out = new Set();
-  if (!scope) return out;
-
-  const bid = String(scope.bannerId||"").trim();
-  const cid = String(scope.couponId||"").trim();
-
-  // Helper to add ids safely
-  const addAll = (arr) => {
-    if (!Array.isArray(arr)) return;
-    for (const x of arr) {
-      const s = String(x||"").trim();
-      if (s) out.add(s.toLowerCase());
-    }
-  };
-
-// Map form: key -> array of itemIds (accept bannerId, "coupon:<cid>", and "couponCode:<CODE>")
-if (window.BANNERS instanceof Map){
-  // 1) direct banner id
-  addAll(window.BANNERS.get(bid));
-
-  // 2) coupon:<id>
-  if (!out.size && cid) addAll(window.BANNERS.get(`coupon:${cid}`));
-
-  // 3) couponCode:<CODE> via COUPONS map
-  if (!out.size && cid && (window.COUPONS instanceof Map)) {
-    const code = String(window.COUPONS.get(cid)?.code || "").trim();
-    if (code) {
-      addAll(window.BANNERS.get(`couponCode:${code}`) || window.BANNERS.get(`couponCode:${code.toUpperCase()}`));
-    }
-  }
-  return out;
-}
-
-
-  // Array form: [{ id, linkedCouponIds, items/eligibleItemIds/itemIds }]
-  if (Array.isArray(window.BANNERS)){
-    const banner = bid ? window.BANNERS.find(b => String(b?.id||"").trim() === bid) : null;
-    if (banner) {
-      // explicit items first
-      addAll(banner.items || banner.eligibleItemIds || banner.itemIds);
-      if (out.size) return out;
-      // no explicit items? then we accept banner linkage as eligibility scope;
-      // in strict mode, fallback is empty if no items listed—so keep it empty here.
-    }
-
-    // if only the couponId is known, look for a banner that links this coupon
-    if (!out.size && cid) {
-      const byCoupon = window.BANNERS.find(b =>
-        Array.isArray(b?.linkedCouponIds) &&
-        b.linkedCouponIds.map(String).some(x => x.trim() === cid)
-      );
-      addAll(byCoupon?.items || byCoupon?.eligibleItemIds || byCoupon?.itemIds);
-    }
-  }
-  return out;
 }
 
 
@@ -1357,19 +1200,6 @@ if (!elig || elig.size === 0) {
   if (merged.length) elig = new Set(merged);
 }
 
-// Fallback 2: for manual source, allow any base line if still empty (keeps your current behavior)
-if (!elig.size && String(locked?.source||"") === "manual") {
-  try {
-    const bases = [];
-    for (const [key, it] of entries()) {
-      if (isAddonKey(key)) continue;
-      const parts  = String(key).split(":");
-      const itemId = String(it?.id ?? parts[0]).toLowerCase();
-      bases.push(itemId);
-    }
-    if (bases.length) elig = new Set(bases);
-  } catch {}
-}
 
 if (!elig.size) return { discount:0 };
 
@@ -1377,15 +1207,17 @@ if (!elig.size) return { discount:0 };
 // Eligible base subtotal only
 let eligibleBase = 0;
 let eligibleQty  = 0; // NEW: count units across eligible base lines
-const bannerOnly = isBannerScoped(locked); // ← NEW
+const bannerOnly = isBannerScoped(locked); // ← add this once, outside the loop
 for (const [key, it] of entries()){
   if (isAddonKey(key)) continue;
 
   // Enforce banner-origin only when the coupon is banner-scoped
-  if (bannerOnly && !isKnownBannerOrigin(it?.origin)) continue; // only clamp when banner coupon
+  if (bannerOnly && !isKnownBannerOrigin(it?.origin)) continue;
+
   const parts = String(key).split(":");
   const itemId  = String(it?.id ?? parts[0]).toLowerCase();
   const baseKey = parts.slice(0,2).join(":").toLowerCase();
+
   if (elig.has(itemId) || elig.has(baseKey) || Array.from(elig).some(x => !x.includes(":") && baseKey.startsWith(x + ":"))){
     const q = clamp0(it.qty);
     eligibleBase += clamp0(it.price) * q;
@@ -1858,12 +1690,17 @@ async function boot(){
       }
       if (!meta) { localStorage.removeItem("gufa_coupon"); return; }
 
-      // require eligibility to include the live base item
-      const testLock = buildLockFromMeta(String(cidReal), meta);
-      const elig = resolveEligibilitySet(testLock);
-      if (!(elig instanceof Set) || !elig.has(baseId)) {
-        localStorage.removeItem("gufa_coupon");
-      }
+// require eligibility to include the live base item (+ banner provenance when needed)
+const testLock = buildLockFromMeta(String(cidReal), meta);
+const elig = resolveEligibilitySet(testLock);
+const bannerOnly = isBannerScoped(testLock);
+const origin = String(bag[baseKey]?.origin || "");
+
+const ok = (elig instanceof Set) && elig.has(baseId) && (!bannerOnly || isKnownBannerOrigin(origin));
+if (!ok) {
+  localStorage.removeItem("gufa_coupon");
+}
+
     })();
   } catch {}
 
