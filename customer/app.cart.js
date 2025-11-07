@@ -620,18 +620,21 @@ function guardStaleCouponLock(){
 
     const elig = (typeof resolveEligibilitySet === "function") ? resolveEligibilitySet(baseLock) : new Set();
 
-    const bannerOk = Object.keys(bag)
-      .filter(k => k.split(":").length < 3)
-      .some(k => {
-        const id = k.split(":")[0].toLowerCase();
-        const origin = String(bag[k]?.origin || "");
-        return elig.has(id) && isKnownBannerOrigin(origin);
-      });
+ const bannerOnly = isBannerScoped(baseLock); // ← NEW
 
-    if (!bannerOk) {
-      localStorage.removeItem("gufa_coupon");
-      try { window.dispatchEvent(new CustomEvent("cart:update", { detail:{ reason:"stale-lock-cleared" } })); } catch {}
-    }
+const ok = Object.keys(bag)
+  .filter(k => k.split(":").length < 3)
+  .some(k => {
+    const id = k.split(":")[0].toLowerCase();
+    const origin = String(bag[k]?.origin || "");
+    if (bannerOnly && !isKnownBannerOrigin(origin)) return false;
+    return elig.has(id);
+  });
+
+if (!ok) {
+  localStorage.removeItem("gufa_coupon");
+  try { window.dispatchEvent(new CustomEvent("cart:update", { detail:{ reason:"stale-lock-cleared" } })); } catch {}
+}
   } catch {}
 }
 
@@ -826,7 +829,42 @@ function scrubUnknownBannerOrigins() {
   } catch {}
 }
 
-    
+// Decide if this coupon lock is *banner-scoped* (apply discount only to banner-origin bases)
+function isBannerScoped(lock){
+  try {
+    // Optional admin/meta override
+    if (lock?.meta?.bannerOnly === true) return true;
+
+    const scope = lock?.scope || {};
+    // Explicit scope from lock
+    if (String(scope.bannerId || "").trim()) return true;
+
+    const cid = String(scope.couponId || "").trim();
+    if (!cid) return false;
+
+    // Map form: explicit coupon→banner mapping
+    if (window.BANNERS instanceof Map) {
+      return window.BANNERS.has(`coupon:${cid}`);
+    }
+
+    // Array form: banner links this coupon and lists any items
+    if (Array.isArray(window.BANNERS)) {
+      const hit = window.BANNERS.find(b =>
+        Array.isArray(b?.linkedCouponIds) &&
+        b.linkedCouponIds.map(String).some(x => x.trim() === cid) &&
+        (Array.isArray(b?.items) || Array.isArray(b?.eligibleItemIds) || Array.isArray(b?.itemIds))
+      );
+      return !!hit;
+    }
+
+    return false;
+  } catch { 
+    return false; 
+  }
+}
+
+
+  
 function eligibleIdsFromBanners(scope){
   const out = new Set();
   if (!scope) return out;
@@ -953,40 +991,45 @@ function hasBannerProvenance(baseKey) {
 }
 
 // —— Banner-first picker (order-aware): prefer banner-origin bases present earliest in gufa:baseOrder
-function pickEligibleBaseIdForCouponBannerFirst(eSet) {
+function pickEligibleBaseIdForCouponBannerFirst(eSet, lock) {
   try {
     const bag = window.Cart?.get?.() || {};
-    // read preserved arrival order (you already maintain it)
+    const bannerOnly = isBannerScoped(lock); // ← NEW
+
+    // read preserved arrival order
     let order = [];
     try {
       order = JSON.parse(localStorage.getItem("gufa:baseOrder") || "[]");
       if (!Array.isArray(order)) order = [];
     } catch {}
 
-    // Build candidate lists keyed by baseId → “banner?” flag derived from origin
-    const isBase = (k) => String(k).split(":").length < 3;
+    const isBase   = (k) => String(k).split(":").length < 3;
     const toBaseId = (k) => String(k).split(":")[0].toLowerCase();
 
-    const bannerSet = new Set(
-      Object.keys(bag)
-        .filter(isBase)
-        .filter(k => eSet.has(toBaseId(k)))
-        .filter(k => isKnownBannerOrigin(bag[k]?.origin))
-        .map(toBaseId)
+    // Eligible candidates present in cart
+    const eligibleAny = new Set(
+      Object.keys(bag).filter(isBase).filter(k => eSet.has(toBaseId(k))).map(toBaseId)
     );
 
-    if (bannerSet.size) {
-      // Walk order, return first eligible banner base
-      for (const baseKey of order) {
-        const baseId = String(baseKey).split(":")[0].toLowerCase();
-        if (bannerSet.has(baseId)) return baseId;
-      }
-      // If none from order (edge), just pick any banner candidate
-      return Array.from(bannerSet)[0] || null;
-    }
+    // Restrict to banner-origin only when the coupon is banner-scoped
+    const eligibleBanner = bannerOnly
+      ? new Set(
+          Object.keys(bag)
+            .filter(isBase)
+            .filter(k => eSet.has(toBaseId(k)))
+            .filter(k => isKnownBannerOrigin(bag[k]?.origin))
+            .map(toBaseId)
+        )
+      : null;
 
-    // No banner candidates → enforce banner-only (no spill)
-    return null;
+    const pool = bannerOnly ? eligibleBanner : eligibleAny;
+    if (!pool || pool.size === 0) return null;
+
+    for (const baseKey of order) {
+      const baseId = String(baseKey).split(":")[0].toLowerCase();
+      if (pool.has(baseId)) return baseId;
+    }
+    return Array.from(pool)[0] || null;
   } catch {
     return null;
   }
@@ -1055,7 +1098,7 @@ for (const L of preferred){
 const eSet = (typeof resolveEligibilitySet === "function") ? resolveEligibilitySet(L) : new Set();
 
 // banner-first, order-aware
-const chosenBaseId = pickEligibleBaseIdForCouponBannerFirst(eSet);
+const chosenBaseId = pickEligibleBaseIdForCouponBannerFirst(eSet, L);
 if (!chosenBaseId) { 
   // no banner candidate → do NOT spill to non-banner
   continue; 
@@ -1081,7 +1124,7 @@ for (const L of fallback){
 const eSet = (typeof resolveEligibilitySet === "function") ? resolveEligibilitySet(L) : new Set();
 
 // banner-first, order-aware
-const chosenBaseId = pickEligibleBaseIdForCouponBannerFirst(eSet);
+const chosenBaseId = pickEligibleBaseIdForCouponBannerFirst(eSet, L);
 if (!chosenBaseId) { 
   // no banner candidate → do NOT spill to non-banner
   continue; 
