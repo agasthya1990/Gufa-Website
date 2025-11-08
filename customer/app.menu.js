@@ -1939,6 +1939,19 @@ function initServiceMode(){
 del?.addEventListener("click", () => setActiveMode("delivery"));
 din?.addEventListener("click", () => setActiveMode("dining"));
 
+// ALSO support single-toggle widgets (checkbox/button in header)
+const genericToggle = document.querySelector("#serviceModeToggle, .mode-toggle, [data-mode-switch]");
+if (genericToggle) {
+  const onToggle = () => {
+    const next = (getActiveMode() === "dining") ? "delivery" : "dining";
+    setActiveMode(next);
+  };
+  // click for buttons/divs; change for checkboxes
+  genericToggle.addEventListener("click", onToggle);
+  genericToggle.addEventListener("change", onToggle);
+}
+
+  
     // Keep multiple tabs in sync
   
   window.addEventListener("storage", (e) => {
