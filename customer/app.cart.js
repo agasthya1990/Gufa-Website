@@ -874,22 +874,30 @@ function isBannerScoped(locked){
   }
 
 // --- Banner origin validation (strict) ---
-function isKnownBannerOrigin(origin) {
-  const s = String(origin || "");
-  if (!s.startsWith("banner:")) return false;
-  const key = s.slice("banner:".length).trim();
-  if (!key) return false;
-
-  // Allow only keys that exist in the current banner catalog
-  if (window.BANNERS instanceof Map) {
-    return window.BANNERS.has(key);
-  }
-  if (Array.isArray(window.BANNERS)) {
-    // array form [{id, ...}]
-    return window.BANNERS.some(b => String(b?.id || "") === key);
-  }
+function isKnownBannerId(bid){
+  const id = String(bid || "").trim();
+  if (!id) return false;
+  try {
+    const B = window.BANNERS;
+    if (B instanceof Map) return B.has(id);
+    if (Array.isArray(B)) return !!B.find(b => String(b?.id||"") === id);
+  } catch {}
+  // Accept persisted snapshot too
+  try {
+    const raw = localStorage.getItem("gufa:BANNERS");
+    if (raw) {
+      const arr = JSON.parse(raw);
+      if (Array.isArray(arr)) return arr.some(([k]) => String(k) === id);
+    }
+  } catch {}
   return false;
 }
+
+function isKnownBannerOrigin(origin){
+  const m = /^banner:(.+)$/.exec(String(origin||""));
+  return !!(m && isKnownBannerId(m[1]));
+}
+
 
 // Remove any unknown/stale banner origins (e.g., "banner:test-only")
 function scrubUnknownBannerOrigins() {
