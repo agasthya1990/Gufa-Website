@@ -1511,7 +1511,12 @@ return { discount: Math.max(0, Math.round(d)) };
   /* ===================== Render ===================== */
 function render(){
   if (!R.items && !resolveLayout()) return;
+
+  // Early guard: remove any bogus banner origins before lock/discount math
+  try { scrubUnknownBannerOrigins(); } catch {}
+
   enforceFirstComeLock();
+
  
 
     
