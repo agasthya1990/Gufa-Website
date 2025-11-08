@@ -827,13 +827,17 @@ setTimeout(() => {
   `
   : "";
 
-    const steppers = variants.map(v => stepperHTML(m, v)).join("");
+  const steppers = variants.map(v => stepperHTML(m, v)).join("");
 
-    return `
-    
-<article class="menu-item" data-id="${m.id}" data-banner-id="${ACTIVE_BANNER_ID}">
+// Compute banner data-attr ONLY when we’re actually viewing a banner list
+  const isBannerView = (view === "list" && listKind === "banner");
+  const bannerAttr   = isBannerView ? ` data-banner-id="${String(listId || "")}"` : "";
+
+  return `
+      <article class="menu-item" data-id="${m.id}"${bannerAttr}>
         ${m.imageUrl ? `<img loading="lazy" src="${m.imageUrl}" alt="${m.name||""}" class="menu-img"/>` : ""}
         <div class="menu-header">
+
           <h4 class="menu-name">${m.name || ""}</h4>
           ${miniCartButtonHTML()}
         </div>
