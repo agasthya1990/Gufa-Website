@@ -218,42 +218,59 @@ window.addEventListener("storage", (e) => {
         window.updateAllMiniCartBadges?.();
         updateCartLink?.();
 
-        // sync visible steppers from LS snapshot (base + add-ons per item)
-        const bag = JSON.parse(localStorage.getItem("gufa_cart") || "{}");
-        document.querySelectorAll(".stepper[data-item]").forEach(stepper => {
-          const itemId = stepper.getAttribute("data-item");
-          const total = Object.entries(bag)
-            .filter(([k]) => k.startsWith(itemId + ":"))
-            .reduce((a,[,v]) => a + (Number(v?.qty || 0)), 0);
+// sync visible steppers from LS snapshot (base + add-ons per *variant*)
+const bag = JSON.parse(localStorage.getItem("gufa_cart") || "{}");
 
-          // write the stepper number
-          const num = stepper.querySelector(".qty .num");
-          if (num) num.textContent = String(total || 0);
+// 1) Repaint each variant stepper with its own qty (base + its add-ons)
+document.querySelectorAll('.qty[data-key]').forEach(qtyWrap => {
+  const key = qtyWrap.getAttribute('data-key'); // e.g., "itemId:half" or "itemId:full"
+  if (!key) return;
 
-          // keep Add-ons button state correct
-          try { updateAddonsButtonState(itemId); } catch {}
+  // exact base qty
+  let exact = Number(bag?.[key]?.qty || 0);
 
-          // sanitize this card's mini-cart button when qty goes to 0
-          if (total <= 0) {
-            const card = document.querySelector(`.menu-item[data-id="${itemId}"]`);
-            const btn  = card?.querySelector(".mini-cart-btn");
-            if (btn) {
-              btn.classList.remove("active", "rock");
-              btn.querySelectorAll(".badge").forEach(n => n.remove());
-            }
+  // include only this variant's add-ons (keys like "itemId:variant:addon")
+  const prefix = key + ':';
+  for (const [k, entry] of Object.entries(bag)) {
+    if (k.startsWith(prefix)) exact += Number(entry?.qty || 0);
+  }
 
-            // close any open add-ons popover on this card
-            const pop = card?.querySelector(".addons-popover[aria-hidden='false']");
-            const ab  = card?.querySelector(".addons-btn");
-            if (pop) {
-              if (document.activeElement && pop.contains(document.activeElement)) document.activeElement.blur();
-              pop.setAttribute("aria-hidden","true");
-              pop.hidden = true;
-              pop._stage = undefined;
-              if (ab) ab.setAttribute("aria-expanded","false");
-            }
-          }
-        });
+  const num = qtyWrap.querySelector('.num');
+  if (num) num.textContent = String(exact || 0);
+});
+
+// 2) Keep Add-ons button state & mini-cart button per card consistent
+document.querySelectorAll('.menu-item[data-id]').forEach(card => {
+  const itemId = card.getAttribute('data-id');
+
+  // recompute per-item total (all variants + add-ons) only for card-level hygiene
+  const itemPrefix = itemId + ':';
+  const itemTotal = Object.entries(bag).reduce((sum, [k, entry]) => {
+    return sum + (k.startsWith(itemPrefix) ? (Number(entry?.qty || 0) || 0) : 0);
+  }, 0);
+
+  try { updateAddonsButtonState(itemId); } catch {}
+
+  if (itemTotal <= 0) {
+    const btn = card.querySelector('.mini-cart-btn');
+    if (btn) {
+      btn.classList.remove('active', 'rock');
+      btn.querySelectorAll('.badge').forEach(n => n.remove());
+    }
+
+    // close any open add-ons popover on this card
+    const pop = card.querySelector('.addons-popover[aria-hidden="false"]');
+    const ab  = card.querySelector('.addons-btn');
+    if (pop) {
+      if (document.activeElement && pop.contains(document.activeElement)) document.activeElement.blur();
+      pop.setAttribute('aria-hidden','true');
+      pop.hidden = true;
+      pop._stage = undefined;
+      if (ab) ab.setAttribute('aria-expanded','false');
+    }
+  }
+});
+
       } catch (err) {
         console.warn("[menu] cross-tab cart sync failed", err);
       }
