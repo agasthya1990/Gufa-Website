@@ -276,38 +276,23 @@ document.querySelectorAll('.menu-item[data-id]').forEach(card => {
       }
     }
 
-if (e.key === "gufa_mode" || e.key === "gufa:serviceMode" || e.key === "gufa:mode:ts") {
-  const m = getActiveMode?.();
+    if (e.key === "gufa_mode" || e.key === "gufa:serviceMode") {
+      const m = getActiveMode?.();
+      // rebroadcast locally so this tab mirrors the flipper tab
+      window.dispatchEvent(new CustomEvent("mode:change",         { detail:{ mode:m }}));
+      window.dispatchEvent(new CustomEvent("serviceMode:changed", { detail:{ mode:m }}));
 
-  // Re-broadcast so current tab updates immediately
-  try { window.dispatchEvent(new CustomEvent("mode:change",         { detail:{ mode:m }})); } catch {}
-  try { window.dispatchEvent(new CustomEvent("serviceMode:changed", { detail:{ mode:m }})); } catch {}
-
-  // Repaint visible UI that depends on mode (idempotent, cheap)
-  try {
-    // Header + per-card badges (count/colors)
-    window.updateAllMiniCartBadges?.();
-    updateCartLink?.();
-
-    // Deal rails + banner list visuals (if currently in a banner view)
-    renderDeals?.();
-    if (typeof decorateBannerDealBadges === "function" && view === "list" && listKind === "banner") {
-      decorateBannerDealBadges();
+      // reflect any toggle UI
+      try {
+        const toggle = document.querySelector("#serviceModeToggle, .mode-toggle, [data-mode-switch]");
+        if (toggle) {
+          toggle.classList.toggle("active", m === "dining");
+          if ("checked" in toggle) toggle.checked = (m === "dining");
+        }
+      } catch (err) {
+        console.warn("[menu] mode toggle sync failed", err);
+      }
     }
-  } catch {}
-
-  // Reflect toggle widgets
-  try {
-    const toggle = document.querySelector("#serviceModeToggle, .mode-toggle, [data-mode-switch]");
-    if (toggle) {
-      toggle.classList.toggle("active", m === "dining");
-      if ("checked" in toggle) toggle.checked = (m === "dining");
-    }
-  } catch (err) {
-    console.warn("[menu] mode toggle sync failed", err);
-  }
-}
-
 
     if (e.key === "gufa_coupon") {
       window.updateAllMiniCartBadges?.();
@@ -325,15 +310,11 @@ document.addEventListener("DOMContentLoaded", () => {
     updateAllMiniCartBadges();
     updateCartLink();
 
-    // wire delivery/dining click handlers
-    initServiceMode?.();
-
     // One-time broadcast so background Cart tabs repaint if storage was coalesced
     window.dispatchEvent(new CustomEvent("mode:change",         { detail:{ mode:m }}));
     window.dispatchEvent(new CustomEvent("serviceMode:changed", { detail:{ mode:m }}));
   } catch {}
 });
-
 
 
 
@@ -370,22 +351,17 @@ window.getActiveMode = function () {
   return "delivery";
 };
 
-window.setActiveMode = function (mode) {
+  
+  window.setActiveMode = function (mode) {
   const m = (String(mode || "").toLowerCase() === "dining") ? "dining" : "delivery";
-
-  // 1) Persist BOTH canonical keys (old & new)
+  // Write BOTH keys so old & new listeners stay in sync
   try { localStorage.setItem("gufa_mode", m); } catch {}
   try { localStorage.setItem("gufa:serviceMode", m); } catch {}
 
-  // 2) FORCE a cross-tab wake even if values repeat (some browsers skip no-op writes)
-  try { localStorage.setItem("gufa:mode:ts", String(Date.now())); } catch {}
-
-  // 3) Local, same-tab repaint hooks (no network, no layout churn)
-  try { window.dispatchEvent(new CustomEvent("mode:change",         { detail:{ mode:m }})); } catch {}
-  try { window.dispatchEvent(new CustomEvent("serviceMode:changed", { detail:{ mode:m }})); } catch {}
-  try { window.dispatchEvent(new CustomEvent("cart:update",         { detail:{ reason:"mode-flip" }})); } catch {}
+  // Broadcast BOTH events so all subscribers update immediately
+  window.dispatchEvent(new CustomEvent("mode:change", { detail: { mode: m } }));
+  window.dispatchEvent(new CustomEvent("serviceMode:changed", { detail: { mode: m } }));
 };
-
 
 /* Keep banners & badges fresh when service mode flips */
 window.addEventListener("serviceMode:changed", () => {
@@ -1940,22 +1916,9 @@ function initServiceMode(){
   const del = document.getElementById("deliverySwitch");
   const din = document.getElementById("diningSwitch");
 
-del?.addEventListener("click", () => setActiveMode("delivery"));
-din?.addEventListener("click", () => setActiveMode("dining"));
+  del?.addEventListener("click", () => setServiceMode("delivery"));
+  din?.addEventListener("click", () => setServiceMode("dining"));
 
-// ALSO support single-toggle widgets (checkbox/button in header)
-const genericToggle = document.querySelector("#serviceModeToggle, .mode-toggle, [data-mode-switch]");
-if (genericToggle) {
-  const onToggle = () => {
-    const next = (getActiveMode() === "dining") ? "delivery" : "dining";
-    setActiveMode(next);
-  };
-  // click for buttons/divs; change for checkboxes
-  genericToggle.addEventListener("click", onToggle);
-  genericToggle.addEventListener("change", onToggle);
-}
-
-  
     // Keep multiple tabs in sync
   
   window.addEventListener("storage", (e) => {
