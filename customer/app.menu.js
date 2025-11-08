@@ -325,11 +325,15 @@ document.addEventListener("DOMContentLoaded", () => {
     updateAllMiniCartBadges();
     updateCartLink();
 
+    // wire delivery/dining click handlers
+    initServiceMode?.();
+
     // One-time broadcast so background Cart tabs repaint if storage was coalesced
     window.dispatchEvent(new CustomEvent("mode:change",         { detail:{ mode:m }}));
     window.dispatchEvent(new CustomEvent("serviceMode:changed", { detail:{ mode:m }}));
   } catch {}
 });
+
 
 
 
