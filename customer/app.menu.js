@@ -1936,8 +1936,8 @@ function initServiceMode(){
   const del = document.getElementById("deliverySwitch");
   const din = document.getElementById("diningSwitch");
 
-  del?.addEventListener("click", () => setServiceMode("delivery"));
-  din?.addEventListener("click", () => setServiceMode("dining"));
+del?.addEventListener("click", () => setActiveMode("delivery"));
+din?.addEventListener("click", () => setActiveMode("dining"));
 
     // Keep multiple tabs in sync
   
