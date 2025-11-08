@@ -1,36 +1,3 @@
-5) Duplicate updateCartLink() — keep one
-
-You define updateCartLink() twice. The later version (that reads Cart.get() safely and falls back to Cart (0)) is good. Remove the earlier duplicate to avoid confusion.
-
-6) Origin tagging is correct — keep it exactly as is
-
-This part is perfect and matches the Cart-side enforcement:
-
-const origin =
-  (view === "list" && listKind === "banner" && listId)
-    ? `banner:${listId}`
-    : "non-banner";
-
-
-…and you reuse the same logic in the LS mirror. ✅
-
-7) Minor: itemsForList() banner branch
-
-You already guard the banner list with ACTIVE_BANNER and itemMatchesBanner. That’s fine. Just make sure ACTIVE_BANNER is always set by openBannerList() (it is), and that renderContentView() is the only renderer (it is).
-
-8) What this fixes (why you saw “non-banner” sections counted as banners)
-
-The BANNERS Array→Map mutation made various consumers treat generic lists as “banner context” simply because window.BANNERS no longer matched what those branches expected. Fixing #2 stops that.
-
-The early lockCouponForActiveBannerIfNeeded wrote a lock without scope.bannerId. Cart now requires exact bannerId for banner-scoped coupons; without it, the lock looked “banner-ish” but spilled to any eligible items. Fixing #1 stops that.
-
-The cart→promo loop caused frequent re-hydrations and side-effects that made debugging origin vs. scope very noisy. Fixing #3 stabilizes state.
-
-
-you lost me from here. You must help me with detailed Current vs replacement even when it comes to removal, you should be very precise. 
-
-Please review the current file, and suggest the modification accordingly.
-
 // app.menu.js — align menu cards with the real Cart store and folder paths (no UI changes)
 // Cart store is now always pre-loaded via index.html (before this script),
 // so no dynamic injection needed — just verify readiness.
@@ -211,38 +178,6 @@ function updateAllMiniCartBadges(){
 // Keep coupons & banners available to cart and locker
 if (!(window.COUPONS instanceof Map)) window.COUPONS = new Map();
 if (!Array.isArray(window.BANNERS)) window.BANNERS = [];
-
-// publish a Map mirror from Array banners for Cart consumers
-(function normalizeAndPublishBannersMap(){
-  if (window.BANNERS instanceof Map) return;          // already a Map elsewhere
-  if (!Array.isArray(window.BANNERS)) return;          // nothing to do
-
-  // Expect array of banner objects like: { id, itemIds, linkedCouponIds, couponId, couponCode }
-  const asMap = new Map();
-
-  for (const b of window.BANNERS) {
-    if (!b) continue;
-    const itemIds = Array.isArray(b.itemIds) ? b.itemIds.map(String) : [];
-    const bid = String(b.id || "").trim();
-    if (bid) asMap.set(bid, itemIds);
-
-    const cid  = (b.couponId   != null) ? String(b.couponId)   : "";
-    const code = (b.couponCode != null) ? String(b.couponCode) : "";
-
-    // Index by coupon id and code for Cart lookups
-    if (cid)  asMap.set(`coupon:${cid}`, itemIds);
-    if (code) asMap.set(`couponCode:${code.toUpperCase()}`, itemIds);
-  }
-
-  // Replace Array with Map for downstream consumers (Cart expects Map fast-path)
-  window.BANNERS = asMap;
-
-  // Optional: persist a lightweight snapshot for checkout/cart tabs to read if needed later
-  try {
-    const dump = Array.from(asMap.entries());
-    localStorage.setItem("gufa:BANNERS_MAP", JSON.stringify(dump));
-  } catch {}
-})();
 
 
 // —— Persist a lightweight coupons snapshot for checkout hydration ——//
@@ -712,16 +647,19 @@ try {
   if (window.Cart && typeof window.Cart.setQty === "function") {
     // Infer banner provenance from the card or its container
     const card     = document.querySelector(`.menu-item[data-id="${found.id}"]`);
-   const origin =
-  (view === "list" && listKind === "banner" && listId)
-    ? `banner:${listId}`
-    : "non-banner";
+    const bannerId =
+      card?.getAttribute("data-banner-id") ||
+      card?.dataset?.bannerId ||
+      card?.closest("[data-banner-id]")?.getAttribute("data-banner-id") ||
+      document.querySelector("#globalResults")?.id ||  // safe fallback from your page
+      document.querySelector(".deals")?.className ||   // secondary fallback
+      "";
+    const origin = bannerId ? `banner:${bannerId}` : "non-banner";
 
-window.Cart.setQty(key, next, {
-  id: found.id, name: found.name, variant: variantKey, price: Number(price) || 0,
-  origin
-});
-
+    window.Cart.setQty(key, next, {
+      id: found.id, name: found.name, variant: variantKey, price: Number(price) || 0,
+      origin
+    });
   }
 } catch {}
 
@@ -744,20 +682,27 @@ try {
 if (next <= 0) {
   delete bag[key];
 } else {
- const prev = bag[key] || {};
-const origin =
-  prev.origin ||
-  ((view === "list" && listKind === "banner" && listId)
-    ? `banner:${listId}`
-    : "non-banner");
+  const prev = bag[key] || {};
+  // Reuse the same origin we computed above if available
+  const card     = document.querySelector(`.menu-item[data-id="${found.id}"]`);
+  const bannerId =
+    card?.getAttribute("data-banner-id") ||
+    card?.dataset?.bannerId ||
+    card?.closest("[data-banner-id]")?.getAttribute("data-banner-id") ||
+    document.querySelector("#globalResults")?.id ||
+    document.querySelector(".deals")?.className ||
+    "";
+  const origin = prev.origin || (bannerId ? `banner:${bannerId}` : "non-banner");
 
-bag[key] = {
-  id: found.id, name: found.name, variant: variantKey,
-  price: Number(price) || Number(prev.price) || 0,
-  thumb: prev.thumb || "",
-  qty: next,
-  origin
-};
+  bag[key] = {
+    id: found.id,
+    name: found.name,
+    variant: variantKey,
+    price: Number(price) || Number(prev.price) || 0,
+    thumb: prev.thumb || "",
+    qty: next,
+    origin
+  };
 }
 
 
@@ -2230,13 +2175,11 @@ window.addEventListener("cart:update", () => {
   updateAllMiniCartBadges();
   updateCartLink();
 
+  // NEW: keep Add-ons button state in sync with cart
   document.querySelectorAll(".menu-item[data-id]").forEach(el => {
     const itemId = el.getAttribute("data-id");
     updateAddonsButtonState(itemId);
   });
-  // Do not rebuild coupon artifacts here (avoids loops)
-});
-
 
   // NEW: keep promo artifacts fresh
   persistCouponCodes();
@@ -2272,4 +2215,3 @@ document.addEventListener('click', (e) => {
   to.searchParams.set('cart', b64);
   a.href = to.toString();
 });
-})();
