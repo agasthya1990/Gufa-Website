@@ -605,21 +605,24 @@ function updateItemMiniCartBadge(itemId, rock=false){
   const btn = document.querySelector(`.menu-item[data-id="${itemId}"] .mini-cart-btn`);
   if (!btn) return;
 
-  const total = __globalCartTotal__();
+  // visibility is per-card: only if this card's item has qty > 0
+  const itemTotal   = totalQtyForItem(itemId);       // per-card (base + add-ons)
+  const globalTotal = __globalCartTotal__();         // number displayed
 
-  // Do NOT globally toggle glow; only update count here.
   let badge = btn.querySelector(".badge");
-  if (total > 0) {
+
+  if (itemTotal > 0 && globalTotal > 0) {
     if (!badge) {
       badge = document.createElement("span");
       badge.className = "badge";
       btn.appendChild(badge);
     }
-    badge.textContent = String(total);
+    badge.textContent = String(globalTotal);
 
     if (rock) {
       btn.classList.add("active");
       btn.classList.remove("rock");
+      // reflow
       void btn.offsetWidth;
       btn.classList.add("rock");
       setTimeout(() => btn.classList.remove("rock"), 350);
@@ -632,24 +635,30 @@ function updateItemMiniCartBadge(itemId, rock=false){
 
 
 function updateAllMiniCartBadges(){
-  const total = __globalCartTotal__?.() ?? 0;
+  const globalTotal = __globalCartTotal__?.() ?? 0;
   document.querySelectorAll(".menu-item[data-id]").forEach(card => {
-    const btn = card.querySelector(".mini-cart-btn");
+    const itemId = card.getAttribute("data-id");
+    const btn    = card.querySelector(".mini-cart-btn");
     if (!btn) return;
+
+    const itemTotal = totalQtyForItem(itemId);
     let badge = btn.querySelector(".badge");
-    if (total > 0) {
+
+    if (itemTotal > 0 && globalTotal > 0) {
       if (!badge) {
         badge = document.createElement("span");
         badge.className = "badge";
         btn.appendChild(badge);
       }
-      badge.textContent = String(total);
+      badge.textContent = String(globalTotal);
+      // no glow here on bulk updates
     } else {
       if (badge) badge.remove();
       btn.classList.remove("active", "rock");
     }
   });
 }
+
 
   
 function setQty(found, variantKey, price, nextQty) {
