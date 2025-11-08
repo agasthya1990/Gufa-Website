@@ -199,8 +199,6 @@ window.addEventListener("cart:update", () => {
   if (now - lastCartUpdate < 80) return;
   lastCartUpdate = now;
 
-  // ⚠️ IMPORTANT: Never call buildAndPersistCouponIndex() here.
-  // This handler is UI-only to avoid loops with the builder’s broadcast.
   updateAllMiniCartBadges();
   updateCartLink();
 
@@ -210,81 +208,81 @@ window.addEventListener("cart:update", () => {
   });
 });
 
+
 // Cross-tab sync for Menu (badges/link + mode mirrors)
 window.addEventListener("storage", (e) => {
   try {
-if (e.key === "gufa_cart") {
-  try {
-    updateAllMiniCartBadges();
-    updateCartLink();
+    if (e.key === "gufa_cart") {
+      try {
+        // repaint header + per-card badges (helpers may be inside IIFE; use window.*)
+        window.updateAllMiniCartBadges?.();
+        updateCartLink?.();
 
-const bag = JSON.parse(localStorage.getItem("gufa_cart") || "{}");
-document.querySelectorAll(".stepper[data-item]").forEach(stepper => {
-  const itemId = stepper.getAttribute("data-item");
-  const total = Object.entries(bag)
-    .filter(([k]) => k.startsWith(itemId + ":"))
-    .reduce((a,[,v]) => a + (Number(v?.qty || 0)), 0);
+        // sync visible steppers from LS snapshot (base + add-ons per item)
+        const bag = JSON.parse(localStorage.getItem("gufa_cart") || "{}");
+        document.querySelectorAll(".stepper[data-item]").forEach(stepper => {
+          const itemId = stepper.getAttribute("data-item");
+          const total = Object.entries(bag)
+            .filter(([k]) => k.startsWith(itemId + ":"))
+            .reduce((a,[,v]) => a + (Number(v?.qty || 0)), 0);
 
-  // write the stepper number
-  const num = stepper.querySelector(".qty .num");
-  if (num) num.textContent = String(total || 0);
+          // write the stepper number
+          const num = stepper.querySelector(".qty .num");
+          if (num) num.textContent = String(total || 0);
 
-  // update Add-ons button enable/disable + animations
-  try { updateAddonsButtonState(itemId); } catch {}
+          // keep Add-ons button state correct
+          try { updateAddonsButtonState(itemId); } catch {}
 
-  // sanitize the mini-cart button for this card as well
-  if (total <= 0) {
-    const card = document.querySelector(`.menu-item[data-id="${itemId}"]`);
-    const btn  = card?.querySelector(".mini-cart-btn");
-    if (btn) {
-      btn.classList.remove("active", "rock");
-      btn.querySelectorAll(".badge").forEach(n => n.remove());
+          // sanitize this card's mini-cart button when qty goes to 0
+          if (total <= 0) {
+            const card = document.querySelector(`.menu-item[data-id="${itemId}"]`);
+            const btn  = card?.querySelector(".mini-cart-btn");
+            if (btn) {
+              btn.classList.remove("active", "rock");
+              btn.querySelectorAll(".badge").forEach(n => n.remove());
+            }
+
+            // close any open add-ons popover on this card
+            const pop = card?.querySelector(".addons-popover[aria-hidden='false']");
+            const ab  = card?.querySelector(".addons-btn");
+            if (pop) {
+              if (document.activeElement && pop.contains(document.activeElement)) document.activeElement.blur();
+              pop.setAttribute("aria-hidden","true");
+              pop.hidden = true;
+              pop._stage = undefined;
+              if (ab) ab.setAttribute("aria-expanded","false");
+            }
+          }
+        });
+      } catch (err) {
+        console.warn("[menu] cross-tab cart sync failed", err);
+      }
     }
-
-    // if an Add-ons popover is open for this card, close it to stop shimmer/pulse
-    const pop = card?.querySelector(".addons-popover[aria-hidden='false']");
-    const ab  = card?.querySelector(".addons-btn");
-    if (pop) {
-      if (document.activeElement && pop.contains(document.activeElement)) document.activeElement.blur();
-      pop.setAttribute("aria-hidden","true");
-      pop.hidden = true;
-      pop._stage = undefined;                // clear staged deltas
-      if (ab) ab.setAttribute("aria-expanded","false");
-    }
-  }
-});
-
-  } catch (err) {
-    console.warn("[menu] cross-tab cart sync failed", err);
-  }
-}
-
 
     if (e.key === "gufa_mode" || e.key === "gufa:serviceMode") {
-      // mirror + re-decorate deals/badges for new mode
-      const m = getActiveMode();
-      // rebroadcast locally so current tab behaves like the flipper tab
-window.dispatchEvent(new CustomEvent("mode:change",         { detail:{ mode:m }}));
-window.dispatchEvent(new CustomEvent("serviceMode:changed", { detail:{ mode:m }}));
+      const m = getActiveMode?.();
+      // rebroadcast locally so this tab mirrors the flipper tab
+      window.dispatchEvent(new CustomEvent("mode:change",         { detail:{ mode:m }}));
+      window.dispatchEvent(new CustomEvent("serviceMode:changed", { detail:{ mode:m }}));
 
-// ensure UI toggle reflects latest mode
-try {
-  const toggle = document.querySelector("#serviceModeToggle, .mode-toggle, [data-mode-switch]");
-  if (toggle) {
-    toggle.classList.toggle("active", m === "dining");
-    if ("checked" in toggle) toggle.checked = (m === "dining");
-  }
-} catch (err) {
-  console.warn("[menu] mode toggle sync failed", err);
-}
-
+      // reflect any toggle UI
+      try {
+        const toggle = document.querySelector("#serviceModeToggle, .mode-toggle, [data-mode-switch]");
+        if (toggle) {
+          toggle.classList.toggle("active", m === "dining");
+          if ("checked" in toggle) toggle.checked = (m === "dining");
+        }
+      } catch (err) {
+        console.warn("[menu] mode toggle sync failed", err);
+      }
     }
+
     if (e.key === "gufa_coupon") {
-      // coupon lock changed elsewhere; re-decorate banner badges if relevant
-      updateAllMiniCartBadges();
+      window.updateAllMiniCartBadges?.();
     }
   } catch {}
 });
+
 
 // One-time reconcile on load (makes both keys consistent and updates UI once)
 document.addEventListener("DOMContentLoaded", () => {
@@ -310,6 +308,8 @@ document.addEventListener("DOMContentLoaded", () => {
   /* ---------- Header cart link (already on your page) ---------- */
   const cartLink = $("#cartLink"); // e.g., "Cart (0)"
 
+
+  
 
   /* ---------- State ---------- */
   let ITEMS = [];
@@ -586,6 +586,12 @@ function updateAllMiniCartBadges(){
   });
 }
 
+// ——— expose per-card badge APIs for top-scope listeners (storage/cart:update) ———
+try {
+  window.updateItemMiniCartBadge = updateItemMiniCartBadge;
+  window.updateAllMiniCartBadges = updateAllMiniCartBadges;
+  window.__globalCartTotal__     = __globalCartTotal__;
+} catch {}
 
   
 function setQty(found, variantKey, price, nextQty) {
