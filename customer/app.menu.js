@@ -105,7 +105,29 @@ function updateCartLink(){
 
 // Keep coupons & banners available to cart and locker
 if (!(window.COUPONS instanceof Map)) window.COUPONS = new Map();
-if (!Array.isArray(window.BANNERS)) window.BANNERS = [];
+
+// Normalize BANNERS to a Map keyed by bannerId -> [itemId,...]
+(function normalizeBanners(){
+  try {
+    const raw = window.BANNERS;
+    const map = new Map();
+    if (raw instanceof Map) { window.BANNERS = raw; return; }
+    if (Array.isArray(raw)) {
+      for (const b of raw) {
+        const id = String(b?.id || "").trim();
+        const items = Array.isArray(b?.items) ? b.items : Array.isArray(b?.itemIds) ? b.itemIds : [];
+        if (id) map.set(id, items.map(String));
+      }
+      window.BANNERS = map;
+      try {
+        localStorage.setItem("gufa:BANNERS", JSON.stringify(Array.from(map.entries())));
+      } catch {}
+      return;
+    }
+    window.BANNERS = map;
+  } catch { window.BANNERS = new Map(); }
+})();
+
 
 
 // —— Persist a lightweight coupons snapshot for checkout hydration ——//
@@ -808,7 +830,7 @@ setTimeout(() => {
     const steppers = variants.map(v => stepperHTML(m, v)).join("");
 
     return `
-      <article class="menu-item" data-id="${m.id}">
+      <article class="menu-item" data-id="${m.id}" data-banner-id="${ACTIVE_BANNER_ID}">
         ${m.imageUrl ? `<img loading="lazy" src="${m.imageUrl}" alt="${m.name||""}" class="menu-img"/>` : ""}
         <div class="menu-header">
           <h4 class="menu-name">${m.name || ""}</h4>
