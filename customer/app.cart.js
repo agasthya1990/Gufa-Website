@@ -75,11 +75,20 @@ function onFlip(reason){
 }
 
 
-
   // Same-tab custom events (Menu broadcasts both)
   window.addEventListener("mode:change",          () => onFlip("mode:change"));
   window.addEventListener("serviceMode:changed",  () => onFlip("serviceMode:changed"));
 
+// Cross-tab storage wake: respond to mode flips written by Menu
+window.addEventListener("storage", (e) => {
+  try {
+    if (e.key === "gufa_mode" || e.key === "gufa:serviceMode" || e.key === "gufa:mode:ts") {
+      onFlip("storage:" + e.key);
+    }
+  } catch {}
+});
+
+  
   // Cross-tab/localStorage changes
   window.addEventListener("storage", (e) => {
 const keys = new Set([
