@@ -1008,24 +1008,16 @@ function pickEligibleBaseIdForCouponBannerFirst(eSet, lock) {
     const isBase   = (k) => String(k).split(":").length < 3;
     const toBaseId = (k) => String(k).split(":")[0].toLowerCase();
 
-    // Eligible candidates present in cart
-    const eligibleAny = new Set(
-      Object.keys(bag).filter(isBase).filter(k => eSet.has(toBaseId(k))).map(toBaseId)
-    );
+// Eligible candidates present in cart (STRICT: banner-origin only)
+const pool = new Set(
+  Object.keys(bag)
+    .filter(isBase)
+    .filter(k => eSet.has(toBaseId(k)))
+    .filter(k => isKnownBannerOrigin(bag[k]?.origin))
+    .map(toBaseId)
+);
+if (!pool || pool.size === 0) return null;
 
-    // Restrict to banner-origin only when the coupon is banner-scoped
-    const eligibleBanner = bannerOnly
-      ? new Set(
-          Object.keys(bag)
-            .filter(isBase)
-            .filter(k => eSet.has(toBaseId(k)))
-            .filter(k => isKnownBannerOrigin(bag[k]?.origin))
-            .map(toBaseId)
-        )
-      : null;
-
-    const pool = bannerOnly ? eligibleBanner : eligibleAny;
-    if (!pool || pool.size === 0) return null;
 
     for (const baseKey of order) {
       const baseId = String(baseKey).split(":")[0].toLowerCase();
@@ -1167,22 +1159,31 @@ if (!elig.size){
   return;
 }
 
-    // If the cart no longer contains any of the eligible IDs as base lines, clear it.
-    let any = false;
-    for (const [key, it] of entries()){
-      if (isAddonKey(key)) continue;
-      const parts = String(key).toLowerCase().split(":");
-      const itemId  = String(it?.id ?? parts[0]);
-      const baseKey = parts.slice(0,2).join(":");
-      if (elig.has(itemId) || elig.has(baseKey) || Array.from(elig).some(x => !x.includes(":") && baseKey.startsWith(x + ":"))){
-        any = true; break;
-      }
-    }
-    if (!any) {
+// If the cart no longer contains any of the eligible IDs as base lines, clear it.
+let any = false;
+for (const [key, it] of entries()){
+  if (isAddonKey(key)) continue;
+  const parts = String(key).toLowerCase().split(":");
+  const itemId  = String(it?.id ?? parts[0]);
+  const baseKey = parts.slice(0,2).join(":");
+
+  // STRICT: must be eligible AND must have banner-origin, otherwise ignore
+  if (
+    isKnownBannerOrigin(it?.origin) &&
+    (
+      elig.has(itemId) ||
+      elig.has(baseKey) ||
+      Array.from(elig).some(x => !x.includes(":") && baseKey.startsWith(x + ":"))
+    )
+  ){
+    any = true; break;
+  }
+}
+if (!any) {
   setLock(null);
   // trigger instant recompute so FCFS can pick the next coupon in the same frame
   window.dispatchEvent(new CustomEvent("cart:update"));
-  }
+ }
 }
 
 function enforceFirstComeLock(){
@@ -1238,16 +1239,16 @@ if (!elig.size) return { discount:0 };
 // Eligible base subtotal only
 let eligibleBase = 0;
 let eligibleQty  = 0; // NEW: count units across eligible base lines
-const bannerOnly = isBannerScoped(locked); // ← add this once, outside the loop
 for (const [key, it] of entries()){
   if (isAddonKey(key)) continue;
 
-  // Enforce banner-origin only when the coupon is banner-scoped
-  if (bannerOnly && !isKnownBannerOrigin(it?.origin)) continue;
+  // Enforce banner-origin lines only (policy: non-banner never discounted)
+  if (!isKnownBannerOrigin(it?.origin)) continue;
 
   const parts = String(key).split(":");
   const itemId  = String(it?.id ?? parts[0]).toLowerCase();
   const baseKey = parts.slice(0,2).join(":").toLowerCase();
+
 
   if (elig.has(itemId) || elig.has(baseKey) || Array.from(elig).some(x => !x.includes(":") && baseKey.startsWith(x + ":"))){
     const q = clamp0(it.qty);
