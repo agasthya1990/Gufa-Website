@@ -351,17 +351,22 @@ window.getActiveMode = function () {
   return "delivery";
 };
 
-  
-  window.setActiveMode = function (mode) {
+window.setActiveMode = function (mode) {
   const m = (String(mode || "").toLowerCase() === "dining") ? "dining" : "delivery";
-  // Write BOTH keys so old & new listeners stay in sync
+
+  // 1) Persist BOTH canonical keys (old & new)
   try { localStorage.setItem("gufa_mode", m); } catch {}
   try { localStorage.setItem("gufa:serviceMode", m); } catch {}
 
-  // Broadcast BOTH events so all subscribers update immediately
-  window.dispatchEvent(new CustomEvent("mode:change", { detail: { mode: m } }));
-  window.dispatchEvent(new CustomEvent("serviceMode:changed", { detail: { mode: m } }));
+  // 2) FORCE a cross-tab wake even if values repeat (some browsers skip no-op writes)
+  try { localStorage.setItem("gufa:mode:ts", String(Date.now())); } catch {}
+
+  // 3) Local, same-tab repaint hooks (no network, no layout churn)
+  try { window.dispatchEvent(new CustomEvent("mode:change",         { detail:{ mode:m }})); } catch {}
+  try { window.dispatchEvent(new CustomEvent("serviceMode:changed", { detail:{ mode:m }})); } catch {}
+  try { window.dispatchEvent(new CustomEvent("cart:update",         { detail:{ reason:"mode-flip" }})); } catch {}
 };
+
 
 /* Keep banners & badges fresh when service mode flips */
 window.addEventListener("serviceMode:changed", () => {
