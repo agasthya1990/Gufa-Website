@@ -121,6 +121,12 @@ function updateItemMiniCartBadge(itemId, rock=false){
   const btn = card.querySelector(".mini-cart-btn");
   if (!btn) return;
 
+function updateItemMiniCartBadge(itemId, rock=false){
+  const card = document.querySelector(`.menu-item[data-id="${itemId}"]`);
+  if (!card) return;
+  const btn = card.querySelector(".mini-cart-btn");
+  if (!btn) return;
+
   const total = getGlobalCartTotal();
 
   const nuke = () => {
@@ -136,9 +142,11 @@ function updateItemMiniCartBadge(itemId, rock=false){
       btn.appendChild(badge);
     }
     badge.textContent = String(total);
-    btn.classList.add("active");
+
+    // Only the touched card "glows"
     if (rock) {
-      btn.classList.remove("rock"); // re-trigger micro animation on the card you touched
+      btn.classList.add("active");
+      btn.classList.remove("rock");
       void btn.offsetWidth;
       btn.classList.add("rock");
       setTimeout(() => btn.classList.remove("rock"), 300);
@@ -156,9 +164,6 @@ function updateAllMiniCartBadges(){
     const btn = card.querySelector(".mini-cart-btn");
     if (!btn) return;
 
-    // Ensure consistent paint on every card
-    btn.classList.toggle("active", total > 0);
-
     let badge = btn.querySelector(".badge");
     if (total > 0) {
       if (!badge) {
@@ -167,12 +172,14 @@ function updateAllMiniCartBadges(){
         btn.appendChild(badge);
       }
       badge.textContent = String(total);
+      // DO NOT touch 'active' or 'rock' here
     } else {
       if (badge) badge.remove();
-      btn.classList.remove("rock");
+      btn.classList.remove("active", "rock");
     }
   });
 }
+
 
 
 // Keep coupons & banners available to cart and locker
@@ -606,8 +613,7 @@ function updateItemMiniCartBadge(itemId, rock=false){
 
   const total = __globalCartTotal__();
 
-  btn.classList.toggle("active", total > 0);
-
+  // Do NOT globally toggle glow; only update count here.
   let badge = btn.querySelector(".badge");
   if (total > 0) {
     if (!badge) {
@@ -618,6 +624,7 @@ function updateItemMiniCartBadge(itemId, rock=false){
     badge.textContent = String(total);
 
     if (rock) {
+      btn.classList.add("active");
       btn.classList.remove("rock");
       void btn.offsetWidth;
       btn.classList.add("rock");
@@ -625,15 +632,31 @@ function updateItemMiniCartBadge(itemId, rock=false){
     }
   } else {
     if (badge) badge.remove();
+    btn.classList.remove("active", "rock");
   }
 }
 
+
 function updateAllMiniCartBadges(){
+  const total = __globalCartTotal__?.() ?? 0;
   document.querySelectorAll(".menu-item[data-id]").forEach(card => {
-    const id = card.getAttribute("data-id");
-    updateItemMiniCartBadge(id);
+    const btn = card.querySelector(".mini-cart-btn");
+    if (!btn) return;
+    let badge = btn.querySelector(".badge");
+    if (total > 0) {
+      if (!badge) {
+        badge = document.createElement("span");
+        badge.className = "badge";
+        btn.appendChild(badge);
+      }
+      badge.textContent = String(total);
+    } else {
+      if (badge) badge.remove();
+      btn.classList.remove("active", "rock");
+    }
   });
 }
+
   
 function setQty(found, variantKey, price, nextQty) {
   const key  = `${found.id}:${variantKey}`;
