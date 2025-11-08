@@ -119,10 +119,13 @@ window.addEventListener("cart:update", persistCartSnapshotThrottled);
   try { localStorage.setItem("gufa_mode", modeNow); } catch {}
   try { localStorage.setItem("gufa:serviceMode", modeNow); } catch {}
 
-  // When Menu flips the mode, Cart re-evaluates discount lock + render
+// When Menu flips the mode, Cart re-evaluates discount lock + render
 window.addEventListener("serviceMode:changed", () => {
   const m = readMode();
+  // Keep BOTH keys in sync so older/newer listeners agree
   try { localStorage.setItem("gufa_mode", m); } catch {}
+  try { localStorage.setItem("gufa:serviceMode", m); } catch {}
+
   // If your FCFS helper exists, re-pick; else just re-render.
   try {
     if (typeof findFirstApplicableCouponForCart === "function") {
@@ -130,9 +133,17 @@ window.addEventListener("serviceMode:changed", () => {
       if (pick) localStorage.setItem("gufa_coupon", JSON.stringify(pick));
     }
   } catch {}
-  // Emit on window so all cart:update listeners respond immediately
+
+  // Repaint immediately (prefer render(), fall back to renderCart())
+  try {
+    if (typeof render === "function") { render(); }
+    else { window.renderCart?.(); }
+  } catch {}
+
+  // Emit so any cart:update listeners (totals, badges, etc.) sync instantly
   window.dispatchEvent(new CustomEvent("cart:update", { detail: { source: "mode-change" }}));
 });
+
 })();
 
 
