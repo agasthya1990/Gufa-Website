@@ -276,23 +276,38 @@ document.querySelectorAll('.menu-item[data-id]').forEach(card => {
       }
     }
 
-    if (e.key === "gufa_mode" || e.key === "gufa:serviceMode") {
-      const m = getActiveMode?.();
-      // rebroadcast locally so this tab mirrors the flipper tab
-      window.dispatchEvent(new CustomEvent("mode:change",         { detail:{ mode:m }}));
-      window.dispatchEvent(new CustomEvent("serviceMode:changed", { detail:{ mode:m }}));
+if (e.key === "gufa_mode" || e.key === "gufa:serviceMode" || e.key === "gufa:mode:ts") {
+  const m = getActiveMode?.();
 
-      // reflect any toggle UI
-      try {
-        const toggle = document.querySelector("#serviceModeToggle, .mode-toggle, [data-mode-switch]");
-        if (toggle) {
-          toggle.classList.toggle("active", m === "dining");
-          if ("checked" in toggle) toggle.checked = (m === "dining");
-        }
-      } catch (err) {
-        console.warn("[menu] mode toggle sync failed", err);
-      }
+  // Re-broadcast so current tab updates immediately
+  try { window.dispatchEvent(new CustomEvent("mode:change",         { detail:{ mode:m }})); } catch {}
+  try { window.dispatchEvent(new CustomEvent("serviceMode:changed", { detail:{ mode:m }})); } catch {}
+
+  // Repaint visible UI that depends on mode (idempotent, cheap)
+  try {
+    // Header + per-card badges (count/colors)
+    window.updateAllMiniCartBadges?.();
+    updateCartLink?.();
+
+    // Deal rails + banner list visuals (if currently in a banner view)
+    renderDeals?.();
+    if (typeof decorateBannerDealBadges === "function" && view === "list" && listKind === "banner") {
+      decorateBannerDealBadges();
     }
+  } catch {}
+
+  // Reflect toggle widgets
+  try {
+    const toggle = document.querySelector("#serviceModeToggle, .mode-toggle, [data-mode-switch]");
+    if (toggle) {
+      toggle.classList.toggle("active", m === "dining");
+      if ("checked" in toggle) toggle.checked = (m === "dining");
+    }
+  } catch (err) {
+    console.warn("[menu] mode toggle sync failed", err);
+  }
+}
+
 
     if (e.key === "gufa_coupon") {
       window.updateAllMiniCartBadges?.();
