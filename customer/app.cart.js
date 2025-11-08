@@ -272,6 +272,16 @@ function wireApplyCouponUI(){
   if (!btn || !input) return;
 
   const apply = () => {
+    // Block manual overrides while a banner-scoped lock exists (preserve FCFS precision)
+    try {
+      const active = JSON.parse(localStorage.getItem("gufa_coupon") || "null");
+      if (active && isBannerScoped(active)) {
+        if (UI.promoLbl) UI.promoLbl.textContent = "Promotion: locked by a banner item. Remove that item to switch offers.";
+        alert("A banner offer is already applied. Remove that item to switch offers.");
+        return;
+      }
+    } catch {}
+
     const query = input.value;
     const found = findCouponByCodeOrId(query);
     if (!found || !found.meta || found.meta.active === false) {
@@ -1637,6 +1647,15 @@ if (discount > 0) showPromoError("");
 if (R.promoApply && !R.promoApply._wired){
   R.promoApply._wired = true;
   R.promoApply.addEventListener("click", async ()=>{
+    // Block manual overrides while a banner-scoped lock exists (preserve FCFS precision)
+    try {
+      const active = JSON.parse(localStorage.getItem("gufa_coupon") || "null");
+      if (active && isBannerScoped(active)) {
+        alert("A banner offer is already applied. Remove that item to switch offers.");
+        return;
+      }
+    } catch {}
+
     // normalize user input once
     const raw = (R.promoInput?.value || "").trim();
     if (!raw) { showPromoError(""); return; }
