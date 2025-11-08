@@ -121,12 +121,6 @@ function updateItemMiniCartBadge(itemId, rock=false){
   const btn = card.querySelector(".mini-cart-btn");
   if (!btn) return;
 
-function updateItemMiniCartBadge(itemId, rock=false){
-  const card = document.querySelector(`.menu-item[data-id="${itemId}"]`);
-  if (!card) return;
-  const btn = card.querySelector(".mini-cart-btn");
-  if (!btn) return;
-
   const total = getGlobalCartTotal();
 
   const nuke = () => {
@@ -989,7 +983,6 @@ function searchHaystack(it){
 }
      
   
-  
 function itemsForList(){
   let arr = baseFilter(ITEMS);
   if (view === "list" && listKind && listId) {
@@ -999,19 +992,18 @@ function itemsForList(){
     } else if (listKind === "category") {
       const c = CATEGORIES.find(x=>x.id===listId) || {id:listId, label:listId};
       arr = arr.filter(it=>categoryMatch(it, c));
-      
-} else if (listKind === "banner") {
-  const hasActiveBanner = (typeof ACTIVE_BANNER !== "undefined" && ACTIVE_BANNER);
-  if (typeof itemMatchesBanner === "function" && hasActiveBanner) {
-    arr = arr.filter(it => itemMatchesBanner(it, ACTIVE_BANNER));
-  } else {
-    arr = []; // fallback if helpers not ready
-  }
-}
-
+    } else if (listKind === "banner") {
+      const hasActiveBanner = (typeof ACTIVE_BANNER !== "undefined" && ACTIVE_BANNER);
+      if (typeof itemMatchesBanner === "function" && hasActiveBanner) {
+        arr = arr.filter(it => itemMatchesBanner(it, ACTIVE_BANNER));
+      } else {
+        arr = []; // fallback if helpers not ready
+      }
+    }
   }
   return arr;
 }
+
   
  function renderContentView(){
   if (!globalResults) return;
