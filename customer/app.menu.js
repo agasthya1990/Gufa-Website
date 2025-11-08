@@ -830,11 +830,8 @@ setTimeout(() => {
     const steppers = variants.map(v => stepperHTML(m, v)).join("");
 
     return `
-const isBannerView = (view === "list" && listKind === "banner");
-const bannerAttr   = isBannerView ? ` data-banner-id="${String(listId || "")}"` : "";
-
-<article class="menu-item" data-id="${m.id}"${bannerAttr}>
-
+    
+<article class="menu-item" data-id="${m.id}" data-banner-id="${ACTIVE_BANNER_ID}">
         ${m.imageUrl ? `<img loading="lazy" src="${m.imageUrl}" alt="${m.name||""}" class="menu-img"/>` : ""}
         <div class="menu-header">
           <h4 class="menu-name">${m.name || ""}</h4>
