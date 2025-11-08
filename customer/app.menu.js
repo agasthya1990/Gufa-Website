@@ -580,6 +580,7 @@ function updateItemMiniCartBadge(itemId, rock=false){
 
 function updateAllMiniCartBadges(){
   const globalTotal = __globalCartTotal__?.() ?? 0;
+
   document.querySelectorAll(".menu-item[data-id]").forEach(card => {
     const itemId = card.getAttribute("data-id");
     const btn    = card.querySelector(".mini-cart-btn");
@@ -588,6 +589,8 @@ function updateAllMiniCartBadges(){
     const itemTotal = totalQtyForItem(itemId);
     let badge = btn.querySelector(".badge");
 
+    // 1) Per-card visibility: paint only if THIS card's item has qty
+    // 2) Number shown is GLOBAL cart count (header-aligned)
     if (itemTotal > 0 && globalTotal > 0) {
       if (!badge) {
         badge = document.createElement("span");
@@ -595,13 +598,17 @@ function updateAllMiniCartBadges(){
         btn.appendChild(badge);
       }
       badge.textContent = String(globalTotal);
-      // no glow here on bulk updates
+
+      // IMPORTANT: ensure color state follows the card that actually has qty
+      btn.classList.add("active");
+      btn.classList.remove("rock"); // no animation on bulk refresh
     } else {
       if (badge) badge.remove();
       btn.classList.remove("active", "rock");
     }
   });
 }
+
 
 // ——— expose per-card badge APIs for top-scope listeners (storage/cart:update) ———
 try {
