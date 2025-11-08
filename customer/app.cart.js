@@ -63,36 +63,37 @@ function onFlip(reason){
 
   clearIncompatibleLockIfNeeded(mode);
 
+  // (Optional) If helper exists, re-pick coupon; harmless when cart is empty
+  try {
+    if (typeof findFirstApplicableCouponForCart === "function") {
+      const pick = findFirstApplicableCouponForCart();
+      if (pick) localStorage.setItem("gufa_coupon", JSON.stringify(pick));
+    }
+  } catch {}
+
   // Repaint immediately (prefer render(), fall back to renderCart())
   try {
     if (typeof render === "function") { render(); }
     else { window.renderCart?.(); }
   } catch {}
 
-  window.dispatchEvent(new CustomEvent("cart:update", { detail: { reason } }));
+  // Always emit with a default reason so listeners wake even if undefined
+  window.dispatchEvent(new CustomEvent("cart:update", { detail: { reason: (reason || "mode-flip") } }));
 
   __CART_MODE_APPLYING__ = false;
 }
+
+
 
 
   // Same-tab custom events (Menu broadcasts both)
   window.addEventListener("mode:change",          () => onFlip("mode:change"));
   window.addEventListener("serviceMode:changed",  () => onFlip("serviceMode:changed"));
 
-// Cross-tab storage wake: respond to mode flips written by Menu
-window.addEventListener("storage", (e) => {
-  try {
-    if (e.key === "gufa_mode" || e.key === "gufa:serviceMode" || e.key === "gufa:mode:ts") {
-      onFlip("storage:" + e.key);
-    }
-  } catch {}
-});
-
-  
-// Cross-tab/localStorage changes
+// Cross-tab/localStorage changes (single consolidated listener)
 window.addEventListener("storage", (e) => {
   const keys = new Set([
-    "gufa_mode", "gufa:serviceMode", "gufa:mode:ts", // ← include timestamp nudge
+    "gufa_mode", "gufa:serviceMode", "gufa:mode:ts", // mode flips + timestamp nudge
     "gufa_cart",                                     // cross-tab cart contents
     "gufa_coupon",                                   // FCFS lock changes
     "gufa:COUPONS", "gufa:COUPON_CODES", "gufa:COUPON_INDEX"
