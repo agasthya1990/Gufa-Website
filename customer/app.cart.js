@@ -89,16 +89,16 @@ window.addEventListener("storage", (e) => {
 });
 
   
-  // Cross-tab/localStorage changes
-  window.addEventListener("storage", (e) => {
-const keys = new Set([
-  "gufa_mode", "gufa:serviceMode",
-  "gufa_cart",            // NEW: cross-tab cart contents
-  "gufa_coupon",          // NEW: FCFS lock changes
-  "gufa:COUPONS", "gufa:COUPON_CODES", "gufa:COUPON_INDEX"
-]);
-if (keys.has(e.key)) onFlip("storage:"+e.key);
-  });
+// Cross-tab/localStorage changes
+window.addEventListener("storage", (e) => {
+  const keys = new Set([
+    "gufa_mode", "gufa:serviceMode", "gufa:mode:ts", // ← include timestamp nudge
+    "gufa_cart",                                     // cross-tab cart contents
+    "gufa_coupon",                                   // FCFS lock changes
+    "gufa:COUPONS", "gufa:COUPON_CODES", "gufa:COUPON_INDEX"
+  ]);
+  if (keys.has(e.key)) onFlip("storage:"+e.key);
+});
 })();
 
 let lastSnapshotAt = 0;
