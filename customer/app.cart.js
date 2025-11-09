@@ -906,21 +906,14 @@ function eligibleIdsFromBanners(scope){
   try {
     const out = new Set();
 
-    // Tolerate cold loads: rebuild from LS snapshot if missing/empty
+// tolerate cold load
 if (!window.BANNERS || (window.BANNERS instanceof Map && window.BANNERS.size === 0)) {
   try {
     const raw = JSON.parse(localStorage.getItem("gufa:BANNERS") || "[]");
     if (Array.isArray(raw)) window.BANNERS = new Map(raw);
   } catch {}
 }
-
- if (!window.BANNERS) return out;
-
-    const couponId = String(scope?.couponId || "").trim();
-    const { meta, cid, code } = __findMetaByIdOrCode__(couponId || scope?.code || "");
-    const codeU = String(code || meta?.code || "").toUpperCase();
-
-    // Helper to add all ids from a banner key
+// ignore placeholders
 const addAll = (arr) => {
   if (!Array.isArray(arr)) return;
   for (const v of arr) {
@@ -929,6 +922,7 @@ const addAll = (arr) => {
     out.add(s.toLowerCase());
   }
 };
+
 
 
 
