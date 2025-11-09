@@ -620,6 +620,8 @@ try {
   const getLock = () => { try { return JSON.parse(localStorage.getItem(COUPON_KEY) || "null"); } catch { return null; } };
   const setLock = (obj) => { try { obj ? localStorage.setItem(COUPON_KEY, JSON.stringify(obj)) : localStorage.removeItem(COUPON_KEY); } catch {} };
 
+
+  
 // === STALE LOCK GUARD (NEW) ===
 function guardStaleCouponLock(){
   try {
@@ -817,7 +819,14 @@ function __findMetaByIdOrCode__(idOrCode){
 function eligibleIdsFromBanners(scope){
   try {
     const out = new Set();
-    if (!window.BANNERS) return out;
+    if (!window.BANNERS || (window.BANNERS.size === 0 && localStorage.getItem("gufa:BANNERS"))) {
+  try {
+    const raw = JSON.parse(localStorage.getItem("gufa:BANNERS") || "[]");
+    if (Array.isArray(raw)) window.BANNERS = new Map(raw);
+  } catch {}
+}
+if (!window.BANNERS) return out;
+
 
     const couponId = String(scope?.couponId || "").trim();
     const { meta, cid, code } = __findMetaByIdOrCode__(couponId || scope?.code || "");
