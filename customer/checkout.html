@@ -215,17 +215,24 @@
 </script>
 <script id="promo-data" type="application/json">
 {
+  "coupons": [
+    ["CHRISTMAS75", { "code": "CHRISTMAS75" }],
+    ["DIWALI100",   { "code": "DIWALI100" }],
+    ["NEWYEAR25",   { "code": "NEWYEAR25" }]
+  ],
   "banners": [
-    ["couponCode:CHRISTMAS75", ["<itemIdA>","<itemIdB>"]],
-    ["couponCode:DIWALI100",   ["<itemIdX>","<itemIdY>"]],
-    ["couponCode:NEWYEAR25",   ["<itemIdP>","<itemIdQ>"]]
+    ["couponCode:CHRISTMAS75", []],
+    ["couponCode:DIWALI100",   []],
+    ["couponCode:NEWYEAR25",   []]
   ]
 }
 </script>
+
 <script src="./coupon-engine.js"></script>
 <script src="./app.cart.js"></script>
 </body>
 </html>
+
 
 
 
