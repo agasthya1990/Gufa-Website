@@ -63,37 +63,36 @@ function onFlip(reason){
 
   clearIncompatibleLockIfNeeded(mode);
 
-  // (Optional) If helper exists, re-pick coupon; harmless when cart is empty
-  try {
-    if (typeof findFirstApplicableCouponForCart === "function") {
-      const pick = findFirstApplicableCouponForCart();
-      if (pick) localStorage.setItem("gufa_coupon", JSON.stringify(pick));
-    }
-  } catch {}
-
   // Repaint immediately (prefer render(), fall back to renderCart())
   try {
     if (typeof render === "function") { render(); }
     else { window.renderCart?.(); }
   } catch {}
 
-  // Always emit with a default reason so listeners wake even if undefined
-  window.dispatchEvent(new CustomEvent("cart:update", { detail: { reason: (reason || "mode-flip") } }));
+  window.dispatchEvent(new CustomEvent("cart:update", { detail: { reason } }));
 
   __CART_MODE_APPLYING__ = false;
 }
-
-
 
 
   // Same-tab custom events (Menu broadcasts both)
   window.addEventListener("mode:change",          () => onFlip("mode:change"));
   window.addEventListener("serviceMode:changed",  () => onFlip("serviceMode:changed"));
 
-// Cross-tab/localStorage changes (single consolidated listener)
+// Cross-tab storage wake: respond to mode flips written by Menu
+window.addEventListener("storage", (e) => {
+  try {
+    if (e.key === "gufa_mode" || e.key === "gufa:serviceMode" || e.key === "gufa:mode:ts") {
+      onFlip("storage:" + e.key);
+    }
+  } catch {}
+});
+
+  
+// Cross-tab/localStorage changes
 window.addEventListener("storage", (e) => {
   const keys = new Set([
-    "gufa_mode", "gufa:serviceMode", "gufa:mode:ts", // mode flips + timestamp nudge
+    "gufa_mode", "gufa:serviceMode", "gufa:mode:ts", // ← include timestamp nudge
     "gufa_cart",                                     // cross-tab cart contents
     "gufa_coupon",                                   // FCFS lock changes
     "gufa:COUPONS", "gufa:COUPON_CODES", "gufa:COUPON_INDEX"
@@ -177,36 +176,6 @@ window.addEventListener("serviceMode:changed", () => {
   const root = (window.CART_UI && window.CART_UI.list) ? window.CART_UI.list : {};
   window.CART_UI = window.CART_UI || {};
   window.CART_UI.list = Object.assign({}, defaults, root); // any page overrides still win
-
-  // === Ensure Promo row exists if the page template didn't ship #promo-label/#promo-amt ===
-(function ensurePromoRow(){
-  const UI   = (window.CART_UI && window.CART_UI.list) ? window.CART_UI.list : {};
-  const lblQ = UI.promoLbl || '#promo-label';
-  const amtQ = UI.promoAmt || '#promo-amt';
-
-  if (document.querySelector(lblQ) && document.querySelector(amtQ)) return;
-
-  // Try to mount in a sensible totals area (invoice sidebar → cart-right → body)
-  const host = document.querySelector('.invoice')
-            || document.querySelector('aside.cart-right')
-            || document.body;
-
-  if (!host) return;
-
-  const row = document.createElement('div');
-  row.className = 'promo-row';
-
-  const lbl = document.createElement('span');
-  lbl.id = (lblQ.startsWith('#') ? lblQ.slice(1) : lblQ.replace(/^[.#]/,''));
-  lbl.textContent = 'Promotion (): none';
-
-  const amt = document.createElement('span');
-  amt.id = (amtQ.startsWith('#') ? amtQ.slice(1) : amtQ.replace(/^[.#]/,''));
-  amt.textContent = '− ₹0';
-
-  row.append(lbl, amt);
-  host.appendChild(row);
-})();
 })();
 
 
@@ -302,16 +271,6 @@ function wireApplyCouponUI(){
   if (!btn || !input) return;
 
   const apply = () => {
-    // Block manual overrides while a banner-scoped lock exists (preserve FCFS precision)
-    try {
-      const active = JSON.parse(localStorage.getItem("gufa_coupon") || "null");
-      if (active && isBannerScoped(active)) {
-        if (UI.promoLbl) UI.promoLbl.textContent = "Promotion: locked by a banner item. Remove that item to switch offers.";
-        alert("A banner offer is already applied. Remove that item to switch offers.");
-        return;
-      }
-    } catch {}
-
     const query = input.value;
     const found = findCouponByCodeOrId(query);
     if (!found || !found.meta || found.meta.active === false) {
@@ -350,9 +309,7 @@ function wireApplyCouponUI(){
 // Boot the wire-up after DOM is ready
 document.addEventListener("DOMContentLoaded", () => {
   try { wireApplyCouponUI(); } catch {}
-  try { paintPromoFromLock(); } catch {}
 });
-
 
 
 ;(function(){
@@ -625,19 +582,6 @@ async function ensureCouponsReady() {
 (async function bootCouponsOnce(){
   try {
     const ok = await ensureCouponsReady();
-
-    // Always attempt banner hydration (even if coupons didn't hydrate)
-    try {
-      if (!(window.BANNERS instanceof Map) || window.BANNERS.size === 0) {
-        const raw = localStorage.getItem("gufa:BANNERS");
-        if (raw) {
-          const dump = JSON.parse(raw);
-          const map  = new Map(Array.isArray(dump) ? dump : []);
-          if (map.size > 0) window.BANNERS = map;
-        }
-      }
-    } catch (err) { console.warn("[cart] banner hydration failed", err); }
-
     if (ok) {
       try { localStorage.setItem("gufa:COUPONS", JSON.stringify(Array.from(window.COUPONS.entries()))); } catch {}
       window.dispatchEvent(new CustomEvent("promotions:hydrated"));
@@ -646,16 +590,10 @@ async function ensureCouponsReady() {
   } catch {}
 })();
 
-
-
-
-  
   /* ===================== Coupon Lock ===================== */
   const getLock = () => { try { return JSON.parse(localStorage.getItem(COUPON_KEY) || "null"); } catch { return null; } };
   const setLock = (obj) => { try { obj ? localStorage.setItem(COUPON_KEY, JSON.stringify(obj)) : localStorage.removeItem(COUPON_KEY); } catch {} };
 
-
-  
 // === STALE LOCK GUARD (NEW) ===
 function guardStaleCouponLock(){
   try {
@@ -685,27 +623,8 @@ function guardStaleCouponLock(){
 
  const bannerOnly = isBannerScoped(baseLock); // ← NEW
 
-// Merge any scope-provided eligible item ids (from Menu lock) into the computed Set
-try {
-  const fromLockScope = Array.isArray(lock?.scope?.eligibleItemIds) ? lock.scope.eligibleItemIds : [];
-  for (const v of fromLockScope) {
-    const s = String(v || "").trim();
-    if (s) elig.add(s.toLowerCase());
-  }
-} catch {}
-
-// If we still cannot determine eligibility, KEEP the lock so the code paints.
-// We'll re-evaluate on the next hydration/cart/update tick.
-if (elig.size === 0) {
-  try {
-    window.dispatchEvent(new CustomEvent("cart:update", { detail: { reason: "elig-unknown" } }));
-  } catch {}
-  return; // ← do NOT clear the lock when eligibility is unknown
-}
-
-// Normal decision: require at least one eligible BASE in bag (respect banner-only discipline)
 const ok = Object.keys(bag)
-  .filter(k => k.split(":").length < 3) // ignore addon lines
+  .filter(k => k.split(":").length < 3)
   .some(k => {
     const id = k.split(":")[0].toLowerCase();
     const origin = String(bag[k]?.origin || "");
@@ -713,14 +632,10 @@ const ok = Object.keys(bag)
     return elig.has(id);
   });
 
-// Only now, if definitively ineligible, clear the lock
 if (!ok) {
   localStorage.removeItem("gufa_coupon");
-  try {
-    window.dispatchEvent(new CustomEvent("cart:update", { detail: { reason: "stale-lock-cleared" } }));
-  } catch {}
+  try { window.dispatchEvent(new CustomEvent("cart:update", { detail:{ reason:"stale-lock-cleared" } })); } catch {}
 }
-
   } catch {}
 }
 
@@ -733,12 +648,6 @@ try {
   window.addEventListener("serviceMode:changed",  guardStaleCouponLock);
 } catch {}
 
-/* Paint promo label/amount whenever cart changes (lock/rotation/qty) */
-try {
-  window.addEventListener("cart:update", () => {
-    try { paintPromoFromLock(); } catch {}
-  });
-} catch {}
 
 
   function displayCode(locked){
@@ -855,29 +764,6 @@ function showPromoError(msg) {
   if (host) host.textContent = msg || "";
 }
 
-// === Minimal painter for the Promotion label/amount from current lock
-function paintPromoFromLock(){
-  try {
-    const UI   = resolveLayout?.() || window.CART_UI?.list || {};
-    const lblQ = UI.promoLbl || "#promo-label";
-    const amtQ = UI.promoAmt || "#promo-amt";
-
-    const lbl = document.querySelector(lblQ);
-    const amt = document.querySelector(amtQ);
-    if (!lbl && !amt) return;
-
-    const lock = (function(){ try { return JSON.parse(localStorage.getItem("gufa_coupon") || "null"); } catch { return null; } })();
-    const code = (typeof displayCode === "function") ? displayCode(lock) : (lock?.code || "");
-
-    if (lbl) lbl.textContent = code ? `Promotion (${String(code).toUpperCase()})` : "Promotion (): none";
-
-    // If your totals engine is elsewhere, keep amount conservative here;
-    // the main renderer will still update it during normal render paths.
-    if (amt) { if (!lock) amt.textContent = "− ₹0"; }
-  } catch {}
-}
-
-  
   /* ===================== Promotions Discipline ===================== */
 
   // Eligibility core that tolerates Map or Array BANNERS and restores general-coupon scope
@@ -905,35 +791,23 @@ function __findMetaByIdOrCode__(idOrCode){
 function eligibleIdsFromBanners(scope){
   try {
     const out = new Set();
+    if (!window.BANNERS) return out;
 
-// tolerate cold load
-if (!window.BANNERS || (window.BANNERS instanceof Map && window.BANNERS.size === 0)) {
-  try {
-    const raw = JSON.parse(localStorage.getItem("gufa:BANNERS") || "[]");
-    if (Array.isArray(raw)) window.BANNERS = new Map(raw);
-  } catch {}
-}
-// ignore placeholders
-const addAll = (arr) => {
-  if (!Array.isArray(arr)) return;
-  for (const v of arr) {
-    const s = String(v || "").trim();
-    if (!s || /^<.*>$/.test(s)) continue;
-    out.add(s.toLowerCase());
-  }
-};
+    const couponId = String(scope?.couponId || "").trim();
+    const { meta, cid, code } = __findMetaByIdOrCode__(couponId || scope?.code || "");
+    const codeU = String(code || meta?.code || "").toUpperCase();
 
-
-
+    // Helper to add all ids from a banner key
+    const addAll = (arr) => {
+      if (Array.isArray(arr)) arr.forEach(v => out.add(String(v).toLowerCase()));
+    };
 
     if (window.BANNERS instanceof Map) {
       if (scope?.bannerId) addAll(window.BANNERS.get(String(scope.bannerId)));
       if (!out.size && cid)  addAll(window.BANNERS.get(`coupon:${cid}`));
       if (!out.size && codeU) addAll(window.BANNERS.get(`couponCode:${codeU}`) || window.BANNERS.get(`couponCode:${codeU.toUpperCase()}`));
     } else if (Array.isArray(window.BANNERS)) {
-      
       // Array form: [{ id, itemIds, couponId, couponCode }]
-      
       for (const b of window.BANNERS) {
         const bid = String(b?.id || "");
         const arr = Array.isArray(b?.itemIds) ? b.itemIds : [];
@@ -989,30 +863,22 @@ function isBannerScoped(locked){
   }
 
 // --- Banner origin validation (strict) ---
-function isKnownBannerId(bid){
-  const id = String(bid || "").trim();
-  if (!id) return false;
-  try {
-    const B = window.BANNERS;
-    if (B instanceof Map) return B.has(id);
-    if (Array.isArray(B)) return !!B.find(b => String(b?.id||"") === id);
-  } catch {}
-  // Accept persisted snapshot too
-  try {
-    const raw = localStorage.getItem("gufa:BANNERS");
-    if (raw) {
-      const arr = JSON.parse(raw);
-      if (Array.isArray(arr)) return arr.some(([k]) => String(k) === id);
-    }
-  } catch {}
+function isKnownBannerOrigin(origin) {
+  const s = String(origin || "");
+  if (!s.startsWith("banner:")) return false;
+  const key = s.slice("banner:".length).trim();
+  if (!key) return false;
+
+  // Allow only keys that exist in the current banner catalog
+  if (window.BANNERS instanceof Map) {
+    return window.BANNERS.has(key);
+  }
+  if (Array.isArray(window.BANNERS)) {
+    // array form [{id, ...}]
+    return window.BANNERS.some(b => String(b?.id || "") === key);
+  }
   return false;
 }
-
-function isKnownBannerOrigin(origin){
-  const m = /^banner:(.+)$/.exec(String(origin||""));
-  return !!(m && isKnownBannerId(m[1]));
-}
-
 
 // Remove any unknown/stale banner origins (e.g., "banner:test-only")
 function scrubUnknownBannerOrigins() {
@@ -1131,16 +997,24 @@ function pickEligibleBaseIdForCouponBannerFirst(eSet, lock) {
     const isBase   = (k) => String(k).split(":").length < 3;
     const toBaseId = (k) => String(k).split(":")[0].toLowerCase();
 
-// Eligible candidates present in cart (STRICT: banner-origin only)
-const pool = new Set(
-  Object.keys(bag)
-    .filter(isBase)
-    .filter(k => eSet.has(toBaseId(k)))
-    .filter(k => isKnownBannerOrigin(bag[k]?.origin))
-    .map(toBaseId)
-);
-if (!pool || pool.size === 0) return null;
+    // Eligible candidates present in cart
+    const eligibleAny = new Set(
+      Object.keys(bag).filter(isBase).filter(k => eSet.has(toBaseId(k))).map(toBaseId)
+    );
 
+    // Restrict to banner-origin only when the coupon is banner-scoped
+    const eligibleBanner = bannerOnly
+      ? new Set(
+          Object.keys(bag)
+            .filter(isBase)
+            .filter(k => eSet.has(toBaseId(k)))
+            .filter(k => isKnownBannerOrigin(bag[k]?.origin))
+            .map(toBaseId)
+        )
+      : null;
+
+    const pool = bannerOnly ? eligibleBanner : eligibleAny;
+    if (!pool || pool.size === 0) return null;
 
     for (const baseKey of order) {
       const baseId = String(baseKey).split(":")[0].toLowerCase();
@@ -1282,31 +1156,22 @@ if (!elig.size){
   return;
 }
 
-// If the cart no longer contains any of the eligible IDs as base lines, clear it.
-let any = false;
-for (const [key, it] of entries()){
-  if (isAddonKey(key)) continue;
-  const parts = String(key).toLowerCase().split(":");
-  const itemId  = String(it?.id ?? parts[0]);
-  const baseKey = parts.slice(0,2).join(":");
-
-  // STRICT: must be eligible AND must have banner-origin, otherwise ignore
-  if (
-    isKnownBannerOrigin(it?.origin) &&
-    (
-      elig.has(itemId) ||
-      elig.has(baseKey) ||
-      Array.from(elig).some(x => !x.includes(":") && baseKey.startsWith(x + ":"))
-    )
-  ){
-    any = true; break;
-  }
-}
-if (!any) {
+    // If the cart no longer contains any of the eligible IDs as base lines, clear it.
+    let any = false;
+    for (const [key, it] of entries()){
+      if (isAddonKey(key)) continue;
+      const parts = String(key).toLowerCase().split(":");
+      const itemId  = String(it?.id ?? parts[0]);
+      const baseKey = parts.slice(0,2).join(":");
+      if (elig.has(itemId) || elig.has(baseKey) || Array.from(elig).some(x => !x.includes(":") && baseKey.startsWith(x + ":"))){
+        any = true; break;
+      }
+    }
+    if (!any) {
   setLock(null);
   // trigger instant recompute so FCFS can pick the next coupon in the same frame
   window.dispatchEvent(new CustomEvent("cart:update"));
- }
+  }
 }
 
 function enforceFirstComeLock(){
@@ -1362,16 +1227,16 @@ if (!elig.size) return { discount:0 };
 // Eligible base subtotal only
 let eligibleBase = 0;
 let eligibleQty  = 0; // NEW: count units across eligible base lines
+const bannerOnly = isBannerScoped(locked); // ← add this once, outside the loop
 for (const [key, it] of entries()){
   if (isAddonKey(key)) continue;
 
-  // Enforce banner-origin lines only (policy: non-banner never discounted)
-  if (!isKnownBannerOrigin(it?.origin)) continue;
+  // Enforce banner-origin only when the coupon is banner-scoped
+  if (bannerOnly && !isKnownBannerOrigin(it?.origin)) continue;
 
   const parts = String(key).split(":");
   const itemId  = String(it?.id ?? parts[0]).toLowerCase();
   const baseKey = parts.slice(0,2).join(":").toLowerCase();
-
 
   if (elig.has(itemId) || elig.has(baseKey) || Array.from(elig).some(x => !x.includes(":") && baseKey.startsWith(x + ":"))){
     const q = clamp0(it.qty);
@@ -1645,12 +1510,7 @@ return { discount: Math.max(0, Math.round(d)) };
   /* ===================== Render ===================== */
 function render(){
   if (!R.items && !resolveLayout()) return;
-
-  // Early guard: remove any bogus banner origins before lock/discount math
-  try { scrubUnknownBannerOrigins(); } catch {}
-
   enforceFirstComeLock();
-
  
 
     
@@ -1771,15 +1631,6 @@ if (discount > 0) showPromoError("");
 if (R.promoApply && !R.promoApply._wired){
   R.promoApply._wired = true;
   R.promoApply.addEventListener("click", async ()=>{
-    // Block manual overrides while a banner-scoped lock exists (preserve FCFS precision)
-    try {
-      const active = JSON.parse(localStorage.getItem("gufa_coupon") || "null");
-      if (active && isBannerScoped(active)) {
-        alert("A banner offer is already applied. Remove that item to switch offers.");
-        return;
-      }
-    } catch {}
-
     // normalize user input once
     const raw = (R.promoInput?.value || "").trim();
     if (!raw) { showPromoError(""); return; }
