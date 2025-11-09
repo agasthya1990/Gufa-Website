@@ -685,8 +685,27 @@ function guardStaleCouponLock(){
 
  const bannerOnly = isBannerScoped(baseLock); // ← NEW
 
+// Merge any scope-provided eligible item ids (from Menu lock) into the computed Set
+try {
+  const fromLockScope = Array.isArray(lock?.scope?.eligibleItemIds) ? lock.scope.eligibleItemIds : [];
+  for (const v of fromLockScope) {
+    const s = String(v || "").trim();
+    if (s) elig.add(s.toLowerCase());
+  }
+} catch {}
+
+// If we still cannot determine eligibility, KEEP the lock so the code paints.
+// We'll re-evaluate on the next hydration/cart/update tick.
+if (elig.size === 0) {
+  try {
+    window.dispatchEvent(new CustomEvent("cart:update", { detail: { reason: "elig-unknown" } }));
+  } catch {}
+  return; // ← do NOT clear the lock when eligibility is unknown
+}
+
+// Normal decision: require at least one eligible BASE in bag (respect banner-only discipline)
 const ok = Object.keys(bag)
-  .filter(k => k.split(":").length < 3)
+  .filter(k => k.split(":").length < 3) // ignore addon lines
   .some(k => {
     const id = k.split(":")[0].toLowerCase();
     const origin = String(bag[k]?.origin || "");
@@ -694,10 +713,14 @@ const ok = Object.keys(bag)
     return elig.has(id);
   });
 
+// Only now, if definitively ineligible, clear the lock
 if (!ok) {
   localStorage.removeItem("gufa_coupon");
-  try { window.dispatchEvent(new CustomEvent("cart:update", { detail:{ reason:"stale-lock-cleared" } })); } catch {}
+  try {
+    window.dispatchEvent(new CustomEvent("cart:update", { detail: { reason: "stale-lock-cleared" } }));
+  } catch {}
 }
+
   } catch {}
 }
 
@@ -901,9 +924,16 @@ function eligibleIdsFromBanners(scope){
     const codeU = String(code || meta?.code || "").toUpperCase();
 
     // Helper to add all ids from a banner key
-    const addAll = (arr) => {
-      if (Array.isArray(arr)) arr.forEach(v => out.add(String(v).toLowerCase()));
-    };
+const addAll = (arr) => {
+  if (!Array.isArray(arr)) return;
+  for (const v of arr) {
+    const s = String(v || "").trim();
+    // ignore placeholders like "<itemIdA>"
+    if (!s || /^<.*>$/.test(s)) continue;
+    out.add(s.toLowerCase());
+  }
+};
+
 
     if (window.BANNERS instanceof Map) {
       if (scope?.bannerId) addAll(window.BANNERS.get(String(scope.bannerId)));
