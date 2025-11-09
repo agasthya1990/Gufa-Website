@@ -105,29 +105,7 @@ function updateCartLink(){
 
 // Keep coupons & banners available to cart and locker
 if (!(window.COUPONS instanceof Map)) window.COUPONS = new Map();
-
-// Normalize BANNERS to a Map keyed by bannerId -> [itemId,...]
-(function normalizeBanners(){
-  try {
-    const raw = window.BANNERS;
-    const map = new Map();
-    if (raw instanceof Map) { window.BANNERS = raw; return; }
-    if (Array.isArray(raw)) {
-      for (const b of raw) {
-        const id = String(b?.id || "").trim();
-        const items = Array.isArray(b?.items) ? b.items : Array.isArray(b?.itemIds) ? b.itemIds : [];
-        if (id) map.set(id, items.map(String));
-      }
-      window.BANNERS = map;
-      try {
-        localStorage.setItem("gufa:BANNERS", JSON.stringify(Array.from(map.entries())));
-      } catch {}
-      return;
-    }
-    window.BANNERS = map;
-  } catch { window.BANNERS = new Map(); }
-})();
-
+if (!Array.isArray(window.BANNERS)) window.BANNERS = [];
 
 
 // —— Persist a lightweight coupons snapshot for checkout hydration ——//
@@ -298,35 +276,23 @@ document.querySelectorAll('.menu-item[data-id]').forEach(card => {
       }
     }
 
-if (e.key === "gufa_mode" || e.key === "gufa:serviceMode" || e.key === "gufa:mode:ts") {
-  const m = getActiveMode?.();
+    if (e.key === "gufa_mode" || e.key === "gufa:serviceMode") {
+      const m = getActiveMode?.();
+      // rebroadcast locally so this tab mirrors the flipper tab
+      window.dispatchEvent(new CustomEvent("mode:change",         { detail:{ mode:m }}));
+      window.dispatchEvent(new CustomEvent("serviceMode:changed", { detail:{ mode:m }}));
 
-  // Re-broadcast locally so current tab updates immediately
-  try { window.dispatchEvent(new CustomEvent("mode:change",         { detail:{ mode:m }})); } catch {}
-  try { window.dispatchEvent(new CustomEvent("serviceMode:changed", { detail:{ mode:m }})); } catch {}
-
-  // Repaint UI that depends on mode — EVEN IF CART IS EMPTY
-  try {
-    updateAllMiniCartBadges?.();   // keeps per-card badges/colors correct
-    updateCartLink?.();            // header "Cart (0)" still repaints
-    renderDeals?.();               // Today’s Deals rail re-filters
-    if (typeof decorateBannerDealBadges === "function" && view === "list" && listKind === "banner") {
-      decorateBannerDealBadges();
+      // reflect any toggle UI
+      try {
+        const toggle = document.querySelector("#serviceModeToggle, .mode-toggle, [data-mode-switch]");
+        if (toggle) {
+          toggle.classList.toggle("active", m === "dining");
+          if ("checked" in toggle) toggle.checked = (m === "dining");
+        }
+      } catch (err) {
+        console.warn("[menu] mode toggle sync failed", err);
+      }
     }
-  } catch {}
-
-  // Reflect toggle widgets
-  try {
-    const toggle = document.querySelector("#serviceModeToggle, .mode-toggle, [data-mode-switch]");
-    if (toggle) {
-      toggle.classList.toggle("active", m === "dining");
-      if ("checked" in toggle) toggle.checked = (m === "dining");
-    }
-  } catch (err) {
-    console.warn("[menu] mode toggle sync failed", err);
-  }
-}
-
 
     if (e.key === "gufa_coupon") {
       window.updateAllMiniCartBadges?.();
@@ -419,62 +385,18 @@ window.addEventListener("serviceMode:changed", () => {
     const existing = JSON.parse(localStorage.getItem("gufa_coupon") || "null");
     if (existing && existing.code) return;
 
-const ACTIVE_BANNER_ID = String(listId || "");
+    const ACTIVE_BANNER_ID = String(listId || "");
+    const ACTIVE_BANNER = (window.BANNERS || []).find(b => String(b.id) === ACTIVE_BANNER_ID);
+    if (!ACTIVE_BANNER) return;
 
-// 1) Read banner's item list from the normalized Map (tolerate old Array shape)
-let bannerItems = [];
-if (window.BANNERS instanceof Map) {
-  const arr = window.BANNERS.get(ACTIVE_BANNER_ID);
-  bannerItems = Array.isArray(arr) ? arr.map(String) : [];
-} else if (Array.isArray(window.BANNERS)) {
-  const obj = window.BANNERS.find(b => String(b.id) === ACTIVE_BANNER_ID);
-  bannerItems = Array.isArray(obj?.items) ? obj.items.map(String)
-               : Array.isArray(obj?.itemIds) ? obj.itemIds.map(String)
-               : [];
-}
-if (!bannerItems.length) return;
-
-// 2) Pick a coupon that actually covers the *added* item AND lives on this banner
-let couponId = null;
-try {
-  const idx = JSON.parse(localStorage.getItem("gufa:COUPON_INDEX") || "{}"); // token -> [itemIds]
-  if (idx && window.COUPONS instanceof Map) {
-    // Prefer coupon IDs from COUPONS; each token in idx can be id or code
-    for (const [cid, meta] of window.COUPONS) {
-      const token = String(cid).toLowerCase();
-      const itemsForCoupon = (idx[token] || []).map(String);
-      // must cover the clicked item *and* be part of this banner's items
-      if (itemsForCoupon.includes(String(addedItemId)) && bannerItems.includes(String(addedItemId))) {
-        couponId = String(cid);
-        break;
-      }
-    }
-  }
-} catch {}
+const [couponId] = Array.isArray(ACTIVE_BANNER.linkedCouponIds) ? ACTIVE_BANNER.linkedCouponIds : [];
 if (!couponId) return;
 
-// 3) Eligible set = intersection of {banner items} ∩ {coupon items}
-let eligibleItemIds = [];
-try {
-  const idx = JSON.parse(localStorage.getItem("gufa:COUPON_INDEX") || "{}");
-  const arr = (idx[String(couponId).toLowerCase()] || []).map(String);
-  eligibleItemIds = bannerItems.filter(id => arr.includes(String(id)));
-} catch {}
-if (!eligibleItemIds.length) return;
+const catalog = (ITEMS && ITEMS.length ? ITEMS : (window.ITEMS || []));
 
-// 4) Build enriched payload (banner-scoped, with source)
-const meta    = (window.COUPONS instanceof Map) ? window.COUPONS.get(String(couponId)) : null;
-const targets = (meta && meta.targets) ? meta.targets : { delivery: true, dining: true };
-const payload = {
-  code:  (meta?.code || String(couponId)).toUpperCase(),
-  type:  String(meta?.type || ""),
-  value: Number(meta?.value || 0),
-  valid: { delivery: !!targets.delivery, dining: !!targets.dining },
-  scope: { couponId: String(couponId), eligibleItemIds, bannerId: ACTIVE_BANNER_ID }, // NEW
-  lockedAt: Date.now(),
-  source: `banner:${ACTIVE_BANNER_ID}` 
-};
-
+const eligibleItemIds = catalog
+  .filter(it => Array.isArray(it.promotions) && it.promotions.map(String).includes(String(couponId)))
+  .map(it => String(it.id));
 
 
 
@@ -483,23 +405,17 @@ const payload = {
     const meta = (window.COUPONS instanceof Map) ? window.COUPONS.get(String(couponId)) : null;
     const targets = (meta && meta.targets) ? meta.targets : { delivery: true, dining: true };
 
-const payload = {
-  code:  (meta?.code || String(couponId)).toUpperCase(),
-  type:  String(meta?.type || ""),
-  value: Number(meta?.value || 0),
-  valid: {
-    delivery: !!targets.delivery,
-    dining:   !!targets.dining
-  },
-  scope: {
-    couponId: String(couponId),
-    eligibleItemIds,
-    bannerId: ACTIVE_BANNER_ID      // NEW
-  },
-  lockedAt: Date.now(),
-  source: `banner:${ACTIVE_BANNER_ID}` // NEW
-};
-
+    const payload = {
+      code:  (meta?.code || String(couponId)).toUpperCase(),
+      type:  String(meta?.type || ""),
+      value: Number(meta?.value || 0),
+      valid: {
+        delivery: !!targets.delivery,
+        dining:   !!targets.dining
+      },
+      scope: { couponId: String(couponId), eligibleItemIds },
+      lockedAt: Date.now()
+    };
 
     localStorage.setItem("gufa_coupon", JSON.stringify(payload));
     window.dispatchEvent(new CustomEvent("cart:update", { detail: { coupon: payload } }));
@@ -712,19 +628,21 @@ function setQty(found, variantKey, price, nextQty) {
 // 1️⃣ Live Cart update
 try {
   if (window.Cart && typeof window.Cart.setQty === "function") {
-// Infer banner provenance from the card or its container (STRICT: banner only if data-banner-id exists)
-const card     = document.querySelector(`.menu-item[data-id="${found.id}"]`);
-const bannerId =
-  card?.getAttribute("data-banner-id") ||
-  card?.dataset?.bannerId ||
-  card?.closest("[data-banner-id]")?.getAttribute("data-banner-id") ||
-  "";
-const origin = bannerId ? `banner:${bannerId}` : "non-banner";
+    // Infer banner provenance from the card or its container
+    const card     = document.querySelector(`.menu-item[data-id="${found.id}"]`);
+    const bannerId =
+      card?.getAttribute("data-banner-id") ||
+      card?.dataset?.bannerId ||
+      card?.closest("[data-banner-id]")?.getAttribute("data-banner-id") ||
+      document.querySelector("#globalResults")?.id ||  // safe fallback from your page
+      document.querySelector(".deals")?.className ||   // secondary fallback
+      "";
+    const origin = bannerId ? `banner:${bannerId}` : "non-banner";
 
-window.Cart.setQty(key, next, {
-  id: found.id, name: found.name, variant: variantKey, price: Number(price) || 0,
-  origin
-});
+    window.Cart.setQty(key, next, {
+      id: found.id, name: found.name, variant: variantKey, price: Number(price) || 0,
+      origin
+    });
   }
 } catch {}
 
@@ -750,12 +668,15 @@ if (next <= 0) {
   const prev = bag[key] || {};
   // Reuse the same origin we computed above if available
   const card     = document.querySelector(`.menu-item[data-id="${found.id}"]`);
-const bannerId =
-  card?.getAttribute("data-banner-id") ||
-  card?.dataset?.bannerId ||
-  card?.closest("[data-banner-id]")?.getAttribute("data-banner-id") ||
-  "";
-const origin = prev.origin || (bannerId ? `banner:${bannerId}` : "non-banner");
+  const bannerId =
+    card?.getAttribute("data-banner-id") ||
+    card?.dataset?.bannerId ||
+    card?.closest("[data-banner-id]")?.getAttribute("data-banner-id") ||
+    document.querySelector("#globalResults")?.id ||
+    document.querySelector(".deals")?.className ||
+    "";
+  const origin = prev.origin || (bannerId ? `banner:${bannerId}` : "non-banner");
+
   bag[key] = {
     id: found.id,
     name: found.name,
@@ -877,17 +798,12 @@ setTimeout(() => {
   `
   : "";
 
-  const steppers = variants.map(v => stepperHTML(m, v)).join("");
+    const steppers = variants.map(v => stepperHTML(m, v)).join("");
 
-// Compute banner data-attr ONLY when we’re actually viewing a banner list
-  const isBannerView = (view === "list" && listKind === "banner");
-  const bannerAttr   = isBannerView ? ` data-banner-id="${String(listId || "")}"` : "";
-
-  return `
-      <article class="menu-item" data-id="${m.id}"${bannerAttr}>
+    return `
+      <article class="menu-item" data-id="${m.id}">
         ${m.imageUrl ? `<img loading="lazy" src="${m.imageUrl}" alt="${m.name||""}" class="menu-img"/>` : ""}
         <div class="menu-header">
-
           <h4 class="menu-name">${m.name || ""}</h4>
           ${miniCartButtonHTML()}
         </div>
