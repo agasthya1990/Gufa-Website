@@ -907,17 +907,14 @@ function eligibleIdsFromBanners(scope){
     const out = new Set();
 
     // Tolerate cold loads: rebuild from LS snapshot if missing/empty
-    if (!window.BANNERS || (window.BANNERS instanceof Map && window.BANNERS.size === 0)) {
-      try {
-        const raw = localStorage.getItem("gufa:BANNERS");
-        if (raw) {
-          const arr = JSON.parse(raw);
-          if (Array.isArray(arr)) window.BANNERS = new Map(arr);
-        }
-      } catch {}
-    }
-    if (!window.BANNERS) return out;
+if (!window.BANNERS || (window.BANNERS instanceof Map && window.BANNERS.size === 0)) {
+  try {
+    const raw = JSON.parse(localStorage.getItem("gufa:BANNERS") || "[]");
+    if (Array.isArray(raw)) window.BANNERS = new Map(raw);
+  } catch {}
+}
 
+ if (!window.BANNERS) return out;
 
     const couponId = String(scope?.couponId || "").trim();
     const { meta, cid, code } = __findMetaByIdOrCode__(couponId || scope?.code || "");
@@ -928,11 +925,11 @@ const addAll = (arr) => {
   if (!Array.isArray(arr)) return;
   for (const v of arr) {
     const s = String(v || "").trim();
-    // ignore placeholders like "<itemIdA>"
     if (!s || /^<.*>$/.test(s)) continue;
     out.add(s.toLowerCase());
   }
 };
+
 
 
     if (window.BANNERS instanceof Map) {
@@ -940,7 +937,9 @@ const addAll = (arr) => {
       if (!out.size && cid)  addAll(window.BANNERS.get(`coupon:${cid}`));
       if (!out.size && codeU) addAll(window.BANNERS.get(`couponCode:${codeU}`) || window.BANNERS.get(`couponCode:${codeU.toUpperCase()}`));
     } else if (Array.isArray(window.BANNERS)) {
+      
       // Array form: [{ id, itemIds, couponId, couponCode }]
+      
       for (const b of window.BANNERS) {
         const bid = String(b?.id || "");
         const arr = Array.isArray(b?.itemIds) ? b.itemIds : [];
