@@ -177,6 +177,36 @@ window.addEventListener("serviceMode:changed", () => {
   const root = (window.CART_UI && window.CART_UI.list) ? window.CART_UI.list : {};
   window.CART_UI = window.CART_UI || {};
   window.CART_UI.list = Object.assign({}, defaults, root); // any page overrides still win
+
+  // === Ensure Promo row exists if the page template didn't ship #promo-label/#promo-amt ===
+(function ensurePromoRow(){
+  const UI   = (window.CART_UI && window.CART_UI.list) ? window.CART_UI.list : {};
+  const lblQ = UI.promoLbl || '#promo-label';
+  const amtQ = UI.promoAmt || '#promo-amt';
+
+  if (document.querySelector(lblQ) && document.querySelector(amtQ)) return;
+
+  // Try to mount in a sensible totals area (invoice sidebar → cart-right → body)
+  const host = document.querySelector('.invoice')
+            || document.querySelector('aside.cart-right')
+            || document.body;
+
+  if (!host) return;
+
+  const row = document.createElement('div');
+  row.className = 'promo-row';
+
+  const lbl = document.createElement('span');
+  lbl.id = (lblQ.startsWith('#') ? lblQ.slice(1) : lblQ.replace(/^[.#]/,''));
+  lbl.textContent = 'Promotion (): none';
+
+  const amt = document.createElement('span');
+  amt.id = (amtQ.startsWith('#') ? amtQ.slice(1) : amtQ.replace(/^[.#]/,''));
+  amt.textContent = '− ₹0';
+
+  row.append(lbl, amt);
+  host.appendChild(row);
+})();
 })();
 
 
@@ -593,26 +623,27 @@ async function ensureCouponsReady() {
 (async function bootCouponsOnce(){
   try {
     const ok = await ensureCouponsReady();
+
+    // Always attempt banner hydration (even if coupons didn't hydrate)
+    try {
+      if (!(window.BANNERS instanceof Map) || window.BANNERS.size === 0) {
+        const raw = localStorage.getItem("gufa:BANNERS");
+        if (raw) {
+          const dump = JSON.parse(raw);
+          const map  = new Map(dump);
+          if (map.size > 0) window.BANNERS = map;
+        }
+      }
+    } catch (err) { console.warn("[cart] banner hydration failed", err); }
+
     if (ok) {
       try { localStorage.setItem("gufa:COUPONS", JSON.stringify(Array.from(window.COUPONS.entries()))); } catch {}
       window.dispatchEvent(new CustomEvent("promotions:hydrated"));
       window.dispatchEvent(new CustomEvent("cart:update"));
-  // === Hydrate BANNERS snapshot (from Menu) ===
-try {
-  if (!(window.BANNERS instanceof Map) || window.BANNERS.size === 0) {
-    const raw = localStorage.getItem("gufa:BANNERS");
-    if (raw) {
-      const dump = JSON.parse(raw);
-      const map = new Map(dump);
-      if (map.size > 0) window.BANNERS = map;
     }
-  }
-} catch (err) {
-  console.warn("[cart] banner hydration failed", err);
-     }
-   }
   } catch {}
 })();
+
 
 
   
