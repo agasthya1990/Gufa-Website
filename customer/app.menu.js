@@ -439,17 +439,23 @@ const eligibleItemIds = catalog
     const meta = (window.COUPONS instanceof Map) ? window.COUPONS.get(String(couponId)) : null;
     const targets = (meta && meta.targets) ? meta.targets : { delivery: true, dining: true };
 
-    const payload = {
-      code:  (meta?.code || String(couponId)).toUpperCase(),
-      type:  String(meta?.type || ""),
-      value: Number(meta?.value || 0),
-      valid: {
-        delivery: !!targets.delivery,
-        dining:   !!targets.dining
-      },
-      scope: { couponId: String(couponId), eligibleItemIds },
-      lockedAt: Date.now()
-    };
+const payload = {
+  code:  (meta?.code || String(couponId)).toUpperCase(),
+  type:  String(meta?.type || ""),
+  value: Number(meta?.value || 0),
+  valid: {
+    delivery: !!targets.delivery,
+    dining:   !!targets.dining
+  },
+  scope: {
+    couponId: String(couponId),
+    eligibleItemIds,
+    bannerId: ACTIVE_BANNER_ID      // NEW
+  },
+  lockedAt: Date.now(),
+  source: `banner:${ACTIVE_BANNER_ID}` // NEW
+};
+
 
     localStorage.setItem("gufa_coupon", JSON.stringify(payload));
     window.dispatchEvent(new CustomEvent("cart:update", { detail: { coupon: payload } }));
