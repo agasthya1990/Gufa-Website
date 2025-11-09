@@ -350,7 +350,9 @@ function wireApplyCouponUI(){
 // Boot the wire-up after DOM is ready
 document.addEventListener("DOMContentLoaded", () => {
   try { wireApplyCouponUI(); } catch {}
+  try { paintPromoFromLock(); } catch {}
 });
+
 
 
 ;(function(){
@@ -630,7 +632,7 @@ async function ensureCouponsReady() {
         const raw = localStorage.getItem("gufa:BANNERS");
         if (raw) {
           const dump = JSON.parse(raw);
-          const map  = new Map(dump);
+          const map  = new Map(Array.isArray(dump) ? dump : []);
           if (map.size > 0) window.BANNERS = map;
         }
       }
@@ -643,6 +645,7 @@ async function ensureCouponsReady() {
     }
   } catch {}
 })();
+
 
 
 
@@ -707,6 +710,12 @@ try {
   window.addEventListener("serviceMode:changed",  guardStaleCouponLock);
 } catch {}
 
+/* Paint promo label/amount whenever cart changes (lock/rotation/qty) */
+try {
+  window.addEventListener("cart:update", () => {
+    try { paintPromoFromLock(); } catch {}
+  });
+} catch {}
 
 
   function displayCode(locked){
@@ -823,6 +832,29 @@ function showPromoError(msg) {
   if (host) host.textContent = msg || "";
 }
 
+// === Minimal painter for the Promotion label/amount from current lock
+function paintPromoFromLock(){
+  try {
+    const UI   = resolveLayout?.() || window.CART_UI?.list || {};
+    const lblQ = UI.promoLbl || "#promo-label";
+    const amtQ = UI.promoAmt || "#promo-amt";
+
+    const lbl = document.querySelector(lblQ);
+    const amt = document.querySelector(amtQ);
+    if (!lbl && !amt) return;
+
+    const lock = (function(){ try { return JSON.parse(localStorage.getItem("gufa_coupon") || "null"); } catch { return null; } })();
+    const code = (typeof displayCode === "function") ? displayCode(lock) : (lock?.code || "");
+
+    if (lbl) lbl.textContent = code ? `Promotion (${String(code).toUpperCase()})` : "Promotion (): none";
+
+    // If your totals engine is elsewhere, keep amount conservative here;
+    // the main renderer will still update it during normal render paths.
+    if (amt) { if (!lock) amt.textContent = "− ₹0"; }
+  } catch {}
+}
+
+  
   /* ===================== Promotions Discipline ===================== */
 
   // Eligibility core that tolerates Map or Array BANNERS and restores general-coupon scope
@@ -850,13 +882,18 @@ function __findMetaByIdOrCode__(idOrCode){
 function eligibleIdsFromBanners(scope){
   try {
     const out = new Set();
-    if (!window.BANNERS || (window.BANNERS.size === 0 && localStorage.getItem("gufa:BANNERS"))) {
-  try {
-    const raw = JSON.parse(localStorage.getItem("gufa:BANNERS") || "[]");
-    if (Array.isArray(raw)) window.BANNERS = new Map(raw);
-  } catch {}
-}
-if (!window.BANNERS) return out;
+
+    // Tolerate cold loads: rebuild from LS snapshot if missing/empty
+    if (!window.BANNERS || (window.BANNERS instanceof Map && window.BANNERS.size === 0)) {
+      try {
+        const raw = localStorage.getItem("gufa:BANNERS");
+        if (raw) {
+          const arr = JSON.parse(raw);
+          if (Array.isArray(arr)) window.BANNERS = new Map(arr);
+        }
+      } catch {}
+    }
+    if (!window.BANNERS) return out;
 
 
     const couponId = String(scope?.couponId || "").trim();
