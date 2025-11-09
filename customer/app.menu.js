@@ -419,18 +419,62 @@ window.addEventListener("serviceMode:changed", () => {
     const existing = JSON.parse(localStorage.getItem("gufa_coupon") || "null");
     if (existing && existing.code) return;
 
-    const ACTIVE_BANNER_ID = String(listId || "");
-    const ACTIVE_BANNER = (window.BANNERS || []).find(b => String(b.id) === ACTIVE_BANNER_ID);
-    if (!ACTIVE_BANNER) return;
+const ACTIVE_BANNER_ID = String(listId || "");
 
-const [couponId] = Array.isArray(ACTIVE_BANNER.linkedCouponIds) ? ACTIVE_BANNER.linkedCouponIds : [];
+// 1) Read banner's item list from the normalized Map (tolerate old Array shape)
+let bannerItems = [];
+if (window.BANNERS instanceof Map) {
+  const arr = window.BANNERS.get(ACTIVE_BANNER_ID);
+  bannerItems = Array.isArray(arr) ? arr.map(String) : [];
+} else if (Array.isArray(window.BANNERS)) {
+  const obj = window.BANNERS.find(b => String(b.id) === ACTIVE_BANNER_ID);
+  bannerItems = Array.isArray(obj?.items) ? obj.items.map(String)
+               : Array.isArray(obj?.itemIds) ? obj.itemIds.map(String)
+               : [];
+}
+if (!bannerItems.length) return;
+
+// 2) Pick a coupon that actually covers the *added* item AND lives on this banner
+let couponId = null;
+try {
+  const idx = JSON.parse(localStorage.getItem("gufa:COUPON_INDEX") || "{}"); // token -> [itemIds]
+  if (idx && window.COUPONS instanceof Map) {
+    // Prefer coupon IDs from COUPONS; each token in idx can be id or code
+    for (const [cid, meta] of window.COUPONS) {
+      const token = String(cid).toLowerCase();
+      const itemsForCoupon = (idx[token] || []).map(String);
+      // must cover the clicked item *and* be part of this banner's items
+      if (itemsForCoupon.includes(String(addedItemId)) && bannerItems.includes(String(addedItemId))) {
+        couponId = String(cid);
+        break;
+      }
+    }
+  }
+} catch {}
 if (!couponId) return;
 
-const catalog = (ITEMS && ITEMS.length ? ITEMS : (window.ITEMS || []));
+// 3) Eligible set = intersection of {banner items} ∩ {coupon items}
+let eligibleItemIds = [];
+try {
+  const idx = JSON.parse(localStorage.getItem("gufa:COUPON_INDEX") || "{}");
+  const arr = (idx[String(couponId).toLowerCase()] || []).map(String);
+  eligibleItemIds = bannerItems.filter(id => arr.includes(String(id)));
+} catch {}
+if (!eligibleItemIds.length) return;
 
-const eligibleItemIds = catalog
-  .filter(it => Array.isArray(it.promotions) && it.promotions.map(String).includes(String(couponId)))
-  .map(it => String(it.id));
+// 4) Build enriched payload (banner-scoped, with source)
+const meta    = (window.COUPONS instanceof Map) ? window.COUPONS.get(String(couponId)) : null;
+const targets = (meta && meta.targets) ? meta.targets : { delivery: true, dining: true };
+const payload = {
+  code:  (meta?.code || String(couponId)).toUpperCase(),
+  type:  String(meta?.type || ""),
+  value: Number(meta?.value || 0),
+  valid: { delivery: !!targets.delivery, dining: !!targets.dining },
+  scope: { couponId: String(couponId), eligibleItemIds, bannerId: ACTIVE_BANNER_ID }, // NEW
+  lockedAt: Date.now(),
+  source: `banner:${ACTIVE_BANNER_ID}` 
+};
+
 
 
 
