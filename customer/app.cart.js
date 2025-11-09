@@ -597,10 +597,25 @@ async function ensureCouponsReady() {
       try { localStorage.setItem("gufa:COUPONS", JSON.stringify(Array.from(window.COUPONS.entries()))); } catch {}
       window.dispatchEvent(new CustomEvent("promotions:hydrated"));
       window.dispatchEvent(new CustomEvent("cart:update"));
+  // === Hydrate BANNERS snapshot (from Menu) ===
+try {
+  if (!(window.BANNERS instanceof Map) || window.BANNERS.size === 0) {
+    const raw = localStorage.getItem("gufa:BANNERS");
+    if (raw) {
+      const dump = JSON.parse(raw);
+      const map = new Map(dump);
+      if (map.size > 0) window.BANNERS = map;
     }
+  }
+} catch (err) {
+  console.warn("[cart] banner hydration failed", err);
+     }
+   }
   } catch {}
 })();
 
+
+  
   /* ===================== Coupon Lock ===================== */
   const getLock = () => { try { return JSON.parse(localStorage.getItem(COUPON_KEY) || "null"); } catch { return null; } };
   const setLock = (obj) => { try { obj ? localStorage.setItem(COUPON_KEY, JSON.stringify(obj)) : localStorage.removeItem(COUPON_KEY); } catch {} };
