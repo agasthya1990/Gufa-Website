@@ -284,36 +284,42 @@ exports.getOrderPublic = functions.https.onRequest((req, res) =>
   })
 );
 
-const { onDocumentWritten } = require("firebase-functions/v2/firestore");
-const admin = require("firebase-admin");
-if (!admin.apps.length) admin.initializeApp();
-const db = admin.firestore();
-const FV = admin.firestore.FieldValue;
-
-// Mirror from menuItems/bannerLinks to promotions/{banner}/couponLinks/{coupon}.itemIds
+// Mirror from /menuItems/{itemId}/bannerLinks/{bannerId}
+// -> /promotions/{bannerId}/couponLinks/{couponId}.itemIds[] (+ propagate overrides)
 exports.syncBannerLinks = onDocumentWritten("menuItems/{itemId}/bannerLinks/{bannerId}", async (e) => {
   const { itemId, bannerId } = e.params;
-  const after = e.data?.after?.data();
-  const before = e.data?.before?.data();
+  const before = e.data?.before?.data() || {};
+  const after  = e.data?.after?.data()  || {};
 
-  const prevCoupons = new Set(before?.bannerCouponIds || []);
-  const nextCoupons = new Set(after?.bannerCouponIds || []);
+  const prev = new Set(before.bannerCouponIds || []);
+  const next = new Set(after.bannerCouponIds  || []);
 
-  // Add item to new bannerCouponIds
-  for (const couponId of [...nextCoupons].filter(x => !prevCoupons.has(x))) {
+  const removed = [...prev].filter(x => !next.has(x));
+  const added   = [...next].filter(x => !prev.has(x));
+
+  // Collect optional fields to propagate onto couponLinks
+  const extra = {};
+  if (after.minOrderOverride != null) extra.minOrderOverride = Number(after.minOrderOverride);
+  if (after.minOrderByChannel)        extra.minOrderByChannel = after.minOrderByChannel;
+  if (after.minOrder != null)         extra.minOrder = Number(after.minOrder);
+  if (after.channels)                 extra.channels = after.channels; // {delivery, dining}
+
+  // Add this item to newly added coupons under the banner
+  for (const couponId of added) {
     const linkRef = db.doc(`promotions/${bannerId}/couponLinks/${couponId}`);
     await linkRef.set({
       promotionId: couponId,
-      itemIds: FV.arrayUnion(itemId),
-      active: true
+      active: true,
+      itemIds: admin.firestore.FieldValue.arrayUnion(itemId),
+      ...extra
     }, { merge: true });
   }
 
-  // Remove item from removed bannerCouponIds
-  for (const couponId of [...prevCoupons].filter(x => !nextCoupons.has(x))) {
+  // Remove this item from coupons that were removed
+  for (const couponId of removed) {
     const linkRef = db.doc(`promotions/${bannerId}/couponLinks/${couponId}`);
     await linkRef.set({
-      itemIds: FV.arrayRemove(itemId)
+      itemIds: admin.firestore.FieldValue.arrayRemove(itemId)
     }, { merge: true });
   }
 });
