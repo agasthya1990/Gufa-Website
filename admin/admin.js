@@ -335,10 +335,17 @@ async function setItemPromotions(itemId, couponIds) {
     promotions: ids,
     updatedAt: serverTimestamp()
   });
+
+  // NEW: keep /bannerLinks in sync with selected coupon ids
+  try { await syncBannerLinksForItem(String(itemId), ids); } catch (e) {
+    console.warn("[admin] syncBannerLinksForItem failed", e);
+  }
 }
 
 async function bulkSetItemPromotions(itemIds, couponIds) {
   const ids = _uniqStr(couponIds);
+
+  // 1) update promotions in parallel
   const ops = [];
   (itemIds || []).forEach(id => {
     ops.push(updateDoc(doc(db, "menuItems", String(id)), {
@@ -347,7 +354,74 @@ async function bulkSetItemPromotions(itemIds, couponIds) {
     }));
   });
   await Promise.all(ops);
+
+  // 2) NEW: mirror /bannerLinks for each affected item
+  try {
+    await Promise.all((itemIds || []).map(id => syncBannerLinksForItem(String(id), ids)));
+  } catch (e) {
+    console.warn("[admin] bulk syncBannerLinksForItem failed", e);
+  }
 }
+
+
+// === After saving an item's promotions, mirror bannerLinks from selected coupons ===
+async function syncBannerLinksForItem(itemId, selectedCouponIds) {
+  try {
+    // 0) guard
+    const ids = Array.isArray(selectedCouponIds) ? selectedCouponIds.map(String) : [];
+    const itemRef = doc(db, "menuItems", String(itemId));
+
+    // 1) Build couponId -> bannerId using active banners
+    const couponToBanner = {};
+    const qBanners = query(collection(db, "promotions"), where("kind", "==", "banner"), where("active", "==", true));
+    const snapBanners = await getDocs(qBanners);
+
+    for (const bDoc of snapBanners.docs) {
+      const bannerId = String(bDoc.id);
+      const b = bDoc.data() || {};
+
+      // primary linkage via field linkedCouponIds:[]
+      const linked = Array.isArray(b.linkedCouponIds) ? b.linkedCouponIds : [];
+      linked.forEach(cid => { couponToBanner[String(cid)] = bannerId; });
+
+      // optional: subcollection /couponLinks (if you use it)
+      try {
+        const subSnap = await getDocs(collection(bDoc.ref, "couponLinks"));
+        subSnap.forEach(x => { couponToBanner[String(x.id)] = bannerId; });
+      } catch {}
+    }
+
+    // 2) Group selected coupons by banner
+    const buckets = new Map(); // bannerId -> Set<couponId>
+    for (const cid of ids) {
+      const bid = couponToBanner[String(cid)];
+      if (!bid) continue;
+      if (!buckets.has(bid)) buckets.set(bid, new Set());
+      buckets.get(bid).add(String(cid));
+    }
+
+    // 3) Upsert one doc per banner under /menuItems/{item}/bannerLinks/{bannerId}
+    for (const [bannerId, setOfCids] of buckets.entries()) {
+      const blRef = doc(collection(itemRef, "bannerLinks"), bannerId);
+      await setDoc(blRef, {
+        bannerId,
+        bannerCouponIds: Array.from(setOfCids),
+        channels: { delivery: true, dining: true } // adjust if you want per-mode gating
+      }, { merge: true });
+    }
+
+    // 4) Hygiene: delete orphan bannerLinks for this item
+    const existing = await getDocs(collection(itemRef, "bannerLinks"));
+    for (const d of existing.docs) {
+      if (!buckets.has(d.id)) {
+        await deleteDoc(d.ref);
+      }
+    }
+  } catch (err) {
+    console.warn("[admin] syncBannerLinksForItem error", err);
+  }
+}
+
 
 // Button label for the custom Add-ons popover trigger
 function updateAddonBtnLabel() {
