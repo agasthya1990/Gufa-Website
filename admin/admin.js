@@ -329,39 +329,70 @@ function setMultiHiddenValue(selectEl, values = []) {
 // --- PROMOTION TAG HELPERS (used by single + bulk modals) ---
 const _uniqStr = (arr) => Array.from(new Set((arr || []).map(String).filter(Boolean)));
 
+// Map couponId -> bannerId (active banners only)
+async function buildCouponToBannerIndex() {
+  const idx = {};
+  const q = query(collection(db, "promotions"), where("kind","==","banner"), where("active","==",true));
+  const snap = await getDocs(q);
+  for (const d of snap.docs) {
+    const v = d.data() || {};
+    const arr = Array.isArray(v.linkedCouponIds) ? v.linkedCouponIds : [];
+    arr.forEach(cid => { idx[String(cid)] = String(d.id); });
+  }
+  return idx;
+}
+
 async function setItemPromotions(itemId, couponIds) {
   const ids = _uniqStr(couponIds);
+
+  // Split: non-banner stay on item.promotions; banner-linked go to /bannerLinks
+  const idx = await buildCouponToBannerIndex();
+  const nonBannerIds  = ids.filter(id => !idx[String(id)]);
+  const bannerOnlyIds = ids.filter(id =>  idx[String(id)]);
+
+  // Store only non-banner coupons on the item (your rule)
   await updateDoc(doc(db, "menuItems", String(itemId)), {
-    promotions: ids,
+    promotions: nonBannerIds,
     updatedAt: serverTimestamp()
   });
 
-  // NEW: keep /bannerLinks in sync with selected coupon ids
-  try { await syncBannerLinksForItem(String(itemId), ids); } catch (e) {
-    console.warn("[admin] syncBannerLinksForItem failed", e);
+  // Upsert bannerLinks/* using only banner-linked coupons
+  if (bannerOnlyIds.length) {
+    try { await syncBannerLinksForItem(String(itemId), bannerOnlyIds); }
+    catch (e) { console.warn("[admin] syncBannerLinksForItem failed", e); }
   }
 }
+
 
 async function bulkSetItemPromotions(itemIds, couponIds) {
   const ids = _uniqStr(couponIds);
 
-  // 1) update promotions in parallel
+  const idx = await buildCouponToBannerIndex();
+  const nonBannerIds  = ids.filter(id => !idx[String(id)]);
+  const bannerOnlyIds = ids.filter(id =>  idx[String(id)]);
+
+  // 1) write only non-banner coupons to item.promotions
   const ops = [];
   (itemIds || []).forEach(id => {
     ops.push(updateDoc(doc(db, "menuItems", String(id)), {
-      promotions: ids,
+      promotions: nonBannerIds,
       updatedAt: serverTimestamp()
     }));
   });
   await Promise.all(ops);
 
-  // 2) NEW: mirror /bannerLinks for each affected item
-  try {
-    await Promise.all((itemIds || []).map(id => syncBannerLinksForItem(String(id), ids)));
-  } catch (e) {
-    console.warn("[admin] bulk syncBannerLinksForItem failed", e);
+  // 2) upsert bannerLinks/* per affected item using only banner-linked coupons
+  if (bannerOnlyIds.length) {
+    try {
+      await Promise.all((itemIds || []).map(id =>
+        syncBannerLinksForItem(String(id), bannerOnlyIds)
+      ));
+    } catch (e) {
+      console.warn("[admin] bulk syncBannerLinksForItem failed", e);
+    }
   }
 }
+
 
 
 // === After saving an item's promotions, mirror bannerLinks from selected coupons ===
