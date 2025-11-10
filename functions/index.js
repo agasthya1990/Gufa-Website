@@ -291,13 +291,14 @@ exports.syncBannerLinks = onDocumentWritten("menuItems/{itemId}/bannerLinks/{ban
   const before = e.data?.before?.data() || {};
   const after  = e.data?.after?.data()  || {};
 
-  const prev = new Set(before.bannerCouponIds || []);
-  const next = new Set(after.bannerCouponIds  || []);
+  const prev = new Set(Array.isArray(before.bannerCouponIds) ? before.bannerCouponIds.map(String) : []);
+  const next = new Set(Array.isArray(after.bannerCouponIds)  ? after.bannerCouponIds.map(String)  : []);
 
+  // correct diff
   const removed = [...prev].filter(x => !next.has(x));
   const added   = [...next].filter(x => !prev.has(x));
 
-  // Collect optional fields to propagate onto couponLinks
+  // optional fields to propagate onto couponLinks
   const extra = {};
   if (after.minOrderOverride != null) extra.minOrderOverride = Number(after.minOrderOverride);
   if (after.minOrderByChannel)        extra.minOrderByChannel = after.minOrderByChannel;
