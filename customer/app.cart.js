@@ -224,16 +224,27 @@ function computeEligibleItemIdsForCoupon(couponId){
   try {
     const id = String(couponId || "");
     const all = (window.ITEMS || []);
-    // items list may use promotions | coupons | couponIds
+
     return all.filter((it) => {
-      const ids = Array.isArray(it.promotions) ? it.promotions
-                : Array.isArray(it.coupons)    ? it.coupons
-                : Array.isArray(it.couponIds)  ? it.couponIds
-                : [];
-      return ids.map(String).includes(id);
+      // legacy/general paths
+      const plain = Array.isArray(it.promotions) ? it.promotions
+                 : Array.isArray(it.coupons)    ? it.coupons
+                 : Array.isArray(it.couponIds)  ? it.couponIds
+                 : [];
+
+      // NEW: bannerLinks support [{ bannerId, bannerCouponIds:[], channels, minOrderOverride? }]
+      const viaBanner = Array.isArray(it.bannerLinks)
+        ? it.bannerLinks.some(bl =>
+            Array.isArray(bl.bannerCouponIds) &&
+            bl.bannerCouponIds.map(String).includes(id)
+          )
+        : false;
+
+      return plain.map(String).includes(id) || viaBanner;
     }).map(it => String(it.id));
   } catch { return []; }
 }
+
 
 function writeCouponLockFromMeta(couponId, meta){
   if (!couponId || !meta) return false;
