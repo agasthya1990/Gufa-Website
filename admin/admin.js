@@ -699,29 +699,21 @@ const addons = Array.from(addonsSelect?.selectedOptions || []).map(o => ({
   price: Number(o.dataset.price || 0),
 }));
 
-    try {
+  try {
     const resized = await resizeImage(imageFile);
     const imageRef = ref(storage, `menuImages/${Date.now()}_${imageFile.name}`);
     await uploadBytes(imageRef, resized);
     const imageUrl = await getDownloadURL(imageRef);
 
-    // 1) Create the item and keep the ref
-    const docRef = await addDoc(collection(db, "menuItems"), {
+    await addDoc(collection(db, "menuItems"), {
       name, description, category, foodCourse, foodType, qtyType, addons, imageUrl,
       promotions: [], inStock: true, createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
     });
 
-    // 2) Nudge: assign promotions now (this will auto-create /bannerLinks/* on Save)
-    try {
-      await openAssignPromotionsModal(docRef.id, [], null);
-    } catch (e) {
-      console.warn("[admin] openAssignPromotionsModal failed post-create", e);
-    }
-
-    // 3) Reset form last
     menuForm.reset(); qtyTypeSelect?.dispatchEvent(new Event("change")); setMultiHiddenValue(addonsSelect, []);
     statusMsg && (statusMsg.innerText = "✅ Added!");
   } catch (err) {
+
 
     console.error(err); statusMsg && (statusMsg.innerText = "❌ Error: " + (err?.message || err));
   }
