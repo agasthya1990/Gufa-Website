@@ -941,9 +941,10 @@ if (bannersList) {
             const ids = Array.from(pop.querySelectorAll('input[type="checkbox"]:not(.jsTgt):checked')).map(i => i.value);
             const checked = Array.from(pop.querySelectorAll(".jsTgt:checked")).map(i => i.value);
             const targets = { delivery: checked.includes("delivery"), dining: checked.includes("dining") };
-            try {
-              await updateDoc(ref, { title, linkedCouponIds: ids, targets, updatedAt: serverTimestamp() });
-            } catch (e){ console.error(e); alert("Failed to save banner"); }
+           try {
+  const idsClean = Array.from(new Set((ids || []).map(String)));
+  await updateDoc(ref, { title, linkedCouponIds: idsClean, targets, updatedAt: serverTimestamp() });
+} catch (e){ console.error(e); alert("Failed to save banner"); }
             pop.classList.remove("show");
           };
 
@@ -976,20 +977,23 @@ if (newBannerForm) {
       60000,
       "upload"
     );
+const id = crypto.randomUUID();
+const linked = Array.isArray(NEW_BANNER_LINKED) ? NEW_BANNER_LINKED : [];
+const linkedClean = Array.from(new Set(linked.map(String)));
 
-    const id = crypto.randomUUID();
-    await setDoc(doc(db, "promotions", id), {
-      kind: "banner",
-      title,
-      imageUrl,
-      linkedCouponIds: Array.isArray(NEW_BANNER_LINKED) ? NEW_BANNER_LINKED : [],
-      targets: {
-        delivery: !!NEW_BANNER_TARGETS?.delivery,
-        dining:  !!NEW_BANNER_TARGETS?.dining
-      },
-      createdAt: serverTimestamp(),
-      active: true
-    });
+await setDoc(doc(db, "promotions", id), {
+  kind: "banner",
+  title,
+  imageUrl,
+  linkedCouponIds: linkedClean,
+  targets: {
+    delivery: !!NEW_BANNER_TARGETS?.delivery,
+    dining:  !!NEW_BANNER_TARGETS?.dining
+  },
+  createdAt: serverTimestamp(),
+  active: true
+});
+
 
     newBannerForm.reset();
     // keep link/targets state visible in previews
