@@ -283,3 +283,37 @@ exports.getOrderPublic = functions.https.onRequest((req, res) =>
     }
   })
 );
+
+const { onDocumentWritten } = require("firebase-functions/v2/firestore");
+const admin = require("firebase-admin");
+if (!admin.apps.length) admin.initializeApp();
+const db = admin.firestore();
+const FV = admin.firestore.FieldValue;
+
+// Mirror from menuItems/bannerLinks to promotions/{banner}/couponLinks/{coupon}.itemIds
+exports.syncBannerLinks = onDocumentWritten("menuItems/{itemId}/bannerLinks/{bannerId}", async (e) => {
+  const { itemId, bannerId } = e.params;
+  const after = e.data?.after?.data();
+  const before = e.data?.before?.data();
+
+  const prevCoupons = new Set(before?.bannerCouponIds || []);
+  const nextCoupons = new Set(after?.bannerCouponIds || []);
+
+  // Add item to new bannerCouponIds
+  for (const couponId of [...nextCoupons].filter(x => !prevCoupons.has(x))) {
+    const linkRef = db.doc(`promotions/${bannerId}/couponLinks/${couponId}`);
+    await linkRef.set({
+      promotionId: couponId,
+      itemIds: FV.arrayUnion(itemId),
+      active: true
+    }, { merge: true });
+  }
+
+  // Remove item from removed bannerCouponIds
+  for (const couponId of [...prevCoupons].filter(x => !nextCoupons.has(x))) {
+    const linkRef = db.doc(`promotions/${bannerId}/couponLinks/${couponId}`);
+    await linkRef.set({
+      itemIds: FV.arrayRemove(itemId)
+    }, { merge: true });
+  }
+});
