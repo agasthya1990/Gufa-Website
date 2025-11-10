@@ -323,3 +323,63 @@ exports.syncBannerLinks = onDocumentWritten("menuItems/{itemId}/bannerLinks/{ban
     }, { merge: true });
   }
 });
+
+// === AUTO-MIRROR: when an item's promotions change, sync /bannerLinks/* ===
+const { onDocumentWritten } = require("firebase-functions/v2/firestore");
+const { getFirestore, collection, getDocs, doc, setDoc, deleteDoc } = require("firebase-admin/firestore");
+
+exports.mirrorBannerLinksOnPromotionChange = onDocumentWritten("menuItems/{itemId}", async (event) => {
+  const after = event.data.after?.data();
+  const before = event.data.before?.data();
+  if (!after) return; // deleted
+
+  const itemId = event.params.itemId;
+  const afterIds = Array.isArray(after.promotions) ? after.promotions.map(String) : [];
+  const beforeIds = Array.isArray(before?.promotions) ? before.promotions.map(String) : [];
+
+  // Only work when promotions actually change
+  if (afterIds.join("|") === beforeIds.join("|")) return;
+
+  const db = getFirestore();
+
+  // Build couponId -> bannerId map from active banners
+  const couponToBanner = {};
+  const bannersSnap = await db.collection("promotions").where("kind","==","banner").where("active","==",true).get();
+  for (const bDoc of bannersSnap.docs) {
+    const bid = bDoc.id;
+    const b   = bDoc.data() || {};
+    const linked = Array.isArray(b.linkedCouponIds) ? b.linkedCouponIds : [];
+    linked.forEach(cid => { couponToBanner[String(cid)] = bid; });
+
+    // optional subcollection /couponLinks
+    const linkSnap = await db.collection(`promotions/${bid}/couponLinks`).get().catch(()=>null);
+    if (linkSnap) linkSnap.forEach(d => { couponToBanner[String(d.id)] = bid; });
+  }
+
+  // Group selected coupons by banner
+  const buckets = new Map(); // bannerId -> Set<couponId>
+  for (const cid of afterIds) {
+    const bid = couponToBanner[String(cid)];
+    if (!bid) continue;
+    if (!buckets.has(bid)) buckets.set(bid, new Set());
+    buckets.get(bid).add(String(cid));
+  }
+
+  const itemRef = db.doc(`menuItems/${itemId}`);
+
+  // Upsert /bannerLinks/{bannerId}
+  for (const [bannerId, setOfCids] of buckets.entries()) {
+    const blRef = itemRef.collection("bannerLinks").doc(bannerId);
+    await blRef.set({
+      bannerId,
+      bannerCouponIds: Array.from(setOfCids),
+      channels: { delivery: true, dining: true } // tweak later if you need per-mode
+    }, { merge: true });
+  }
+
+  // Prune orphans (bannerLinks that no longer have any coupons via promotions)
+  const existing = await itemRef.collection("bannerLinks").get();
+  for (const d of existing.docs) {
+    if (!buckets.has(d.id)) await d.ref.delete();
+  }
+});
