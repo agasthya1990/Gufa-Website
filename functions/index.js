@@ -325,6 +325,7 @@ exports.syncBannerLinks = onDocumentWritten("menuItems/{itemId}/bannerLinks/{ban
   }
 });
 
+
 // === AUTO-MIRROR: when an item's promotions change, sync /bannerLinks/* ===
 const { onDocumentWritten } = require("firebase-functions/v2/firestore");
 const { getFirestore, collection, getDocs, doc, setDoc, deleteDoc } = require("firebase-admin/firestore");
