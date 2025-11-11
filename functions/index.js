@@ -3,6 +3,8 @@
 const functions = require("firebase-functions");
 const admin = require("firebase-admin");
 const cors = require("cors")({ origin: true });
+const { onDocumentWritten } = require("firebase-functions/v2/firestore");
+
 
 if (!admin.apps.length) admin.initializeApp();
 const db = admin.firestore();
@@ -284,12 +286,6 @@ exports.getOrderPublic = functions.https.onRequest((req, res) =>
   })
 );
 
-// === Mirror coupon links whenever an item's /bannerLinks/{bannerId} changes ===
-const admin = require("firebase-admin");
-const { onDocumentWritten } = require("firebase-functions/v2/firestore");
-if (!admin.apps.length) admin.initializeApp();
-const db = admin.firestore();
-
 exports.syncBannerLinks = onDocumentWritten("menuItems/{itemId}/bannerLinks/{bannerId}", async (event) => {
   const { itemId, bannerId } = event.params;
   const before = event.data?.before?.data() || {};
@@ -353,36 +349,6 @@ exports.mirrorBannerLinksOnPromotionChange = onDocumentWritten("menuItems/{itemI
     linked.forEach(cid => { couponToBanner[String(cid)] = String(bDoc.id); });
   });
 
-  // Group selected coupons by banner
-  const buckets = new Map(); // bannerId -> Set<couponId>
-  for (const cid of afterIds) {
-    const bid = couponToBanner[String(cid)];
-    if (!bid) continue;
-    if (!buckets.has(bid)) buckets.set(bid, new Set());
-    buckets.get(bid).add(String(cid));
-  }
-
-  const itemRef = db.doc(`menuItems/${itemId}`);
-  const blCol   = itemRef.collection("bannerLinks");
-
-  // 1) Upsert one doc per banner under /menuItems/{itemId}/bannerLinks/{bannerId}
-  for (const [bannerId, setOfCids] of buckets.entries()) {
-    await blCol.doc(bannerId).set({
-      bannerId,
-      bannerCouponIds: Array.from(setOfCids),
-      channels: { delivery: true, dining: true }  // adjust if you gate per banner
-    }, { merge: true });
-  }
-
-  // 2) Cleanup: remove orphan bannerLinks when a banner no longer applies
-  const existing = await blCol.get();
-  for (const d of existing.docs) {
-    if (!buckets.has(d.id)) {
-      await d.ref.delete();
-    }
-  }
-});
-
 // Normalize: resolve any coupon *codes* in afterIds to their promotion *IDs*
 const resolvedIds = new Set();
 
@@ -407,3 +373,24 @@ for (const code of leftovers) {
 }
 
 const afterIdsNorm = Array.from(resolvedIds);
+
+  const itemRef = db.doc(`menuItems/${itemId}`);
+  const blCol   = itemRef.collection("bannerLinks");
+
+  // 1) Upsert one doc per banner under /menuItems/{itemId}/bannerLinks/{bannerId}
+  for (const [bannerId, setOfCids] of buckets.entries()) {
+    await blCol.doc(bannerId).set({
+      bannerId,
+      bannerCouponIds: Array.from(setOfCids),
+      channels: { delivery: true, dining: true }  // adjust if you gate per banner
+    }, { merge: true });
+  }
+
+  // 2) Cleanup: remove orphan bannerLinks when a banner no longer applies
+  const existing = await blCol.get();
+  for (const d of existing.docs) {
+    if (!buckets.has(d.id)) {
+      await d.ref.delete();
+    }
+  }
+});
