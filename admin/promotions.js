@@ -974,6 +974,28 @@ await updateDoc(ref, {
   updatedAt: serverTimestamp()
 });
 
+// Back-reference coupons → set/unset bannerId on each coupon doc
+const beforeIds = Array.isArray(p.linkedCouponIds) ? p.linkedCouponIds.map(String) : [];
+const added   = idsClean.filter(x => !beforeIds.includes(x));
+const removed = beforeIds.filter(x => !idsClean.includes(x));
+
+if (added.length) {
+  await Promise.all(added.map(cid =>
+    updateDoc(doc(db, "promotions", String(cid)), {
+      bannerId: id,
+      updatedAt: serverTimestamp()
+    })
+  ));
+}
+if (removed.length) {
+  await Promise.all(removed.map(cid =>
+    updateDoc(doc(db, "promotions", String(cid)), {
+      bannerId: null,
+      updatedAt: serverTimestamp()
+    })
+  ));
+}
+          
 } catch (e){ console.error(e); alert("Failed to save banner"); }
             pop.classList.remove("show");
           };
@@ -1029,6 +1051,15 @@ await setDoc(doc(db, "promotions", id), {
   active: true
 });
 
+// Back-reference coupons for a NEW banner
+if (linkedClean.length) {
+  await Promise.all(linkedClean.map(cid =>
+    updateDoc(doc(db, "promotions", String(cid)), {
+      bannerId: id,
+      updatedAt: serverTimestamp()
+    })
+  ));
+}
 
 
     newBannerForm.reset();
