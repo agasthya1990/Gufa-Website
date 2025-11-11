@@ -60,7 +60,8 @@ import {
   where,
   limit,
   setDoc,               // ← REQUIRED for /bannerLinks upserts
-  arrayUnion
+  arrayUnion,
+  arrayRemove
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 
@@ -427,6 +428,24 @@ async function setItemPromotions(itemId, couponIds) {
       );
     }
     if (writes.length) await Promise.all(writes);
+       // Step 3c: mirror item → banners (reverse index, no UI change)
+    // Guarantees promotions/{bannerId}.itemIds includes this itemId
+    try {
+      const bannerIdsNow = Array.from(new Set(bannerOnlyIds.map(cid => String(idx[String(cid)])).filter(Boolean)));
+      if (bannerIdsNow.length) {
+        await Promise.all(
+          bannerIdsNow.map(bid =>
+            updateDoc(doc(db, "promotions", bid), {
+              itemIds: arrayUnion(String(itemId)),
+              updatedAt: serverTimestamp()
+            })
+          )
+        );
+      }
+    } catch (e) {
+      console.warn("[admin] banner.itemIds arrayUnion failed", e);
+    }
+
   } catch (e) {
     console.warn("[admin] banner mirror/writeback failed", e);
   }
@@ -525,19 +544,35 @@ async function syncBannerLinksForItem(itemId, selectedCouponIds) {
       }, { merge: true });
     }
 
-    // 4) Hygiene: delete orphans (existing bannerLinks that no longer apply)
+        // 4) Orphans cleanup — delete stale /bannerLinks and mirror removal on banner.itemIds
     const existing = await getDocs(collection(itemRef, "bannerLinks"));
-    const keepIds = new Set([...buckets.keys()].map(String));
+    const keepIds  = new Set(Array.from(buckets.keys(), x => String(x)));    // ✅ robust keep set
+
+    // Collect deletions + banner removals
     const deletions = [];
+    const bannerRemovals = [];
+
     existing.forEach(d => {
-      const id = String(d.id);
-      if (!keepIds.has(id)) deletions.push(deleteDoc(d.ref));
+      const bid = String(d.id);
+      if (!keepIds.has(bid)) {
+        // remove stale subdoc
+        deletions.push(deleteDoc(d.ref));
+        // mirror: remove this item from the banner's reverse index
+        bannerRemovals.push(
+          updateDoc(doc(db, "promotions", bid), {
+            itemIds: arrayRemove(String(itemId)),
+            updatedAt: serverTimestamp()
+          })
+        );
+      }
     });
+
     if (deletions.length) await Promise.all(deletions);
-  } catch (e) {
-    console.warn("[admin] syncBannerLinksForItem failed", e);
-  }
-}
+    if (bannerRemovals.length) {
+      try { await Promise.all(bannerRemovals); }
+      catch (e) { console.warn("[admin] banner.itemIds arrayRemove failed", e); }
+    }
+
 
 
 
