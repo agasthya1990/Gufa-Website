@@ -345,21 +345,24 @@ async function buildCouponToBannerIndex() {
 async function setItemPromotions(itemId, couponIds) {
   const ids = _uniqStr(couponIds);
 
-  // Split: non-banner stay on item.promotions; banner-linked go to /bannerLinks
-  const idx = await buildCouponToBannerIndex();
-  const nonBannerIds  = ids.filter(id => !idx[String(id)]);
-  const bannerOnlyIds = ids.filter(id =>  idx[String(id)]);
-
-  // Store only non-banner coupons on the item (your rule)
+  // Keep UI semantics: write ALL selected IDs back to the item
   await updateDoc(doc(db, "menuItems", String(itemId)), {
-    promotions: nonBannerIds,
+    promotions: ids,
     updatedAt: serverTimestamp()
   });
 
-  // Upsert bannerLinks/* using only banner-linked coupons
-  if (bannerOnlyIds.length) {
-    try { await syncBannerLinksForItem(String(itemId), bannerOnlyIds); }
-    catch (e) { console.warn("[admin] syncBannerLinksForItem failed", e); }
+  // Also upsert /bannerLinks/* for just the banner-linked subset
+  try {
+    const idx = await buildCouponToBannerIndex();
+    const bannerOnlyIds = ids.filter(id => idx[String(id)]);
+    if (bannerOnlyIds.length) {
+      await syncBannerLinksForItem(String(itemId), bannerOnlyIds);
+    } else {
+      // still allow cleanup via syncBannerLinksForItem([]) if you prefer
+      await syncBannerLinksForItem(String(itemId), []);
+    }
+  } catch (e) {
+    console.warn("[admin] syncBannerLinksForItem failed", e);
   }
 }
 
@@ -367,31 +370,28 @@ async function setItemPromotions(itemId, couponIds) {
 async function bulkSetItemPromotions(itemIds, couponIds) {
   const ids = _uniqStr(couponIds);
 
-  const idx = await buildCouponToBannerIndex();
-  const nonBannerIds  = ids.filter(id => !idx[String(id)]);
-  const bannerOnlyIds = ids.filter(id =>  idx[String(id)]);
-
-  // 1) write only non-banner coupons to item.promotions
+  // 1) Keep UI semantics: write ALL selected IDs back to each item
   const ops = [];
   (itemIds || []).forEach(id => {
     ops.push(updateDoc(doc(db, "menuItems", String(id)), {
-      promotions: nonBannerIds,
+      promotions: ids,
       updatedAt: serverTimestamp()
     }));
   });
   await Promise.all(ops);
 
-  // 2) upsert bannerLinks/* per affected item using only banner-linked coupons
-  if (bannerOnlyIds.length) {
-    try {
-      await Promise.all((itemIds || []).map(id =>
-        syncBannerLinksForItem(String(id), bannerOnlyIds)
-      ));
-    } catch (e) {
-      console.warn("[admin] bulk syncBannerLinksForItem failed", e);
-    }
+  // 2) Also upsert /bannerLinks/* using only the banner-linked subset
+  try {
+    const idx = await buildCouponToBannerIndex();
+    const bannerOnlyIds = ids.filter(id => idx[String(id)]);
+    await Promise.all((itemIds || []).map(id =>
+      syncBannerLinksForItem(String(id), bannerOnlyIds)
+    ));
+  } catch (e) {
+    console.warn("[admin] bulk syncBannerLinksForItem failed", e);
   }
 }
+
 
 
 
