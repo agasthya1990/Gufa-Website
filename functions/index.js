@@ -328,6 +328,56 @@ exports.syncBannerLinks = onDocumentWritten("menuItems/{itemId}/bannerLinks/{ban
 
 // === AUTO-MIRROR: when an item's promotions array changes, recompute /bannerLinks/* ===
 exports.mirrorBannerLinksOnPromotionChange = onDocumentWritten("menuItems/{itemId}", async (event) => {
+exports.mirrorBannerIdOnCoupon = onDocumentWritten("promotions/{bannerId}", async (event) => {
+  const bannerId = String(event.params.bannerId);
+
+  const before = event.data?.before?.data() || null;
+  const after  = event.data?.after?.data()  || null;
+
+  // Only handle documents that are (or were) banners
+  const wasBanner = before?.kind === "banner";
+  const isBanner  = after?.kind === "banner";
+  if (!wasBanner && !isBanner) return;
+
+  // Resolve previous/next linked coupon ids
+  const prev = new Set(Array.isArray(before?.linkedCouponIds) ? before.linkedCouponIds.map(String) : []);
+  const next = new Set(Array.isArray(after?.linkedCouponIds)  ? after.linkedCouponIds.map(String)  : []);
+
+  // If the banner was deleted, "next" is empty and all previous are removals
+  const added   = Array.from(next).filter(x => !prev.has(x));
+  const removed = Array.from(prev).filter(x => !next.has(x));
+
+  const ops = [];
+
+  // Add this bannerId to newly linked coupons
+  for (const cid of added) {
+    ops.push(
+      db.doc(`promotions/${String(cid)}`).set(
+        {
+          bannerIds: admin.firestore.FieldValue.arrayUnion(bannerId),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      )
+    );
+  }
+
+  // Remove this bannerId from unlinked coupons
+  for (const cid of removed) {
+    ops.push(
+      db.doc(`promotions/${String(cid)}`).set(
+        {
+          bannerIds: admin.firestore.FieldValue.arrayRemove(bannerId),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      )
+    );
+  }
+
+  if (ops.length) await Promise.all(ops);
+});
+
   const after  = event.data.after?.data();
   const before = event.data.before?.data();
   if (!after) return; // deletion
