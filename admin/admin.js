@@ -396,8 +396,8 @@ try {
   await syncBannerLinksForItem(String(itemId), bannerOnlyIds); // [] cleans orphans
 } catch (e) {
   console.warn("[admin] syncBannerLinksForItem failed", e);
+ }
 }
-
 
 async function bulkSetItemPromotions(itemIds, couponIds) {
   const ids = _uniqStr(couponIds);
