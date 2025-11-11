@@ -245,12 +245,15 @@ export function initPromotions() {
       <span id="newBannerLinkedPreview" class="adm-muted">(Preview)</span>
     </div>
   </div>
-  <div id="newBannerTargetsCell">
-    <div class="inline-tools">
-      <button type="button" class="adm-btn chip-btn jsNewPublish">Publish</button>
-      <span id="newBannerTargetsPreview" class="adm-muted">(Preview)</span>
-    </div>
+<div id="newBannerTargetsCell">
+  <div class="inline-tools">
+    <button type="button" class="adm-btn chip-btn jsNewPublish">Publish</button>
+    <span id="newBannerTargetsPreview" class="adm-muted">(Preview)</span>
   </div>
+</div>
+<div>
+  <input id="bannerMinOrder" class="adm-input" type="number" min="1" placeholder="Min Order Override (₹, optional)" />
+</div>
   <div class="adm-actions">
     <button type="submit" class="adm-btn adm-btn--primary chip-btn">Create</button>
   </div>
@@ -925,6 +928,11 @@ if (bannersList) {
                 </label>
               </div>
             </div>
+            <div style="margin-top:10px; display:grid; grid-template-columns: 220px 1fr; align-items:center; gap:8px;">
+  <div>Min Order Override (₹)</div>
+  <input class="jsMinOrder adm-input" type="number" min="1" placeholder="Optional" value="${(v?.minOrderOverride ?? '')}">
+</div>
+
             <div class="actions" style="margin-top:10px">
               <button class="adm-btn adm-btn--primary jsSave">Save</button>
               <button class="adm-btn jsCancel">Cancel</button>
@@ -943,7 +951,16 @@ if (bannersList) {
             const targets = { delivery: checked.includes("delivery"), dining: checked.includes("dining") };
            try {
   const idsClean = Array.from(new Set((ids || []).map(String)));
-  await updateDoc(ref, { title, linkedCouponIds: idsClean, targets, updatedAt: serverTimestamp() });
+  const mooRaw = pop.querySelector(".jsMinOrder")?.value;
+const moo = Number(mooRaw);
+await updateDoc(ref, {
+  title,
+  linkedCouponIds: idsClean,
+  targets,
+  minOrderOverride: (Number.isFinite(moo) && moo > 0) ? moo : null,
+  updatedAt: serverTimestamp()
+});
+
 } catch (e){ console.error(e); alert("Failed to save banner"); }
             pop.classList.remove("show");
           };
@@ -990,9 +1007,15 @@ await setDoc(doc(db, "promotions", id), {
     delivery: !!NEW_BANNER_TARGETS?.delivery,
     dining:  !!NEW_BANNER_TARGETS?.dining
   },
+  minOrderOverride: (() => {
+    const raw = document.getElementById("bannerMinOrder")?.value;
+    const n = Number(raw);
+    return Number.isFinite(n) && n > 0 ? n : null;
+  })(),
   createdAt: serverTimestamp(),
   active: true
 });
+
 
 
     newBannerForm.reset();
