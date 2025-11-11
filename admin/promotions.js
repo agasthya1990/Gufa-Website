@@ -174,8 +174,10 @@ function ensureColumnStyles(){
     .adm-grid{display:grid;gap:8px;align-items:center;padding:6px 8px;border-bottom:1px dashed #eee}
     .adm-grid-head{font-weight:600;background:#fafafa;border-bottom:2px solid #111}
     .adm-grid-coupons{grid-template-columns: 1fr .9fr 1fr 1fr .8fr auto}
+    .adm-grid-banners{grid-template-columns: 1fr 1fr 1fr .7fr .7fr auto}
     .adm-actions{display:flex;gap:8px;justify-content:flex-end}
   `;
+
   const s = document.createElement("style");
   s.id = "promo-columns-css";
   s.textContent = css;
@@ -778,31 +780,35 @@ function buildAutoBannerBlob(title){
 // ---------- Banners (add link/publish/status; keep delete) ----------
 if (bannersList) {
   // Pre-render header so labels never disappear while data loads
-  bannersList.innerHTML = `
-    <div class="adm-grid adm-grid-banners adm-grid-head">
-      <div>Preview</div>
-      <div>Title</div>
-      <div>Linked Coupons</div>
-      <div>Published To</div>
-      <div>Status</div>
-      <div>Actions</div>
-    </div>
-    <div class="adm-muted" style="padding:8px">Loading…</div>
-  `;
+bannersList.innerHTML = `
+  <div class="adm-grid adm-grid-banners adm-grid-head">
+    <div>Preview</div>
+    <div>Title</div>
+    <div>Linked Coupons</div>
+    <div>Published To</div>
+    <div>Min Order (₹)</div>   <!-- NEW -->
+    <div>Status</div>
+    <div>Actions</div>
+  </div>
+  <div class="adm-muted" style="padding:8px">Loading…</div>
+`;
+
 
   onSnapshot(
     query(collection(db, "promotions"), orderBy("createdAt", "desc")),
     (snap) => {
-      const headerB = `
-        <div class="adm-grid adm-grid-banners adm-grid-head">
-          <div>Preview</div>
-          <div>Title</div>
-          <div>Linked Coupons</div>
-          <div>Published To</div>
-          <div>Status</div>
-          <div>Actions</div>
-        </div>
-      `;
+const headerB = `
+  <div class="adm-grid adm-grid-banners adm-grid-head">
+    <div>Preview</div>
+    <div>Title</div>
+    <div>Linked Coupons</div>
+    <div>Published To</div>
+    <div>Min Order (₹)</div>   <!-- NEW -->
+    <div>Status</div>
+    <div>Actions</div>
+  </div>
+`;
+
 
       // 1) Build a local coupon map from this same snapshot (id -> {code, channel})
       const couponMap = {};
@@ -836,20 +842,26 @@ if (bannersList) {
         }
 
         rows.push(`
-          <div class="adm-grid adm-grid-banners" data-id="${d.id}">
-            <div><img src="${p.imageUrl}" alt="" width="80" height="80" style="object-fit:cover;border-radius:8px;border:1px solid #eee"/></div>
-            <div>${p.title || "(untitled)"}</div>
-            <div>${linkedHTML}</div>
-            <div class="adm-muted">${publishedTo}</div>
-            <div>${statusPill(p.active !== false)}</div>
-            <div class="adm-actions">
-            <button class="adm-btn jsEditBanner" data-id="${d.id}">Edit</button>
-            <button class="adm-btn jsToggleBanner" data-id="${d.id}" data-active="${p.active !== false}">${(p.active !== false) ? "Disable" : "Enable"}</button>
-            <button class="adm-btn jsDelBanner" data-id="${d.id}">Delete</button>
-            </div>
-          </div>
-        `);
-      });
+const minHtml = (Number.isFinite(Number(p?.minOrderOverride)) && Number(p.minOrderOverride) > 0)
+  ? `₹${Number(p.minOrderOverride)}`
+  : `<span class="adm-muted">—</span>`;
+
+rows.push(`
+  <div class="adm-grid adm-grid-banners" data-id="${d.id}">
+    <div><img src="${p.imageUrl}" alt="" width="80" height="80" style="object-fit:cover;border-radius:8px;border:1px solid #eee"/></div>
+    <div>${p.title || "(untitled)"}</div>
+    <div>${linkedHTML}</div>
+    <div class="adm-muted">${publishedTo}</div>
+    <div>${minHtml}</div>  <!-- NEW: Min Order column -->
+    <div>${statusPill(p.active !== false)}</div>
+    <div class="adm-actions">
+      <button class="adm-btn jsEditBanner" data-id="${d.id}">Edit</button>
+      <button class="adm-btn jsToggleBanner" data-id="${d.id}" data-active="${p.active !== false}">${(p.active !== false) ? "Disable" : "Enable"}</button>
+      <button class="adm-btn jsDelBanner" data-id="${d.id}">Delete</button>
+    </div>
+  </div>
+ `);
+});
 
       
       bannersList.innerHTML = rows.length
@@ -928,10 +940,11 @@ if (bannersList) {
                 </label>
               </div>
             </div>
-            <div style="margin-top:10px; display:grid; grid-template-columns: 220px 1fr; align-items:center; gap:8px;">
+<div style="margin-top:10px; display:grid; grid-template-columns: 220px 1fr; align-items:center; gap:8px;">
   <div>Min Order Override (₹)</div>
-  <input class="jsMinOrder adm-input" type="number" min="1" placeholder="Optional" value="${(v?.minOrderOverride ?? '')}">
+  <input class="jsMinOrder adm-input" type="number" min="1" placeholder="Optional" value="${(p?.minOrderOverride ?? '')}">
 </div>
+
 
             <div class="actions" style="margin-top:10px">
               <button class="adm-btn adm-btn--primary jsSave">Save</button>
