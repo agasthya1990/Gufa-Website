@@ -1785,3 +1785,40 @@ body > .adm-pop[data-kind="channel"],
   max-width: 100% !important;
   box-sizing: border-box !important;
 }
+
+/* === FINAL OVERRIDES — Promotions grids (desktop-responsive, zoom-safe) === */
+/* Same tracks for header + rows to eliminate drift */
+#panel-promotions .adm-grid-head.adm-grid-coupons,
+#panel-promotions .adm-grid-coupons {
+  /* Code | Channel | Value | Usage | Status | Actions */
+  grid-template-columns:
+    minmax(180px, 1.6fr)
+    minmax(130px, 1.1fr)
+    minmax(140px, 1.0fr)
+    minmax(140px, 1.0fr)
+    minmax(120px, 0.9fr)
+    minmax(170px, 1.2fr);
+}
+
+#panel-promotions .adm-grid-head.adm-grid-banners,
+#panel-promotions .adm-grid-banners {
+  /* Preview | Title | Linked | Published | Min Order | Status | Actions */
+  grid-template-columns:
+    120px
+    minmax(180px, 1.6fr)
+    minmax(200px, 1.6fr)
+    minmax(140px, 1.0fr)
+    minmax(120px, 0.9fr)
+    minmax(120px, 0.9fr)
+    minmax(170px, 1.2fr);
+}
+
+/* Keep each cell shrink-safe and prevent spillover */
+#panel-promotions .adm-grid > div { min-width: 0; overflow: hidden; }
+
+/* Actions: right-aligned, wrap within its own column when tight */
+#panel-promotions .adm-actions {
+  display: flex; gap: 8px; justify-content: flex-end; align-items: center;
+  flex-wrap: wrap; max-width: 100%;
+}
+#panel-promotions .adm-actions .adm-btn { white-space: nowrap; flex: 0 1 auto; max-width: 100%; }
