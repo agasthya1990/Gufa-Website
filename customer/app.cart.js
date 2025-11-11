@@ -476,6 +476,27 @@ function activeMode(){
           usedCount:  d.usedCount  ?? undefined
         };
 
+// ✅ ADD — if Firestore gave bannerIds but no explicit eligible list, derive now
+if ((!meta.eligibleItemIds || !meta.eligibleItemIds.length) && Array.isArray(meta.bannerIds) && meta.bannerIds.length) {
+  try {
+    const eligible = [];
+    if (window.BANNERS instanceof Map) {
+      for (const bid of meta.bannerIds) {
+        const arr = window.BANNERS.get(String(bid));
+        if (Array.isArray(arr)) eligible.push(...arr.map(String));
+      }
+    } else if (Array.isArray(window.BANNERS)) {
+      for (const bid of meta.bannerIds) {
+        const b = window.BANNERS.find(x => String(x.id) === String(bid));
+        const arr = Array.isArray(b?.items) ? b.items : Array.isArray(b?.itemIds) ? b.itemIds : [];
+        eligible.push(...arr.map(String));
+      }
+    }
+    if (eligible.length) meta.eligibleItemIds = Array.from(new Set(eligible));
+  } catch {}
+}
+
+  
         window.COUPONS.set(String(doc.id), meta);
         added++;
       });
