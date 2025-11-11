@@ -409,24 +409,40 @@ async function bulkSetItemPromotions(itemIds, couponIds) {
 // === After saving an item's promotions, mirror bannerLinks from selected coupons ===
 async function syncBannerLinksForItem(itemId, selectedCouponIds) {
   try {
-    // 0) guard
-    const ids = Array.isArray(selectedCouponIds) ? selectedCouponIds.map(String) : [];
+    // 0) guards
+    const ids = Array.isArray(selectedCouponIds) ? Array.from(new Set(selectedCouponIds.map(String))) : [];
     const itemRef = doc(db, "menuItems", String(itemId));
 
-    // 1) Build couponId -> bannerId using active banners
+    // 1) Build couponId -> bannerId and bannerId -> meta (channels, minOrderOverride)
     const couponToBanner = {};
-    const qBanners = query(collection(db, "promotions"), where("kind", "==", "banner"), where("active", "==", true));
+    const bannerMeta = new Map(); // bannerId -> { channels: {delivery, dining}, minOrderOverride: number|null }
+
+    const qBanners = query(
+      collection(db, "promotions"),
+      where("kind", "==", "banner"),
+      where("active", "==", true)
+    );
     const snapBanners = await getDocs(qBanners);
 
     for (const bDoc of snapBanners.docs) {
       const bannerId = String(bDoc.id);
       const b = bDoc.data() || {};
 
-      // primary linkage via field linkedCouponIds:[]
+      // meta: channels (prefer new targets{}, else default both true)
+      const channels = (b?.targets && (b.targets.delivery || b.targets.dining))
+        ? { delivery: !!b.targets.delivery, dining: !!b.targets.dining }
+        : { delivery: true, dining: true };
+
+      const moo = Number(b?.minOrderOverride);
+      const minOrderOverride = Number.isFinite(moo) && moo > 0 ? moo : null;
+
+      bannerMeta.set(bannerId, { channels, minOrderOverride });
+
+      // primary linkages
       const linked = Array.isArray(b.linkedCouponIds) ? b.linkedCouponIds : [];
       linked.forEach(cid => { couponToBanner[String(cid)] = bannerId; });
 
-      // optional: subcollection /couponLinks (if you use it)
+      // optional: /couponLinks subcollection
       try {
         const subSnap = await getDocs(collection(bDoc.ref, "couponLinks"));
         subSnap.forEach(x => { couponToBanner[String(x.id)] = bannerId; });
@@ -444,25 +460,30 @@ async function syncBannerLinksForItem(itemId, selectedCouponIds) {
 
     // 3) Upsert one doc per banner under /menuItems/{item}/bannerLinks/{bannerId}
     for (const [bannerId, setOfCids] of buckets.entries()) {
+      const meta = bannerMeta.get(bannerId) || { channels: { delivery: true, dining: true }, minOrderOverride: null };
       const blRef = doc(collection(itemRef, "bannerLinks"), bannerId);
       await setDoc(blRef, {
         bannerId,
         bannerCouponIds: Array.from(setOfCids),
-        channels: { delivery: true, dining: true } // adjust if you want per-mode gating
+        channels: meta.channels,
+        minOrderOverride: meta.minOrderOverride
       }, { merge: true });
     }
 
-    // 4) Hygiene: delete orphan bannerLinks for this item
+    // 4) Hygiene: delete orphans (existing bannerLinks that no longer apply)
     const existing = await getDocs(collection(itemRef, "bannerLinks"));
-    for (const d of existing.docs) {
-      if (!buckets.has(d.id)) {
-        await deleteDoc(d.ref);
-      }
-    }
-  } catch (err) {
-    console.warn("[admin] syncBannerLinksForItem error", err);
+    const keepIds = new Set([...buckets.keys()].map(String));
+    const deletions = [];
+    existing.forEach(d => {
+      const id = String(d.id);
+      if (!keepIds.has(id)) deletions.push(deleteDoc(d.ref));
+    });
+    if (deletions.length) await Promise.all(deletions);
+  } catch (e) {
+    console.warn("[admin] syncBannerLinksForItem failed", e);
   }
 }
+
 
 
 // Button label for the custom Add-ons popover trigger
