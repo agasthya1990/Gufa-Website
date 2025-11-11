@@ -354,27 +354,48 @@ async function buildCouponToBannerIndex() {
 
 
 async function setItemPromotions(itemId, couponIds) {
-  const ids = _uniqStr(couponIds);
+const raw = _uniqStr(couponIds);
 
-  // Keep UI semantics: write ALL selected IDs back to the item
-  await updateDoc(doc(db, "menuItems", String(itemId)), {
-    promotions: ids,
-    updatedAt: serverTimestamp()
-  });
+// ⚙️ Normalize: resolve any coupon *codes* to their promotion *IDs*
+const resolved = [];
+for (const token of raw) {
+  // Fast-path: does a doc with this id exist?
+  try {
+    const byId = await getDoc(doc(db, "promotions", String(token)));
+    if (byId.exists() && (byId.data()?.kind === "coupon")) {
+      resolved.push(String(byId.id));
+      continue;
+    }
+  } catch {}
 
-  // Also upsert /bannerLinks/* for just the banner-linked subset
-   
+  // Fallback: treat token as a code, look up active coupon by code
+  try {
+    const q = query(
+      collection(db, "promotions"),
+      where("kind","==","coupon"),
+      where("code","==", String(token))
+    );
+    const snap = await getDocs(q);
+    const hit = snap.docs.find(d => (d.data()?.active !== false));
+    if (hit) resolved.push(String(hit.id));
+  } catch {}
+}
+
+// De-dup & persist *IDs only*
+const ids = Array.from(new Set(resolved));
+
+await updateDoc(doc(db, "menuItems", String(itemId)), {
+  promotions: ids,
+  updatedAt: serverTimestamp()
+});
+
+// Mirror /bannerLinks/* only for coupons that belong to banners
 try {
   const idx = await buildCouponToBannerIndex();
   const bannerOnlyIds = ids.filter(id => idx[String(id)]);
-  if (bannerOnlyIds.length) {
-    await syncBannerLinksForItem(String(itemId), bannerOnlyIds);
-  } else {
-    await syncBannerLinksForItem(String(itemId), []); // cleans orphans
-  }
+  await syncBannerLinksForItem(String(itemId), bannerOnlyIds); // [] cleans orphans
 } catch (e) {
   console.warn("[admin] syncBannerLinksForItem failed", e);
- }
 }
 
 
