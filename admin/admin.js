@@ -445,12 +445,7 @@ async function setItemPromotions(itemId, couponIds) {
     } catch (e) {
       console.warn("[admin] banner.itemIds arrayUnion failed", e);
     }
-
-  } catch (e) {
-    console.warn("[admin] banner mirror/writeback failed", e);
   }
-}
-
 
 async function bulkSetItemPromotions(itemIds, couponIds) {
   const ids = _uniqStr(couponIds);
