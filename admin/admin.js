@@ -569,11 +569,11 @@ async function syncBannerLinksForItem(itemId, selectedCouponIds) {
       try { await Promise.all(bannerRemovals); }
       catch (e) { console.warn("[admin] banner.itemIds arrayRemove failed", e); }
     }
- } 
-} catch (err) {
-  console.error("[admin] syncBannerLinksForItem failed", err);
- }
-}  // ← ✅ CLOSES syncBannerLinksForItem(itemId, selectedCouponIds)
+  } catch (err) {
+    console.error("[admin] syncBannerLinksForItem failed", err);
+  }
+} // ← ✅ closes syncBannerLinksForItem(itemId, selectedCouponIds)
+
 
 
 
