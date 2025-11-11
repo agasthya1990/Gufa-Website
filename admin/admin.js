@@ -470,8 +470,6 @@ async function bulkSetItemPromotions(itemIds, couponIds) {
   } catch (e) {
     console.warn("[admin] bulk syncBannerLinksForItem failed", e);
   }
-}
-
 
 
 
