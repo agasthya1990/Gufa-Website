@@ -173,7 +173,7 @@ function ensureColumnStyles(){
   const css = `
     .adm-grid{display:grid;gap:8px;align-items:center;padding:6px 8px;border-bottom:1px dashed #eee}
     .adm-grid-head{font-weight:600;background:#fafafa;border-bottom:2px solid #111}
-    .adm-grid-coupons{grid-template-columns: 1fr .9fr 1fr 1fr .8fr auto}
+    .adm-grid-coupons{grid-template-columns: 1fr .9fr 1fr 1fr 1fr .8fr auto}
     .adm-grid-banners{grid-template-columns: 1fr 1fr 1fr .7fr .7fr auto}
     .adm-actions{display:flex;gap:8px;justify-content:flex-end}
   `;
@@ -389,18 +389,32 @@ if (btnPubForm) {
 }
 
 
-  // --- Inject Usage Limit field (optional) — additive, no layout change ---
-  
-if (newCouponForm && !document.getElementById("couponUsageLimit")) {
-  const limCell = document.getElementById("couponUsageLimitCell");
-  const lim = document.createElement("input");
-  lim.id = "couponUsageLimit";
-  lim.type = "number";
-  lim.placeholder = "Usage Limit (optional)";
-  lim.min = "1";
-  lim.className = "adm-input";
-  (limCell || newCouponForm).appendChild(lim);
+// --- Inject Usage Limit + Min Order fields (optional) — additive, no layout change ---
+if (newCouponForm) {
+  // Usage Limit
+  if (!document.getElementById("couponUsageLimit")) {
+    const limCell = document.getElementById("couponUsageLimitCell");
+    const lim = document.createElement("input");
+    lim.id = "couponUsageLimit";
+    lim.type = "number";
+    lim.placeholder = "Usage Limit (optional)";
+    lim.min = "1";
+    lim.className = "adm-input";
+    (limCell || newCouponForm).appendChild(lim);
+  }
+  // Min Order (₹)
+  if (!document.getElementById("couponMinOrderValue")) {
+    const cell = document.getElementById("couponUsageLimitCell") || newCouponForm;
+    const mov = document.createElement("input");
+    mov.id = "couponMinOrderValue";
+    mov.type = "number";
+    mov.placeholder = "Min Order Value ₹ (optional)";
+    mov.min = "1";
+    mov.className = "adm-input";
+    cell.appendChild(mov);
+  }
 }
+
 
 // --- Add Coupon: local state + helpers (Channel button -> checklist popover) ---
 let NEW_COUPON_CHANNELS = { delivery: true, dining: false };
@@ -469,16 +483,18 @@ if (couponsList) {
   onSnapshot(
     query(collection(db, "promotions"), orderBy("createdAt", "desc")),
     (snap) => {
-      const header = `
-        <div class="adm-grid adm-grid-coupons adm-grid-head">
-          <div>Code</div>
-          <div>Channel</div>
-          <div>Value</div>
-          <div>Usage Limit</div>
-          <div>Status</div>
-          <div>Actions</div>
-        </div>
-      `;
+const header = `
+  <div class="adm-grid adm-grid-coupons adm-grid-head">
+    <div>Code</div>
+    <div>Channel</div>
+    <div>Value</div>
+    <div>Usage Limit</div>
+    <div>Min Order (₹)</div>
+    <div>Status</div>
+    <div>Actions</div>
+  </div>
+`;
+
       const rows = [];
 
       snap.forEach(d => {
@@ -487,12 +503,16 @@ if (couponsList) {
 
 const valueTxt = p.type === "percent" ? `${p.value}% off` : `₹${p.value} off`;
 const lim = (p.usageLimit ?? "∞");
+const movHtml = (Number.isFinite(Number(p?.minOrderValue)) && Number(p.minOrderValue) > 0)
+  ? `₹${Number(p.minOrderValue)}`
+  : `<span class="adm-muted">—</span>`;
 rows.push(`
   <div class="adm-grid adm-grid-coupons">
     <div><span class="adm-pill ${primaryChannelClass(p)}">${p.code || d.id}</span></div>
     <div>${channelsToText(p)}</div>
     <div class="adm-muted">${valueTxt}</div>
     <div class="adm-muted"><strong>${lim}</strong></div>
+    <div class="adm-muted">${movHtml}</div>
     <div>${statusPill(p.active !== false)}</div>
     <div class="adm-actions">
       <button data-id="${d.id}" class="adm-btn jsEditCoupon">Edit</button>
@@ -502,9 +522,8 @@ rows.push(`
       <button data-id="${d.id}" class="adm-btn jsDelCoupon">Delete</button>
     </div>
   </div>
-`);
-
-      });
+ `);
+});
 
       couponsList.innerHTML = rows.length
         ? (header + rows.join(""))
@@ -586,13 +605,15 @@ couponsList.querySelectorAll(".jsEditCoupon").forEach(btn => {
         </select>
         <label>Value</label>
         <input class="adm-input jsValue" type="number" style="width:2cm" value="${p.value ?? ""}">
-        <label>Usage Limit</label>
-        <input class="adm-input jsLimit" type="number" style="width:2cm" value="${p.usageLimit ?? ""}" placeholder="(optional)">
-      </div>
-      <div class="actions" style="margin-top:10px">
-        <button class="adm-btn adm-btn--primary jsSave">Save</button>
-        <button class="adm-btn jsCancel">Cancel</button>
-      </div>
+<label>Usage Limit</label>
+<input class="adm-input jsLimit" type="number" style="width:2cm" value="${p.usageLimit ?? ""}" placeholder="(optional)">
+<label>Min Order (₹)</label>
+<input class="adm-input jsMin" type="number" style="width:2cm" value="${p.minOrderValue ?? ""}" placeholder="(optional)">
+</div>
+<div class="actions" style="margin-top:10px">
+  <button class="adm-btn adm-btn--primary jsSave">Save</button>
+  <button class="adm-btn jsCancel">Cancel</button>
+</div>
     `;
 
     const elCode  = pop.querySelector(".jsCode");
@@ -606,25 +627,30 @@ couponsList.querySelectorAll(".jsEditCoupon").forEach(btn => {
 
     btnCancel.onclick = () => pop.classList.remove("show");
     btnSave.onclick = async () => {
-      const code = (elCode.value || "").trim();
-      const v = Number(elValue.value || 0);
-      const lim = elLimit.value ? Number(elLimit.value) : null;
-      const d = !!elDel.checked, g = !!elDin.checked;
-      if (!code || !(v>0) || (!d && !g)) { alert("Fill code, positive value, and at least one channel"); return; }
-      const legacy = d && g ? "both" : (g ? "dining" : "delivery");
-      try {
-        await updateDoc(ref, {
-          code,
-          channel: legacy,
-          channels: { delivery: d, dining: g },
-          type: elType.value || "percent",
-          value: v,
-          usageLimit: lim,
-          updatedAt: serverTimestamp()
-        });
-      } catch (e){ console.error(e); alert("Failed to save coupon"); }
-      pop.classList.remove("show");
-    };
+  const code = (elCode.value || "").trim();
+  const v = Number(elValue.value || 0);
+  const lim = elLimit.value ? Number(elLimit.value) : null;
+  const elMin = pop.querySelector(".jsMin");
+  const mov = elMin && elMin.value ? Number(elMin.value) : null;
+
+  const d = !!elDel.checked, g = !!elDin.checked;
+  if (!code || !(v>0) || (!d && !g)) { alert("Fill code, positive value, and at least one channel"); return; }
+  const legacy = d && g ? "both" : (g ? "dining" : "delivery");
+  try {
+    await updateDoc(ref, {
+      code,
+      channel: legacy,
+      channels: { delivery: d, dining: g },
+      type: elType.value || "percent",
+      value: v,
+      usageLimit: lim,
+      minOrderValue: (Number.isFinite(mov) && mov > 0) ? mov : null,
+      updatedAt: serverTimestamp()
+    });
+  } catch (e){ console.error(e); alert("Failed to save coupon"); }
+  pop.classList.remove("show");
+};
+
 
     toggleAttachedPopover(pop, btn);
   };
@@ -668,9 +694,9 @@ const id = crypto.randomUUID();
 await setDoc(doc(db, "promotions", id), {
   kind: "coupon",
   code,
-  bannerIds: bannerId ? [bannerId] : [], 
-  channel: legacyChannel,                      // legacy (old UI paths)
-  channels: { delivery: del, dining: din },    // new checklist source of truth
+  bannerIds: [],                                // coupons are banner-agnostic at creation
+  channel: legacyChannel,                       // legacy (old UI paths)
+  channels: { delivery: del, dining: din },     // new checklist source of truth
   type,
   value,
   usageLimit: Number(document.getElementById("couponUsageLimit")?.value || "") || null,
@@ -678,6 +704,7 @@ await setDoc(doc(db, "promotions", id), {
   createdAt: serverTimestamp(),
   active: true
 });
+
 
 newCouponForm.reset();
 // reset popover state to default (Delivery only)
