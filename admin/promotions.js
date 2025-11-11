@@ -841,7 +841,7 @@ const headerB = `
           }).join(" ");
         }
 
-        rows.push(`
+        
 const minHtml = (Number.isFinite(Number(p?.minOrderOverride)) && Number(p.minOrderOverride) > 0)
   ? `₹${Number(p.minOrderOverride)}`
   : `<span class="adm-muted">—</span>`;
