@@ -428,8 +428,12 @@ async function setItemPromotions(itemId, couponIds) {
       );
     }
     if (writes.length) await Promise.all(writes);
-       // Step 3c: mirror item → banners (reverse index, no UI change)
-    // Guarantees promotions/{bannerId}.itemIds includes this itemId
+     } catch (e) {
+   console.warn("[admin] banner.itemIds arrayUnion failed", e);
+    }
+   }   
+// Step 3c: mirror item → banners (reverse index, no UI change)//
+// Guarantees promotions/{bannerId}.itemIds includes this itemId//
     try {
       const bannerIdsNow = Array.from(new Set(bannerOnlyIds.map(cid => String(idx[String(cid)])).filter(Boolean)));
       if (bannerIdsNow.length) {
@@ -445,7 +449,7 @@ async function setItemPromotions(itemId, couponIds) {
     } catch (e) {
       console.warn("[admin] banner.itemIds arrayUnion failed", e);
     }
-  }
+  
 
 async function bulkSetItemPromotions(itemIds, couponIds) {
   const ids = _uniqStr(couponIds);
