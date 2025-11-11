@@ -431,7 +431,7 @@ async function setItemPromotions(itemId, couponIds) {
      } catch (e) {
    console.warn("[admin] banner.itemIds arrayUnion failed", e);
     }
-   }   
+     
 // Step 3c: mirror item → banners (reverse index, no UI change)//
 // Guarantees promotions/{bannerId}.itemIds includes this itemId//
     try {
