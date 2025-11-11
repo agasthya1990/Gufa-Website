@@ -698,13 +698,15 @@ try {
   if (window.Cart && typeof window.Cart.setQty === "function") {
     // Infer banner provenance from the card or its container
     const card     = document.querySelector(`.menu-item[data-id="${found.id}"]`);
-    const bannerId =
-      card?.getAttribute("data-banner-id") ||
-      card?.dataset?.bannerId ||
-      card?.closest("[data-banner-id]")?.getAttribute("data-banner-id") ||
-      document.querySelector("#globalResults")?.id ||  // safe fallback from your page
-      document.querySelector(".deals")?.className ||   // secondary fallback
-      "";
+const activeBannerId = (view === "list" && listKind === "banner") ? String(listId || "") : "";
+const bannerId =
+  card?.getAttribute("data-banner-id") ||
+  card?.dataset?.bannerId ||
+  card?.closest("[data-banner-id]")?.getAttribute("data-banner-id") ||
+  activeBannerId ||                                                // ✅ NEW: state fallback
+  document.querySelector("#globalResults")?.id ||
+  document.querySelector(".deals")?.className ||
+  "";
     const origin = bannerId ? `banner:${bannerId}` : "non-banner";
 
     window.Cart.setQty(key, next, {
@@ -736,13 +738,15 @@ if (next <= 0) {
   const prev = bag[key] || {};
   // Reuse the same origin we computed above if available
   const card     = document.querySelector(`.menu-item[data-id="${found.id}"]`);
-  const bannerId =
-    card?.getAttribute("data-banner-id") ||
-    card?.dataset?.bannerId ||
-    card?.closest("[data-banner-id]")?.getAttribute("data-banner-id") ||
-    document.querySelector("#globalResults")?.id ||
-    document.querySelector(".deals")?.className ||
-    "";
+const activeBannerId = (view === "list" && listKind === "banner") ? String(listId || "") : "";
+const bannerId =
+  card?.getAttribute("data-banner-id") ||
+  card?.dataset?.bannerId ||
+  card?.closest("[data-banner-id]")?.getAttribute("data-banner-id") ||
+  activeBannerId ||                                                // ✅ NEW: state fallback
+  document.querySelector("#globalResults")?.id ||
+  document.querySelector(".deals")?.className ||
+  "";
   const origin = prev.origin || (bannerId ? `banner:${bannerId}` : "non-banner");
 
   bag[key] = {
@@ -867,9 +871,11 @@ setTimeout(() => {
   : "";
 
     const steppers = variants.map(v => stepperHTML(m, v)).join("");
+    const isBannerView = (view === "list" && listKind === "banner");
+    const bannerAttr   = isBannerView ? ` data-banner-id="${String(listId || "")}"` : "";
 
     return `
-      <article class="menu-item" data-id="${m.id}">
+      <article class="menu-item" data-id="${m.id}"${bannerAttr}>
         ${m.imageUrl ? `<img loading="lazy" src="${m.imageUrl}" alt="${m.name||""}" class="menu-img"/>` : ""}
         <div class="menu-header">
           <h4 class="menu-name">${m.name || ""}</h4>
