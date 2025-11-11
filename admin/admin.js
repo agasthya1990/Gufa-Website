@@ -59,6 +59,7 @@ import {
   query,
   where,
   setDoc,               // ← REQUIRED for /bannerLinks upserts
+  arrayUnion
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 
@@ -354,50 +355,82 @@ async function buildCouponToBannerIndex() {
 
 
 async function setItemPromotions(itemId, couponIds) {
-const raw = _uniqStr(couponIds);
+  const raw = _uniqStr(couponIds);
 
-// ⚙️ Normalize: resolve any coupon *codes* to their promotion *IDs*
-const resolved = [];
-for (const token of raw) {
-  // Fast-path: does a doc with this id exist?
+  // ⚙️ Normalize: resolve any coupon *codes* to their promotion *IDs*
+  const resolved = [];
+  for (const token of raw) {
+    const t = String(token).trim();
+    if (!t) continue;
+
+    // Pass 1: treat token as a possible doc ID
+    try {
+      const byId = await getDoc(doc(db, "promotions", t));
+      if (byId.exists() && (byId.data()?.kind === "coupon")) {
+        resolved.push(String(byId.id));
+        continue;
+      }
+    } catch {}
+
+    // Pass 2: treat token as a CODE → resolve to active coupon doc ID
+    try {
+      const q = query(
+        collection(db, "promotions"),
+        where("kind", "==", "coupon"),
+        where("code", "==", t),
+        limit(1)
+      );
+      const snap = await getDocs(q);
+      if (!snap.empty) {
+        const d = snap.docs[0];
+        if (d.data()?.active === true) {
+          resolved.push(String(d.id));
+        }
+      }
+    } catch {}
+  }
+
+  // De-dup & persist *IDs only*
+  const ids = Array.from(new Set(resolved));
+
+  await updateDoc(doc(db, "menuItems", String(itemId)), {
+    promotions: ids,
+    updatedAt: serverTimestamp()
+  });
+
+  // === Banner mirroring + coupon writeback ===
   try {
-    const byId = await getDoc(doc(db, "promotions", String(token)));
-    if (byId.exists() && (byId.data()?.kind === "coupon")) {
-      resolved.push(String(byId.id));
-      continue;
+    // Build coupon→banner index once
+    const idx = await buildCouponToBannerIndex();
+
+    // Keep only coupons that actually belong to a banner
+    const bannerOnlyIds = ids.filter(id => idx[String(id)]);
+
+    // Step 3a: mirror /bannerLinks/* (cleans orphans when empty)
+    await syncBannerLinksForItem(String(itemId), bannerOnlyIds);
+
+    // Step 3b: deterministic writeback on each coupon doc:
+    // - bannerId  : last linked banner (string)
+    // - bannerIds : union set of all linked banners (array)
+    const writes = [];
+    for (const cid of bannerOnlyIds) {
+      const bId = String(idx[String(cid)]);
+      if (!bId) continue;
+
+      writes.push(
+        updateDoc(doc(db, "promotions", String(cid)), {
+          bannerId: bId,
+          bannerIds: arrayUnion(bId),
+          updatedAt: serverTimestamp()
+        })
+      );
     }
-  } catch {}
-
-  // Fallback: treat token as a code, look up active coupon by code
-  try {
-    const q = query(
-      collection(db, "promotions"),
-      where("kind","==","coupon"),
-      where("code","==", String(token))
-    );
-    const snap = await getDocs(q);
-    const hit = snap.docs.find(d => (d.data()?.active !== false));
-    if (hit) resolved.push(String(hit.id));
-  } catch {}
+    if (writes.length) await Promise.all(writes);
+  } catch (e) {
+    console.warn("[admin] banner mirror/writeback failed", e);
+  }
 }
 
-// De-dup & persist *IDs only*
-const ids = Array.from(new Set(resolved));
-
-await updateDoc(doc(db, "menuItems", String(itemId)), {
-  promotions: ids,
-  updatedAt: serverTimestamp()
-});
-
-// Mirror /bannerLinks/* only for coupons that belong to banners
-try {
-  const idx = await buildCouponToBannerIndex();
-  const bannerOnlyIds = ids.filter(id => idx[String(id)]);
-  await syncBannerLinksForItem(String(itemId), bannerOnlyIds); // [] cleans orphans
-} catch (e) {
-  console.warn("[admin] syncBannerLinksForItem failed", e);
- }
-}
 
 async function bulkSetItemPromotions(itemIds, couponIds) {
   const ids = _uniqStr(couponIds);
