@@ -107,6 +107,26 @@ function updateCartLink(){
 if (!(window.COUPONS instanceof Map)) window.COUPONS = new Map();
 if (!Array.isArray(window.BANNERS)) window.BANNERS = [];
 
+// ✅ ADD — normalize BANNERS so every banner exposes .items:[itemId]
+(function normalizeBannersForIndex(){
+  try {
+    if (window.BANNERS instanceof Map) return; // already keyed
+    if (!Array.isArray(window.BANNERS)) { window.BANNERS = []; return; }
+
+    window.BANNERS = window.BANNERS.map(b => {
+      const items = Array.isArray(b.items) ? b.items
+                  : Array.isArray(b.itemIds) ? b.itemIds
+                  : Array.isArray(b.eligibleItemIds) ? b.eligibleItemIds
+                  : [];
+      const coupons = Array.isArray(b.linkedCouponIds) ? b.linkedCouponIds
+                    : Array.isArray(b.bannerCouponIds) ? b.bannerCouponIds
+                    : [];
+      return { ...b, items: items.map(String), linkedCouponIds: coupons.map(String) };
+    });
+  } catch {}
+})();
+
+
 
 // —— Persist a lightweight coupons snapshot for checkout hydration ——//
 
@@ -150,16 +170,29 @@ if (!Array.isArray(window.BANNERS)) window.BANNERS = [];
     };
 
     // Walk catalog: accept promotions | coupons | couponIds (any present)
-    for (const it of catalog) {
-      const itemId = it?.id;
-      const ids = Array.isArray(it.promotions) ? it.promotions
-               : Array.isArray(it.coupons)    ? it.coupons
-               : Array.isArray(it.couponIds)  ? it.couponIds
-               : [];
-      for (const raw of ids) {
-        const cid = String(raw);
+   for (const it of catalog) {
+  const itemId = it?.id;
+  const ids = Array.isArray(it.promotions) ? it.promotions
+           : Array.isArray(it.coupons)    ? it.coupons
+           : Array.isArray(it.couponIds)  ? it.couponIds
+           : [];
+  for (const raw of ids) {
+    const cid = String(raw);
+    put(cid, itemId);
+    if (window.COUPONS instanceof Map && window.COUPONS.has(cid)) {
+      const meta = window.COUPONS.get(cid);
+      const code = (meta?.code || "").toString().trim();
+      if (code) put(code, itemId);
+    }
+  }
+
+  // ✅ ADD #1 — also index coupons referenced via per-item bannerLinks
+  if (Array.isArray(it.bannerLinks)) {
+    for (const bl of it.bannerLinks) {
+      const arr = Array.isArray(bl?.bannerCouponIds) ? bl.bannerCouponIds : [];
+      for (const tok of arr) {
+        const cid = String(tok);
         put(cid, itemId);
-        // also index by human code if we can map id->meta with code
         if (window.COUPONS instanceof Map && window.COUPONS.has(cid)) {
           const meta = window.COUPONS.get(cid);
           const code = (meta?.code || "").toString().trim();
@@ -167,6 +200,28 @@ if (!Array.isArray(window.BANNERS)) window.BANNERS = [];
         }
       }
     }
+  }
+}
+
+// ✅ ADD #2 — (after the for-loop, before you compute `out`) fold in BANNERS dataset
+if (Array.isArray(window.BANNERS) && window.BANNERS.length) {
+  for (const b of window.BANNERS) {
+    const itemIds = Array.isArray(b.items) ? b.items.map(String) : [];
+    const couponIds = Array.isArray(b.linkedCouponIds) ? b.linkedCouponIds.map(String)
+                     : Array.isArray(b.bannerCouponIds) ? b.bannerCouponIds.map(String)
+                     : [];
+    for (const cid of couponIds) {
+      for (const iid of itemIds) {
+        put(cid, iid);
+        if (window.COUPONS instanceof Map && window.COUPONS.has(cid)) {
+          const meta = window.COUPONS.get(cid);
+          const code = (meta?.code || "").toString().trim();
+          if (code) put(code, iid);
+        }
+      }
+    }
+  }
+}
 
 // If nothing found, leave any prior index intact.
 const out = Object.fromEntries(Object.entries(idx).map(([k,s]) => [k, Array.from(s)]));
@@ -395,8 +450,21 @@ if (!couponId) return;
 const catalog = (ITEMS && ITEMS.length ? ITEMS : (window.ITEMS || []));
 
 const eligibleItemIds = catalog
-  .filter(it => Array.isArray(it.promotions) && it.promotions.map(String).includes(String(couponId)))
+  .filter(it => {
+    const plain = Array.isArray(it.promotions) ? it.promotions
+                : Array.isArray(it.coupons)    ? it.coupons
+                : Array.isArray(it.couponIds)  ? it.couponIds
+                : [];
+    const viaBanner = Array.isArray(it.bannerLinks)
+      ? it.bannerLinks.some(bl =>
+          Array.isArray(bl.bannerCouponIds) &&
+          bl.bannerCouponIds.map(String).includes(String(couponId))
+        )
+      : false;
+    return plain.map(String).includes(String(couponId)) || viaBanner;
+  })
   .map(it => String(it.id));
+
 
 
 
