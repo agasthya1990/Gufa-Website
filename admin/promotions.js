@@ -6,7 +6,7 @@
 import { db, storage } from "./firebase.js";
 import {
   collection, doc, getDoc, setDoc, updateDoc, deleteDoc, onSnapshot,
-  serverTimestamp, query, orderBy, getDocs, where, arrayRemove
+  serverTimestamp, query, orderBy, getDocs, where, arrayUnion, arrayRemove
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
 import {
@@ -668,11 +668,13 @@ const id = crypto.randomUUID();
 await setDoc(doc(db, "promotions", id), {
   kind: "coupon",
   code,
+  bannerIds: bannerId ? [bannerId] : [], 
   channel: legacyChannel,                      // legacy (old UI paths)
   channels: { delivery: del, dining: din },    // new checklist source of truth
   type,
   value,
   usageLimit: Number(document.getElementById("couponUsageLimit")?.value || "") || null,
+  minOrderValue: Number(document.getElementById("couponMinOrderValue")?.value || "") || null,
   createdAt: serverTimestamp(),
   active: true
 });
@@ -974,27 +976,27 @@ await updateDoc(ref, {
   updatedAt: serverTimestamp()
 });
 
-// Back-reference coupons → set/unset bannerId on each coupon doc
-const beforeIds = Array.isArray(p.linkedCouponIds) ? p.linkedCouponIds.map(String) : [];
-const added   = idsClean.filter(x => !beforeIds.includes(x));
-const removed = beforeIds.filter(x => !idsClean.includes(x));
-
-if (added.length) {
-  await Promise.all(added.map(cid =>
-    updateDoc(doc(db, "promotions", String(cid)), {
-      bannerId: id,
-      updatedAt: serverTimestamp()
-    })
-  ));
-}
-if (removed.length) {
-  await Promise.all(removed.map(cid =>
-    updateDoc(doc(db, "promotions", String(cid)), {
-      bannerId: null,
-      updatedAt: serverTimestamp()
-    })
-  ));
-}
+// Back-reference coupons → update bannerIds[] (idempotent, matches backend)
+const beforeIds = Array.isArray(p.linkedCouponIds) ? p.linkedCouponIds.map(String) : []; 
+const added   = idsClean.filter(x => !beforeIds.includes(x)); 
+const removed = beforeIds.filter(x => !idsClean.includes(x)); 
+ 
+if (added.length) { 
+ await Promise.all(added.map(cid => 
+     updateDoc(doc(db, "promotions", String(cid)), { 
+       bannerIds: arrayUnion(id), 
+       updatedAt: serverTimestamp() 
+     }) 
+   )); 
+ } 
+ if (removed.length) { 
+   await Promise.all(removed.map(cid => 
+     updateDoc(doc(db, "promotions", String(cid)), { 
+       bannerIds: arrayRemove(id), 
+       updatedAt: serverTimestamp() 
+     }) 
+   )); 
+ }
           
 } catch (e){ console.error(e); alert("Failed to save banner"); }
             pop.classList.remove("show");
@@ -1051,6 +1053,18 @@ await setDoc(doc(db, "promotions", id), {
   active: true
 });
 
+// === Seed back-references on the linked coupons (safe with backend, uses arrayUnion) ===
+if (linkedClean.length) {
+  await Promise.all(
+    linkedClean.map(cid =>
+      updateDoc(doc(db, "promotions", String(cid)), {
+        bannerIds: arrayUnion(id),
+        updatedAt: serverTimestamp()
+      })
+    )
+  );
+}
+    
 // Back-reference coupons for a NEW banner
 if (linkedClean.length) {
   await Promise.all(linkedClean.map(cid =>
