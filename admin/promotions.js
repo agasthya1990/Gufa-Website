@@ -875,10 +875,21 @@ const minHtml = (Number.isFinite(Number(p?.minOrderOverride)) && Number(p.minOrd
   ? `₹${Number(p.minOrderOverride)}`
   : `<span class="adm-muted">—</span>`;
 
+// NEW: count how many itemIds this banner advertises (optional fallback keys included)
+const itemCount = Array.isArray(p.itemIds)     ? p.itemIds.length
+                : Array.isArray(p.items)       ? p.items.length
+                : Array.isArray(p.itemIDs)     ? p.itemIDs.length   // tolerate different casing seen in drafts
+                : 0;
+
 rows.push(`
   <div class="adm-grid adm-grid-banners" data-id="${d.id}">
     <div><img src="${p.imageUrl}" alt="" width="80" height="80" style="object-fit:cover;border-radius:8px;border:1px solid #eee"/></div>
-    <div>${p.title || "(untitled)"}</div>
+    <div>
+      ${p.title || "(untitled)"}
+      <span class="adm-muted" style="margin-left:6px; font-size:12px;">
+        • ${itemCount} linked item${itemCount===1 ? "" : "s"}
+      </span>
+    </div>
     <div>${linkedHTML}</div>
     <div class="adm-muted">${publishedTo}</div>
     <div>${minHtml}</div>  <!-- NEW: Min Order column -->
