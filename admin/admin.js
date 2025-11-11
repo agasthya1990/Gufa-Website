@@ -428,9 +428,6 @@ async function setItemPromotions(itemId, couponIds) {
       );
     }
     if (writes.length) await Promise.all(writes);
-     } catch (e) {
-   console.warn("[admin] banner.itemIds arrayUnion failed", e);
-    }
      
 // Step 3c: mirror item → banners (reverse index, no UI change)//
 // Guarantees promotions/{bannerId}.itemIds includes this itemId//
@@ -446,10 +443,13 @@ async function setItemPromotions(itemId, couponIds) {
           )
         );
       }
-    } catch (e) {
+       } catch (e) {
       console.warn("[admin] banner.itemIds arrayUnion failed", e);
     }
-  
+  } catch (err) {
+    console.warn("[admin] setItemPromotions banner mirror failed", err);
+  }
+}
 
 async function bulkSetItemPromotions(itemIds, couponIds) {
   const ids = _uniqStr(couponIds);
@@ -474,7 +474,7 @@ async function bulkSetItemPromotions(itemIds, couponIds) {
   } catch (e) {
     console.warn("[admin] bulk syncBannerLinksForItem failed", e);
   }
-
+}
 
 
 // === After saving an item's promotions, mirror bannerLinks from selected coupons ===
@@ -569,6 +569,11 @@ async function syncBannerLinksForItem(itemId, selectedCouponIds) {
       try { await Promise.all(bannerRemovals); }
       catch (e) { console.warn("[admin] banner.itemIds arrayRemove failed", e); }
     }
+ } 
+} catch (err) {
+  console.error("[admin] syncBannerLinksForItem failed", err);
+ }
+}  // ← ✅ CLOSES syncBannerLinksForItem(itemId, selectedCouponIds)
 
 
 
