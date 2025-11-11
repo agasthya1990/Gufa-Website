@@ -464,17 +464,22 @@ function activeMode(){
         if (kind !== "coupon") return;
 
         const targetsRaw = d.channels || d.targets || {};
-        const meta = {
-          code:      d.code ? String(d.code) : undefined,
-          type:      String(d.type || "flat").toLowerCase(), // 'percent' | 'flat'
-          value:     Number(d.value || 0),
-          minOrder:  Number(d.minOrder || 0),
-          targets:   { delivery: !!targetsRaw.delivery, dining: !!targetsRaw.dining },
-          // optional fields if you later add them
-          eligibleItemIds: Array.isArray(d.eligibleItemIds) ? d.eligibleItemIds : undefined,
-          usageLimit: d.usageLimit ?? undefined,
-          usedCount:  d.usedCount  ?? undefined
-        };
+const meta = {
+  code:      d.code ? String(d.code) : undefined,
+  type:      String(d.type || "flat").toLowerCase(), // 'percent' | 'flat'
+  value:     Number(d.value || 0),
+  minOrder:  Number(d.minOrder || 0),
+  targets:   { delivery: !!targetsRaw.delivery, dining: !!targetsRaw.dining },
+
+  // NEW: carry bannerIds from Firestore so we can derive eligibility from banners
+  bannerIds: Array.isArray(d.bannerIds) ? d.bannerIds.map(String) : undefined,
+
+  // optional fields if you later add them
+  eligibleItemIds: Array.isArray(d.eligibleItemIds) ? d.eligibleItemIds.map(String) : undefined,
+  usageLimit: d.usageLimit ?? undefined,
+  usedCount:  d.usedCount  ?? undefined
+};
+
 
 // ✅ ADD — if Firestore gave bannerIds but no explicit eligible list, derive now
 if ((!meta.eligibleItemIds || !meta.eligibleItemIds.length) && Array.isArray(meta.bannerIds) && meta.bannerIds.length) {
@@ -796,7 +801,37 @@ function showPromoError(msg) {
   if (host) host.textContent = msg || "";
 }
 
-  /* ===================== Promotions Discipline ===================== */
+  //*===================== Promotions Discipline =====================*// 
+
+  function eligibleIdsFromBanners({ couponId } = {}) {
+  try {
+    const out = new Set();
+    const cid = String(couponId || "");
+    if (!cid) return out;
+
+    if (window.BANNERS instanceof Map) {
+      // If your Map form is Map(bannerId -> [itemId, ...]) and you also have a way to read
+      // banner->couponIds elsewhere, skip — the Menu index already covers this path.
+      // Cart uses this only as a fallback.
+      // (No-op for Map unless you also key by coupon; kept for parity.)
+    } else if (Array.isArray(window.BANNERS)) {
+      for (const b of window.BANNERS) {
+        const coupons = Array.isArray(b.linkedCouponIds) ? b.linkedCouponIds.map(String)
+                      : Array.isArray(b.bannerCouponIds) ? b.bannerCouponIds.map(String)
+                      : [];
+        if (!coupons.includes(cid)) continue;
+
+        const items = Array.isArray(b.items) ? b.items
+                    : Array.isArray(b.itemIds) ? b.itemIds
+                    : Array.isArray(b.eligibleItemIds) ? b.eligibleItemIds
+                    : [];
+        items.forEach(x => out.add(String(x).toLowerCase()));
+      }
+    }
+    return out;
+  } catch { return new Set(); }
+}
+
 
   // Eligibility core that tolerates Map or Array BANNERS and restores general-coupon scope
 
