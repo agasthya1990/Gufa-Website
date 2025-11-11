@@ -58,7 +58,9 @@ import {
   getDocs,
   query,
   where,
+  setDoc,               // ← REQUIRED for /bannerLinks upserts
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
 
 import {
   ref,
@@ -332,15 +334,24 @@ const _uniqStr = (arr) => Array.from(new Set((arr || []).map(String).filter(Bool
 // Map couponId -> bannerId (active banners only)
 async function buildCouponToBannerIndex() {
   const idx = {};
-  const q = query(collection(db, "promotions"), where("kind","==","banner"), where("active","==",true));
+  // Tolerant: fetch all banners; treat active===false as off
+  const q = query(collection(db, "promotions"), where("kind","==","banner"));
   const snap = await getDocs(q);
   for (const d of snap.docs) {
     const v = d.data() || {};
-    const arr = Array.isArray(v.linkedCouponIds) ? v.linkedCouponIds : [];
-    arr.forEach(cid => { idx[String(cid)] = String(d.id); });
+    if (v.active === false) continue;
+    const linked = Array.isArray(v.linkedCouponIds) ? v.linkedCouponIds : [];
+    linked.forEach(cid => { idx[String(cid)] = String(d.id); });
+
+    // also honor /couponLinks subcollection if you’re using it
+    try {
+      const sub = await getDocs(collection(d.ref, "couponLinks"));
+      sub.forEach(x => { idx[String(x.id)] = String(d.id); });
+    } catch {}
   }
   return idx;
 }
+
 
 async function setItemPromotions(itemId, couponIds) {
   const ids = _uniqStr(couponIds);
@@ -352,18 +363,18 @@ async function setItemPromotions(itemId, couponIds) {
   });
 
   // Also upsert /bannerLinks/* for just the banner-linked subset
-  try {
-    const idx = await buildCouponToBannerIndex();
-    const bannerOnlyIds = ids.filter(id => idx[String(id)]);
-    if (bannerOnlyIds.length) {
-      await syncBannerLinksForItem(String(itemId), bannerOnlyIds);
-    } else {
-      // still allow cleanup via syncBannerLinksForItem([]) if you prefer
-      await syncBannerLinksForItem(String(itemId), []);
-    }
-  } catch (e) {
-    console.warn("[admin] syncBannerLinksForItem failed", e);
+   
+try {
+  const idx = await buildCouponToBannerIndex();
+  const bannerOnlyIds = ids.filter(id => idx[String(id)]);
+  if (bannerOnlyIds.length) {
+    await syncBannerLinksForItem(String(itemId), bannerOnlyIds);
+  } else {
+    await syncBannerLinksForItem(String(itemId), []); // cleans orphans
   }
+} catch (e) {
+  console.warn("[admin] syncBannerLinksForItem failed", e);
+ }
 }
 
 
