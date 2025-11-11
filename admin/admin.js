@@ -58,6 +58,7 @@ import {
   getDocs,
   query,
   where,
+  limit,
   setDoc,               // ← REQUIRED for /bannerLinks upserts
   arrayUnion
 } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
