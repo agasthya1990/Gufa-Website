@@ -1853,3 +1853,131 @@ body > .adm-pop[data-kind="channel"],
   max-width: 2.5cm !important;
   box-sizing: border-box;
 }
+
+/* ========= Promotions — Compact, aligned, and consistent ========= */
+/* Append this whole block to style.admin.css (end of file) */
+
+/* Baseline density */
+#panel-promotions {
+  font-size: 13.5px;
+  line-height: 1.25;
+}
+
+/* Grid rows & cells */
+#panel-promotions .adm-grid {
+  display: grid;
+  grid-auto-rows: minmax(34px, auto);   /* tighter rows (was ~44px) */
+  align-items: center;
+  border-bottom: 1px solid var(--adm-border);
+}
+#panel-promotions .adm-grid > div {
+  padding: 6px 8px;                     /* tighter cell padding */
+  min-width: 0;
+  overflow: hidden;
+}
+#panel-promotions .adm-grid-head > div {
+  padding: 8px 8px;                     /* tighter header padding */
+}
+
+/* Lock headers & rows to identical column tracks */
+
+/* COUPONS: Code | Channel | Value | Usage | Min Order | Status | Actions */
+#panel-promotions .adm-grid-head.adm-grid-coupons,
+#panel-promotions .adm-grid-coupons {
+  grid-template-columns:
+    minmax(140px, 1.2fr)    /* Code */
+    minmax(120px, 0.9fr)    /* Channel */
+    minmax(170px, 1.0fr)    /* Value (type+number) */
+    minmax(110px, 0.7fr)    /* Usage Limit */
+    minmax(120px, 0.9fr)    /* Min Order (₹) */
+    minmax(110px, 0.7fr)    /* Status */
+    minmax(160px, 1.0fr) !important; /* Actions */
+}
+
+/* BANNERS: Preview | Title | Linked | Published | Min Order | Status | Actions */
+#panel-promotions .adm-grid-head.adm-grid-banners,
+#panel-promotions .adm-grid-banners {
+  grid-template-columns:
+    100px                      /* Preview */
+    minmax(180px, 1.3fr)       /* Title */
+    minmax(220px, 1.2fr)       /* Linked Coupons */
+    minmax(130px, 0.9fr)       /* Published To */
+    minmax(120px, 0.9fr)       /* Min Order (₹) */
+    minmax(110px, 0.8fr)       /* Status */
+    minmax(160px, 1.0fr) !important; /* Actions */
+}
+
+/* Controls & buttons (short, compact) */
+:root { --promo-h: 32px; }
+
+#panel-promotions #newCouponForm,
+#panel-promotions #newBannerForm {
+  display: flex !important;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;                     /* was 10px 12px */
+}
+
+#panel-promotions #newCouponForm input.adm-input,
+#panel-promotions #newCouponForm select.adm-select,
+#panel-promotions #newBannerForm input.adm-input,
+#panel-promotions #newBannerForm select.adm-select,
+#panel-promotions .adm-actions .adm-btn,
+#panel-promotions .chip-btn {
+  height: var(--promo-h);
+  line-height: var(--promo-h);
+  padding: 0 10px;
+  font-size: 13px;
+}
+
+#panel-promotions .adm-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+#panel-promotions .adm-actions .adm-btn {
+  min-width: 78px;                 /* was 92px */
+  white-space: nowrap;
+}
+
+/* Keep the "Value" pair tight (type + number never wrap) */
+#panel-promotions #couponType {
+  flex: 0 0 108px; min-width: 108px; max-width: 108px;
+  height: var(--promo-h);
+}
+#panel-promotions #couponValue {
+  flex: 0 0 2.5cm; min-width: 2.5cm; max-width: 2.5cm;
+  height: var(--promo-h);
+}
+
+/* Usage limit compact */
+#panel-promotions #couponUsageLimit {
+  flex: 0 0 130px; min-width: 130px; max-width: 150px;
+  height: var(--promo-h);
+}
+
+/* NEW: Coupon “Min Order (₹)” field — fixed width 2.5cm */
+#panel-promotions #couponMinOrder,
+#panel-promotions input[name="couponMinOrder"] {
+  width: 2.5cm; min-width: 2.5cm; max-width: 2.5cm;
+  height: var(--promo-h);
+  padding: 0 10px;
+}
+
+/* Banner edit popover “Min Order Override (₹)” — fixed width 2.5cm */
+#panel-promotions .jsMinOrder,
+#panel-promotions input.jsMinOrder[type="number"] {
+  width: 2.5cm; min-width: 2.5cm; max-width: 2.5cm;
+  height: var(--promo-h);
+  padding: 0 10px;
+}
+
+/* Table cosmetics for denser look */
+#panel-promotions .chip,
+#panel-promotions .badge {
+  transform: translateY(-0.5px);        /* optical alignment */
+}
+#panel-promotions .adm-grid > div > .muted {
+  opacity: 0.75;
+}
