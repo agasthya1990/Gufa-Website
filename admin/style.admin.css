@@ -1822,3 +1822,34 @@ body > .adm-pop[data-kind="channel"],
   flex-wrap: wrap; max-width: 100%;
 }
 #panel-promotions .adm-actions .adm-btn { white-space: nowrap; flex: 0 1 auto; max-width: 100%; }
+
+/* Coupons grid — compact, aligned */
+#panel-promotions .adm-grid-coupons {
+  grid-template-columns: 140px 100px 110px 110px 110px 1fr;
+}
+
+/* Banners grid — compact, aligned */
+#panel-promotions .adm-grid-banners {
+  grid-template-columns: 90px 1fr 180px 110px 1fr;
+}
+
+.adm-row { display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
+#panel-promotions .adm-actions { display:flex; gap:6px; justify-content:flex-end; }
+.adm-input, .adm-select, .adm-file {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--adm-border);
+  border-radius: 8px;
+  outline: none;
+}
+
+/* Extra tightening inside the promotions tables */
+#panel-promotions .adm-table .adm-row { padding: 4px 8px; min-height: 34px; }
+#panel-promotions .adm-table .adm-cell { padding: 0; }
+
+/* Banner Edit popover: fixed width for Min Order Override input */
+#panel-promotions .adm-popover .jsMinOrder {
+  width: 2.5cm !important;
+  max-width: 2.5cm !important;
+  box-sizing: border-box;
+}
