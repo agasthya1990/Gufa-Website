@@ -284,79 +284,74 @@ exports.getOrderPublic = functions.https.onRequest((req, res) =>
   })
 );
 
-// Mirror from /menuItems/{itemId}/bannerLinks/{bannerId}
-// -> /promotions/{bannerId}/couponLinks/{couponId}.itemIds[] (+ propagate overrides)
-exports.syncBannerLinks = onDocumentWritten("menuItems/{itemId}/bannerLinks/{bannerId}", async (e) => {
-  const { itemId, bannerId } = e.params;
-  const before = e.data?.before?.data() || {};
-  const after  = e.data?.after?.data()  || {};
+// === Mirror coupon links whenever an item's /bannerLinks/{bannerId} changes ===
+const admin = require("firebase-admin");
+const { onDocumentWritten } = require("firebase-functions/v2/firestore");
+if (!admin.apps.length) admin.initializeApp();
+const db = admin.firestore();
+
+exports.syncBannerLinks = onDocumentWritten("menuItems/{itemId}/bannerLinks/{bannerId}", async (event) => {
+  const { itemId, bannerId } = event.params;
+  const before = event.data?.before?.data() || {};
+  const after  = event.data?.after?.data()  || {};
 
   const prev = new Set(Array.isArray(before.bannerCouponIds) ? before.bannerCouponIds.map(String) : []);
   const next = new Set(Array.isArray(after.bannerCouponIds)  ? after.bannerCouponIds.map(String)  : []);
 
-  // correct diff
-  const removed = [...prev].filter(x => !next.has(x));
-  const added   = [...next].filter(x => !prev.has(x));
+  // compute diffs
+  const removed = Array.from(prev).filter(x => !next.has(x));
+  const added   = Array.from(next).filter(x => !prev.has(x));
 
-  // optional fields to propagate onto couponLinks
+  // carry-through fields for couponLinks/*
   const extra = {};
   if (after.minOrderOverride != null) extra.minOrderOverride = Number(after.minOrderOverride);
   if (after.minOrderByChannel)        extra.minOrderByChannel = after.minOrderByChannel;
   if (after.minOrder != null)         extra.minOrder = Number(after.minOrder);
   if (after.channels)                 extra.channels = after.channels; // {delivery, dining}
 
-  // Add this item to newly added coupons under the banner
+  // add this item to newly added coupons
   for (const couponId of added) {
     const linkRef = db.doc(`promotions/${bannerId}/couponLinks/${couponId}`);
     await linkRef.set({
-      promotionId: couponId,
+      promotionId: String(couponId),
       active: true,
-      itemIds: admin.firestore.FieldValue.arrayUnion(itemId),
+      itemIds: admin.firestore.FieldValue.arrayUnion(String(itemId)),
       ...extra
     }, { merge: true });
   }
 
-  // Remove this item from coupons that were removed
+  // remove this item from removed coupons
   for (const couponId of removed) {
     const linkRef = db.doc(`promotions/${bannerId}/couponLinks/${couponId}`);
     await linkRef.set({
-      itemIds: admin.firestore.FieldValue.arrayRemove(itemId)
+      itemIds: admin.firestore.FieldValue.arrayRemove(String(itemId))
     }, { merge: true });
   }
 });
 
 
-// === AUTO-MIRROR: when an item's promotions change, sync /bannerLinks/* ===
-const { onDocumentWritten } = require("firebase-functions/v2/firestore");
-const { getFirestore, collection, getDocs, doc, setDoc, deleteDoc } = require("firebase-admin/firestore");
-
+// === AUTO-MIRROR: when an item's promotions array changes, recompute /bannerLinks/* ===
 exports.mirrorBannerLinksOnPromotionChange = onDocumentWritten("menuItems/{itemId}", async (event) => {
-  const after = event.data.after?.data();
+  const after  = event.data.after?.data();
   const before = event.data.before?.data();
-  if (!after) return; // deleted
+  if (!after) return; // deletion
 
-  const itemId = event.params.itemId;
-  const afterIds = Array.isArray(after.promotions) ? after.promotions.map(String) : [];
+  const itemId = String(event.params.itemId);
+  const afterIds  = Array.isArray(after.promotions)  ? after.promotions.map(String) : [];
   const beforeIds = Array.isArray(before?.promotions) ? before.promotions.map(String) : [];
 
-  // Only work when promotions actually change
-  if (afterIds.join("|") === beforeIds.join("|")) return;
+  // No change → nothing to do
+  if (JSON.stringify(afterIds.sort()) === JSON.stringify(beforeIds.sort())) return;
 
-  const db = getFirestore();
-
-  // Build couponId -> bannerId map from active banners
+  // Build couponId -> bannerId index (active banners)
+  const bannerSnap = await db.collection("promotions").where("kind","==","banner").get();
   const couponToBanner = {};
-  const bannersSnap = await db.collection("promotions").where("kind","==","banner").where("active","==",true).get();
-  for (const bDoc of bannersSnap.docs) {
-    const bid = bDoc.id;
-    const b   = bDoc.data() || {};
+  bannerSnap.forEach(bDoc => {
+    const b = bDoc.data() || {};
+    if (b.active === false) return;
     const linked = Array.isArray(b.linkedCouponIds) ? b.linkedCouponIds : [];
-    linked.forEach(cid => { couponToBanner[String(cid)] = bid; });
-
-    // optional subcollection /couponLinks
-    const linkSnap = await db.collection(`promotions/${bid}/couponLinks`).get().catch(()=>null);
-    if (linkSnap) linkSnap.forEach(d => { couponToBanner[String(d.id)] = bid; });
-  }
+    linked.forEach(cid => { couponToBanner[String(cid)] = String(bDoc.id); });
+  });
 
   // Group selected coupons by banner
   const buckets = new Map(); // bannerId -> Set<couponId>
@@ -368,20 +363,22 @@ exports.mirrorBannerLinksOnPromotionChange = onDocumentWritten("menuItems/{itemI
   }
 
   const itemRef = db.doc(`menuItems/${itemId}`);
+  const blCol   = itemRef.collection("bannerLinks");
 
-  // Upsert /bannerLinks/{bannerId}
+  // 1) Upsert one doc per banner under /menuItems/{itemId}/bannerLinks/{bannerId}
   for (const [bannerId, setOfCids] of buckets.entries()) {
-    const blRef = itemRef.collection("bannerLinks").doc(bannerId);
-    await blRef.set({
+    await blCol.doc(bannerId).set({
       bannerId,
       bannerCouponIds: Array.from(setOfCids),
-      channels: { delivery: true, dining: true } // tweak later if you need per-mode
+      channels: { delivery: true, dining: true }  // adjust if you gate per banner
     }, { merge: true });
   }
 
-  // Prune orphans (bannerLinks that no longer have any coupons via promotions)
-  const existing = await itemRef.collection("bannerLinks").get();
+  // 2) Cleanup: remove orphan bannerLinks when a banner no longer applies
+  const existing = await blCol.get();
   for (const d of existing.docs) {
-    if (!buckets.has(d.id)) await d.ref.delete();
+    if (!buckets.has(d.id)) {
+      await d.ref.delete();
+    }
   }
 });
