@@ -382,3 +382,28 @@ exports.mirrorBannerLinksOnPromotionChange = onDocumentWritten("menuItems/{itemI
     }
   }
 });
+
+// Normalize: resolve any coupon *codes* in afterIds to their promotion *IDs*
+const resolvedIds = new Set();
+
+// Pass 1: keep any that are real doc IDs
+for (const tok of afterIds) {
+  const snap = await db.collection("promotions").doc(String(tok)).get();
+  if (snap.exists && (snap.data()?.kind === "coupon")) {
+    resolvedIds.add(String(snap.id));
+  }
+}
+
+// Pass 2: for leftovers, treat as codes and resolve to active coupon IDs
+const leftovers = afterIds.filter(x => !resolvedIds.has(String(x)));
+for (const code of leftovers) {
+  const q = await db.collection("promotions")
+    .where("kind","==","coupon")
+    .where("code","==", String(code))
+    .limit(1).get();
+  if (!q.empty) {
+    const d = q.docs[0]; if (d.data()?.active !== false) resolvedIds.add(String(d.id));
+  }
+}
+
+const afterIdsNorm = Array.from(resolvedIds);
