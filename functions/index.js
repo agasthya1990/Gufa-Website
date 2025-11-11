@@ -127,8 +127,17 @@ async function validateForBanner({ items, couponCode, bannerId, channel, phone, 
     if (!coupon || !link) return { ok: false, reason: "Coupon not allowed for this banner" };
     if (!channelAllowed({ coupon, banner, link, channel: ch }))
       return { ok: false, reason: "Coupon not available for this channel" };
-    if (!intersects(link.itemIds?.map(String) || [], itemIds))
-      return { ok: false, reason: "Coupon not eligible for selected items" };
+    // First check coupon link’s own itemIds
+if (!intersects(link.itemIds?.map(String) || [], itemIds)) {
+  // ✅ Fallback: allow banner-level itemIds
+  const bannerSnap = await getDoc(doc(db, "promotions", link.bannerId));
+  const bannerData = bannerSnap.exists() ? bannerSnap.data() : {};
+  const bannerItemIds = Array.isArray(bannerData.itemIds) ? bannerData.itemIds.map(String) : [];
+  if (!intersects(bannerItemIds, itemIds)) {
+    return { ok: false, reason: "Coupon not eligible for selected items" };
+  }
+}
+
 
     const minNeed = effectiveMinOrder({ coupon, link, banner, channel: ch });
     if (subtotal < minNeed) return { ok: false, reason: `Min order ₹${minNeed}` };
