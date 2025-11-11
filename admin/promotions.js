@@ -971,8 +971,16 @@ rows.push(`
             </div>
 <div style="margin-top:10px; display:grid; grid-template-columns: 220px 1fr; align-items:center; gap:8px;">
   <div>Min Order Override (₹)</div>
-  <input class="jsMinOrder adm-input" type="number" min="1" placeholder="Optional" value="${(p?.minOrderOverride ?? '')}">
+  <input
+    class="jsMinOrder adm-input"
+    type="number"
+    min="1"
+    placeholder="Optional"
+    value="${(p?.minOrderOverride ?? '')}"
+    style="width:2.5cm; max-width:2.5cm; box-sizing:border-box"
+  >
 </div>
+
 
 
             <div class="actions" style="margin-top:10px">
