@@ -43,7 +43,6 @@
         return;
       }
 
-const prev = bag[key] || {};
 bag[key] = {
   id:       meta?.id       ?? prev.id       ?? "",
   name:     meta?.name     ?? prev.name     ?? "",
@@ -57,12 +56,12 @@ bag[key] = {
             : (prev.origin || (meta?.bannerId ? `banner:${meta.bannerId}` : (prev.bannerId ? `banner:${prev.bannerId}` : ""))))
 };
 
-// ——— If banner is still missing, infer from cart-owned BANNERS ———
+// ——— Inference: if still missing, look up from cart-owned BANNERS ———
 try {
   const itemIdLower = String((bag[key]?.id || key.split(":")[0]) || "").toLowerCase();
-  const needs = !bag[key].bannerId || !bag[key].origin;
+  const needBid = !bag[key].bannerId || !bag[key].origin;
 
-  if (needs) {
+  if (needBid) {
     const toArr = () => {
       const raw = window.BANNERS;
       if (raw instanceof Map) return Array.from(raw.entries()).map(([id, v]) => ({
@@ -71,26 +70,19 @@ try {
                : Array.isArray(v?.items)   ? v.items.map(String) : [],
         couponIds: Array.isArray(v?.couponIds) ? v.couponIds.map(String) : []
       }));
-      if (Array.isArray(raw)) return raw.map(b => ({
-        id: String(b?.id || ""),
-        itemIds: (Array.isArray(b?.itemIds) ? b.itemIds
-               : Array.isArray(b?.items) ? b.items : []).map(String),
-        couponIds: (Array.isArray(b?.linkedCouponIds) ? b.linkedCouponIds
-                  : Array.isArray(b?.bannerCouponIds) ? b.bannerCouponIds
-                  : Array.isArray(b?.couponIds) ? b.couponIds : []).map(String)
-      }));
+      if (Array.isArray(raw)) return raw;
       try { return JSON.parse(localStorage.getItem("gufa:BANNERS") || "[]") || []; } catch { return []; }
     };
     const B = toArr();
 
-    // Prefer the current FCFS lock if it narrows to exactly one banner
+    // prefer current lock if it narrows it to exactly one banner
     let lock = null; try { lock = JSON.parse(localStorage.getItem("gufa_coupon") || "null"); } catch {}
     const lockedCid = String(lock?.scope?.couponId || "").trim();
 
-    const carriers = B.filter(b => (b.itemIds||[]).map(s=>String(s).toLowerCase()).includes(itemIdLower));
+    const carriers = B.filter(b => (Array.isArray(b.itemIds) ? b.itemIds : []).map(String).map(s=>s.toLowerCase()).includes(itemIdLower));
     let pick = "";
     if (lockedCid) {
-      const byLock = carriers.filter(b => (b.couponIds||[]).map(String).includes(lockedCid));
+      const byLock = carriers.filter(b => (Array.isArray(b.couponIds) ? b.couponIds.map(String) : []).includes(lockedCid));
       if (byLock.length === 1) pick = byLock[0].id;
     }
     if (!pick && carriers.length === 1) pick = carriers[0].id;
@@ -101,6 +93,7 @@ try {
     }
   }
 } catch {}
+
 
   writeBag(bag);
     },
