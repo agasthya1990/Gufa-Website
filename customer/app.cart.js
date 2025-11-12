@@ -493,7 +493,32 @@ function entries(){
   if (!(window.COUPONS instanceof Map)) window.COUPONS = new Map();
   if (!window.BANNERS) window.BANNERS = new Map(); // Map preferred; Array tolerated
 
+/* ===================== Global Catalogs ===================== */
+if (!(window.COUPONS instanceof Map)) window.COUPONS = new Map();
+if (!window.BANNERS) window.BANNERS = new Map(); // Map preferred; Array tolerated
 
+// === Hydrate BANNERS from Menu snapshot (Array form) ===
+(function hydrateBannersOnce(){
+  try {
+    const hasMap = (window.BANNERS instanceof Map) && window.BANNERS.size > 0;
+    const hasArr = Array.isArray(window.BANNERS) && window.BANNERS.length > 0;
+    if (hasMap || hasArr) return; // already hydrated here
+
+    const raw = localStorage.getItem("gufa:BANNERS");
+    if (!raw) return;
+    const arr = JSON.parse(raw);
+    if (!Array.isArray(arr) || arr.length === 0) return;
+
+    // Cart tolerates Array or Map; we’ll keep Array for simplicity (your eligibility code supports both)
+    window.BANNERS = arr.map(b => ({
+      id: String(b?.id || ""),
+      items: Array.isArray(b?.items) ? b.items.map(String) : [],
+      linkedCouponIds: Array.isArray(b?.linkedCouponIds) ? b.linkedCouponIds.map(String) : []
+    }));
+  } catch {}
+})();
+
+  
   /* ===== INSERT: read-only Firestore hydrate for promotions ===== */
   async function hydrateCouponsFromFirestoreOnce() {
     try {
