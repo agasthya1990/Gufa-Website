@@ -44,25 +44,20 @@
       }
 
 const prev = bag[key] || {};
-const incomingOrigin = (meta && typeof meta.origin === "string" && meta.origin.trim()) ? meta.origin : "";
-const nextOrigin =
-  incomingOrigin ||
-  prev.origin ||
-  (meta && typeof meta.bannerId === "string" && meta.bannerId.trim() ? `banner:${meta.bannerId}` : "");
-
 bag[key] = {
-  id:        meta?.id        ?? prev.id        ?? "",
-  name:      meta?.name      ?? prev.name      ?? "",
-  variant:   meta?.variant   ?? prev.variant   ?? "",
-  price:     Number(meta?.price ?? prev.price ?? 0),
-  thumb:     meta?.thumb     ?? prev.thumb     ?? "",
-  qty:       next,
-  // new: keep explicit bannerId alongside origin for easy auditing
-  bannerId:  (typeof meta?.bannerId === "string" && meta.bannerId.trim())
-               ? meta.bannerId
-               : (prev.bannerId || ""),
-  origin:    nextOrigin
+  id:       meta?.id       ?? prev.id       ?? "",
+  name:     meta?.name     ?? prev.name     ?? "",
+  variant:  meta?.variant  ?? prev.variant  ?? "",
+  price:    Number(meta?.price ?? prev.price ?? 0),
+  thumb:    meta?.thumb    ?? prev.thumb    ?? "",
+  qty:      next,
+  bannerId: meta?.bannerId ?? prev.bannerId ?? "",   // ← add this
+
+  origin:  ((meta && typeof meta.origin === "string" && meta.origin.trim())
+              ? meta.origin
+              : (prev.origin || ""))
 };
+
 
 
 
