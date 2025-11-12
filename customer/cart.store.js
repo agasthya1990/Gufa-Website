@@ -52,9 +52,10 @@ bag[key] = {
   thumb:    meta?.thumb    ?? prev.thumb    ?? "",
   qty:      next,
   bannerId: meta?.bannerId ?? prev.bannerId ?? "",   // ← persist bannerId
-  origin:   ((meta && typeof meta.origin === "string" && meta.origin.trim())
-               ? meta.origin
-               : (prev.origin || ""))
+  origin:  ((meta && typeof meta.origin === "string" && meta.origin.trim())
+            ? meta.origin
+            : (prev.origin || (meta?.bannerId ? `banner:${meta.bannerId}` : (prev.bannerId ? `banner:${prev.bannerId}` : ""))))
+
 };
 
 
