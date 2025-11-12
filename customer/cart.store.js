@@ -51,16 +51,11 @@ bag[key] = {
   price:    Number(meta?.price ?? prev.price ?? 0),
   thumb:    meta?.thumb    ?? prev.thumb    ?? "",
   qty:      next,
-  bannerId: meta?.bannerId ?? prev.bannerId ?? "",   // ← add this
-
+  bannerId: meta?.bannerId ?? prev.bannerId ?? "",   // ← add this line
   origin:  ((meta && typeof meta.origin === "string" && meta.origin.trim())
               ? meta.origin
               : (prev.origin || ""))
 };
-
-
-
-
 
       writeBag(bag);
     },
