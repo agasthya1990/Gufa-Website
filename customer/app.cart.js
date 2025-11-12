@@ -287,6 +287,108 @@ window.addEventListener("serviceMode:changed", () => {
   window.CART_UI.list = Object.assign({}, defaults, root); // any page overrides still win
 })();
 
+/* === Firestore promotions hydration (Cart-owned) ============================
+   Requires the compat-like shim in checkout.html (window.db) — confirmed here:
+   checkout.html lines 47–66 define window.db with collection(...).where(...).get()
+   ========================================================================== */
+
+(function ensureCartPromotions(){
+  if (!window.db || typeof window.db.collection !== "function") return; // shim missing
+
+  // Idempotent, run once
+  if (window.__CART_PROMOS_READY__) return;
+  window.__CART_PROMOS_READY__ = true;
+
+  // Helpers
+  const toMap = (arr, keyField) => {
+    const m = new Map();
+    for (const row of (arr || [])) {
+      const id = String(row?.[keyField] || row?.id || "").trim();
+      if (!id) continue;
+      m.set(id, row);
+    }
+    return m;
+  };
+
+  // Coupon: shape { id, code, type, value, active, channels?, usageLimit?, minOrder?, targets? }
+  async function hydrateCouponsFromFirestoreOnce(){
+    try {
+      const out = [];
+      const q = window.db.collection("promotions").where("kind","==","coupon");
+      const snap = await q.get();
+      if (snap && !snap.empty) {
+        snap.forEach((doc) => {
+          const d = (typeof doc.data === "function" ? doc.data() : {}); // compat
+          const id = String(doc.id);
+          out.push({
+            id,
+            code: d?.code || "",
+            type: d?.type || d?.discountType || "",
+            value: Number(d?.value ?? d?.amount ?? 0),
+            active: !!d?.active,
+            channels: Array.isArray(d?.channels) ? d.channels : null,
+            usageLimit: (typeof d?.usageLimit === "number" ? d.usageLimit : null),
+            minOrder: (typeof d?.minOrder === "number" ? d.minOrder
+                       : typeof d?.minimumOrderValue === "number" ? d.minimumOrderValue
+                       : null),
+            targets: Array.isArray(d?.targets) ? d.targets : null
+          });
+        });
+      }
+      // Persist both Map and LS snapshot for any consumers
+      window.COUPONS = toMap(out, "id");
+      try { localStorage.setItem("gufa:COUPONS", JSON.stringify(out)); } catch {}
+      // Broadcast so existing listeners (e.g., cart:update hooks) repaint
+      window.dispatchEvent(new CustomEvent("promotions:hydrated"));
+    } catch (e) { console.warn("[cart] coupon hydrate failed", e); }
+  }
+
+  // Banner: shape { id, itemIds:[], couponIds:[], channels?, minOrderOverride? }
+  async function hydrateBannersFromFirestoreOnce(){
+    try {
+      const out = [];
+      const q = window.db.collection("promotions").where("kind","==","banner");
+      const snap = await q.get();
+      if (snap && !snap.empty) {
+        snap.forEach((doc) => {
+          const d = (typeof doc.data === "function" ? doc.data() : {});
+          const id = String(doc.id);
+          // accept multiple admin field spellings
+          const itemIds =
+            Array.isArray(d?.eligibleItemIds) ? d.eligibleItemIds :
+            Array.isArray(d?.itemIds)        ? d.itemIds        :
+            Array.isArray(d?.items)          ? d.items          : [];
+          const couponIds =
+            Array.isArray(d?.linkedCouponIds) ? d.linkedCouponIds :
+            Array.isArray(d?.bannerCouponIds) ? d.bannerCouponIds :
+            Array.isArray(d?.couponIds)       ? d.couponIds       : [];
+          out.push({
+            id,
+            itemIds: itemIds.map(String),
+            couponIds: couponIds.map(String),
+            channels: Array.isArray(d?.channels) ? d.channels : null,
+            minOrderOverride: (typeof d?.minOrderOverride === "number" ? d.minOrderOverride : null)
+          });
+        });
+      }
+      // Persist both Map/Array and LS snapshot for any consumers
+      window.BANNERS = toMap(out, "id");
+      try { localStorage.setItem("gufa:BANNERS", JSON.stringify(out)); } catch {}
+      // Broadcast (same event name used elsewhere so downstream can repaint)
+      window.dispatchEvent(new CustomEvent("promotions:hydrated"));
+    } catch (e) { console.warn("[cart] banner hydrate failed", e); }
+  }
+
+  // Kick both in parallel; Cart becomes independent of Menu for promos.
+  (async () => {
+    await Promise.all([
+      hydrateCouponsFromFirestoreOnce(),
+      hydrateBannersFromFirestoreOnce()
+    ]);
+    // One extra nudge so pricing & labels can recompute with fresh maps
+    window.dispatchEvent(new CustomEvent("cart:update", { detail:{ source:"promos-hydrated" }}));
+  })();
+})();
 
 
 // --- Promo label pulse (visual only) ---
