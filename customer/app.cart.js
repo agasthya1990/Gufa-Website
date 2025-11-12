@@ -102,8 +102,9 @@ window.addEventListener("storage", (e) => {
 })();
 
 /* === Deferred Hydration from LocalStorage (Banner Metadata) === */
+/* === Deferred Hydration from LocalStorage (Banner Metadata) === */
 (function cartHydrateOnceCartReady(){
-  const applyHydration = () => {
+  const hydrate = () => {
     try {
       const raw = localStorage.getItem("gufa_cart");
       if (!raw) return;
@@ -111,7 +112,7 @@ window.addEventListener("storage", (e) => {
       const bag = (parsed.items && typeof parsed.items === "object") ? parsed.items : parsed;
       if (!bag || Object.keys(bag).length === 0) return;
 
-      // Fill in bannerId/origin symmetry
+      // Normalize banner metadata
       for (const [k, v] of Object.entries(bag)) {
         if (!v) continue;
         if (!v.bannerId && v.origin && String(v.origin).startsWith("banner:")) {
@@ -131,18 +132,17 @@ window.addEventListener("storage", (e) => {
     }
   };
 
-  // Try instantly; else wait for store creation
+  // Attempt immediately; retry until Cart API available
   if (window.Cart && typeof window.Cart.set === "function") {
-    applyHydration();
+    hydrate();
   } else {
-    const interval = setInterval(() => {
+    const timer = setInterval(() => {
       if (window.Cart && typeof window.Cart.set === "function") {
-        clearInterval(interval);
-        applyHydration();
+        clearInterval(timer);
+        hydrate();
       }
-    }, 200);
-    // Auto-stop if never appears within 10s
-    setTimeout(() => clearInterval(interval), 10000);
+    }, 250);
+    setTimeout(() => clearInterval(timer), 8000); // auto-stop after 8s
   }
 })();
 
