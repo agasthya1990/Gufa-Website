@@ -126,6 +126,22 @@ if (!Array.isArray(window.BANNERS)) window.BANNERS = [];
   } catch {}
 })();
 
+// —— Persist a lightweight BANNERS snapshot so checkout can hydrate —— //
+(function persistBannersSnapshot(){
+  try {
+    // Only persist if we have a usable array form
+    if (Array.isArray(window.BANNERS) && window.BANNERS.length > 0) {
+      // Keep only the fields the cart needs
+      const slim = window.BANNERS.map(b => ({
+        id: String(b.id || ""),
+        items: Array.isArray(b.items) ? b.items.map(String) : [],
+        linkedCouponIds: Array.isArray(b.linkedCouponIds) ? b.linkedCouponIds.map(String) : []
+      }));
+      localStorage.setItem("gufa:BANNERS", JSON.stringify(slim));
+    }
+  } catch {}
+})();
+
 
 
 // —— Persist a lightweight coupons snapshot for checkout hydration ——//
