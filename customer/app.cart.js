@@ -101,37 +101,51 @@ window.addEventListener("storage", (e) => {
 });
 })();
 
-/* === Early Hydration from LocalStorage (Banner Metadata) === */
-(function cartEarlyHydrateFromLS(){
-  try {
-    const raw = localStorage.getItem("gufa_cart");
-    if (!raw) return;
-    const parsed = JSON.parse(raw);
-    const bag = (parsed.items && typeof parsed.items === "object") ? parsed.items : parsed;
-    if (!bag || Object.keys(bag).length === 0) return;
+/* === Deferred Hydration from LocalStorage (Banner Metadata) === */
+(function cartHydrateOnceCartReady(){
+  const applyHydration = () => {
+    try {
+      const raw = localStorage.getItem("gufa_cart");
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      const bag = (parsed.items && typeof parsed.items === "object") ? parsed.items : parsed;
+      if (!bag || Object.keys(bag).length === 0) return;
 
-    // Ensure bannerId/origin are respected
-    for (const [k, v] of Object.entries(bag)) {
-      if (!v) continue;
-      if (!v.bannerId && v.origin && String(v.origin).startsWith("banner:")) {
-        v.bannerId = v.origin.replace("banner:", "");
+      // Fill in bannerId/origin symmetry
+      for (const [k, v] of Object.entries(bag)) {
+        if (!v) continue;
+        if (!v.bannerId && v.origin && String(v.origin).startsWith("banner:")) {
+          v.bannerId = v.origin.replace("banner:", "");
+        }
+        if (!v.origin && v.bannerId) {
+          v.origin = `banner:${v.bannerId}`;
+        }
       }
-      if (!v.origin && v.bannerId) {
-        v.origin = `banner:${v.bannerId}`;
-      }
-    }
 
-    // Write into live Cart if available
-    if (window.Cart && typeof window.Cart.set === "function") {
-      window.Cart.set(bag);
-      console.info("[cart] hydrated from localStorage snapshot with banner metadata");
-    } else {
-      console.warn("[cart] Cart API not yet available during early hydration");
+      if (window.Cart && typeof window.Cart.set === "function") {
+        window.Cart.set(bag);
+        console.info("[cart] ✅ hydrated from localStorage snapshot with banner metadata");
+      }
+    } catch (err) {
+      console.error("[cart] failed to hydrate from localStorage", err);
     }
-  } catch (err) {
-    console.error("[cart] failed to hydrate from localStorage", err);
+  };
+
+  // Try instantly; else wait for store creation
+  if (window.Cart && typeof window.Cart.set === "function") {
+    applyHydration();
+  } else {
+    const interval = setInterval(() => {
+      if (window.Cart && typeof window.Cart.set === "function") {
+        clearInterval(interval);
+        applyHydration();
+      }
+    }, 200);
+    // Auto-stop if never appears within 10s
+    setTimeout(() => clearInterval(interval), 10000);
   }
 })();
+
 
 let lastSnapshotAt = 0;
 function persistCartSnapshotThrottled() {
