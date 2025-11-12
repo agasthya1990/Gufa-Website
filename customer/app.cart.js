@@ -199,14 +199,35 @@ function ensureBannerMetadataIntegrity() {
     const bag = (live.items && typeof live.items === "object") ? live.items : live;
     let changed = false;
 
-    for (const [k, it] of Object.entries(bag || {})) {
-      const ls = snap?.[k] || {};
-      if (!it.bannerId && ls.bannerId) { it.bannerId = ls.bannerId; changed = true; }
-      if ((!it.origin || it.origin === "") && (ls.origin || ls.bannerId)) {
-        it.origin = ls.origin || `banner:${ls.bannerId}`;
+for (const [k, it] of Object.entries(bag || {})) {
+  const ls = snap?.[k] || {};
+  if (!it.bannerId && ls.bannerId) { it.bannerId = ls.bannerId; changed = true; }
+  if ((!it.origin || it.origin === "") && (ls.origin || ls.bannerId)) {
+    it.origin = ls.origin || `banner:${ls.bannerId}`; changed = true;
+  }
+
+  // If still missing, infer from BANNERS
+  if ((!it.bannerId || !it.origin) && String(k).split(":").length === 2) {
+    const itemIdLower = String(k.split(":")[0]).toLowerCase();
+    try {
+      const infer = (iid) => {
+        const raw = window.BANNERS;
+        const A = (raw instanceof Map)
+          ? Array.from(raw.entries()).map(([id,v]) => ({ id:String(id), itemIds:(v?.itemIds||v?.items||[]).map(String) }))
+          : (Array.isArray(raw) ? raw : JSON.parse(localStorage.getItem("gufa:BANNERS") || "[]"));
+        const carriers = A.filter(b => (b.itemIds||[]).map(s=>String(s).toLowerCase()).includes(iid));
+        return (carriers.length === 1) ? carriers[0].id : "";
+      };
+      const bid = infer(itemIdLower);
+      if (bid) {
+        if (!it.bannerId) it.bannerId = bid;
+        if (!it.origin || it.origin === "") it.origin = `banner:${bid}`;
         changed = true;
       }
-    }
+    } catch {}
+  }
+}
+
     if (changed) {
       window.Cart && window.Cart.set && window.Cart.set(bag);
       console.info("[cart] banner metadata rehydrated from LS");
@@ -388,6 +409,91 @@ window.addEventListener("serviceMode:changed", () => {
     // One extra nudge so pricing & labels can recompute with fresh maps
     window.dispatchEvent(new CustomEvent("cart:update", { detail:{ source:"promos-hydrated" }}));
   })();
+})();
+
+// === Backfill banner metadata on live cart (independent of Menu) ===
+(function bannerBackfillOnceAfterPromos(){
+  function bannersAsArray(){
+    const raw = window.BANNERS;
+    if (raw instanceof Map) {
+      return Array.from(raw.entries()).map(([id, v]) => ({
+        id: String(id),
+        itemIds: Array.isArray(v?.itemIds) ? v.itemIds.map(String)
+               : Array.isArray(v?.items)   ? v.items.map(String) : [],
+        couponIds: Array.isArray(v?.couponIds) ? v.couponIds.map(String) : []
+      }));
+    }
+    if (Array.isArray(raw)) return raw.map(b => ({
+      id: String(b?.id || ""),
+      itemIds: (Array.isArray(b?.itemIds) ? b.itemIds
+             : Array.isArray(b?.items) ? b.items : []).map(String),
+      couponIds: (Array.isArray(b?.linkedCouponIds) ? b.linkedCouponIds
+                : Array.isArray(b?.bannerCouponIds) ? b.bannerCouponIds
+                : Array.isArray(b?.couponIds) ? b.couponIds : []).map(String)
+    }));
+    try {
+      const ls = JSON.parse(localStorage.getItem("gufa:BANNERS") || "[]");
+      return Array.isArray(ls) ? ls.map(b => ({
+        id: String(b?.id || ""),
+        itemIds: (Array.isArray(b?.itemIds) ? b.itemIds
+               : Array.isArray(b?.items) ? b.items : []).map(String),
+        couponIds: (Array.isArray(b?.linkedCouponIds) ? b.linkedCouponIds
+                  : Array.isArray(b?.bannerCouponIds) ? b.bannerCouponIds
+                  : Array.isArray(b?.couponIds) ? b.couponIds : []).map(String)
+      })) : [];
+    } catch { return []; }
+  }
+
+  function inferBannerIdForItem(itemIdLower){
+    const B = bannersAsArray();
+    if (!B.length) return "";
+    // 1) Try lock scope first
+    let lock = null;
+    try { lock = JSON.parse(localStorage.getItem("gufa_coupon") || "null"); } catch {}
+    const lockedCid = String(lock?.scope?.couponId || "").trim();
+
+    const carriers = [];
+    for (const b of B) {
+      const hasItem = b.itemIds.map(s=>String(s).toLowerCase()).includes(itemIdLower);
+      if (!hasItem) continue;
+      carriers.push(b);
+    }
+
+    if (lockedCid) {
+      const byLock = carriers.filter(b => b.couponIds.map(String).includes(lockedCid));
+      if (byLock.length === 1) return byLock[0].id;
+    }
+    return (carriers.length === 1) ? carriers[0].id : "";
+  }
+
+  function backfillNow(){
+    const live = window?.Cart?.get?.() || {};
+    const bag  = (live && typeof live === "object")
+      ? (live.items && typeof live.items === "object" ? live.items : live)
+      : {};
+    let changed = false;
+
+    for (const [k, it] of Object.entries(bag)) {
+      // only base lines: "itemId:variant"
+      if (String(k).split(":").length !== 2) continue;
+      const itemId = String(k.split(":")[0]).toLowerCase();
+      if (it && (!it.bannerId || !it.origin)) {
+        const bid = inferBannerIdForItem(itemId);
+        if (bid) {
+          if (!it.bannerId) it.bannerId = bid;
+          if (!it.origin || it.origin === "") it.origin = `banner:${bid}`;
+          changed = true;
+        }
+      }
+    }
+    if (changed && window.Cart && typeof window.Cart.set === "function") {
+      window.Cart.set(bag);
+      // trigger downstream persistence + UI
+      try { window.dispatchEvent(new CustomEvent("cart:update", { detail:{ source:"banner-backfill" } })); } catch {}
+    }
+  }
+
+  try { backfillNow(); } catch {}
 })();
 
 
