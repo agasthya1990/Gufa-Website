@@ -107,11 +107,42 @@ function persistCartSnapshotThrottled() {
   if (now - lastSnapshotAt < 1000) return; // 1s debounce
   lastSnapshotAt = now;
   try {
-    const cart = window?.Cart?.get?.() || {};
-    localStorage.setItem("gufa_cart", JSON.stringify(cart));
+    const live = window?.Cart?.get?.() || {};
+
+    // flatten live (accept {items} or flat)
+    const liveFlat = (live && typeof live === "object")
+      ? (live.items && typeof live.items === "object" ? live.items : live)
+      : {};
+
+    // read prior LS bag (to keep bannerId/origin)
+    let prev = {};
+    try {
+      const raw = localStorage.getItem("gufa_cart");
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        prev = (parsed && typeof parsed === "object")
+          ? (parsed.items && typeof parsed.items === "object" ? parsed.items : parsed)
+          : {};
+      }
+    } catch {}
+
+    // merge: prefer live qty/price; retain bannerId/origin if live misses them
+    const out = {};
+    const keys = new Set([...Object.keys(prev || {}), ...Object.keys(liveFlat || {})]);
+    for (const k of keys) {
+      const L = liveFlat?.[k] || {};
+      const P = prev?.[k] || {};
+      out[k] = Object.assign({}, P, L, {
+        bannerId: (L.bannerId ?? P.bannerId ?? ""),
+        origin:   (L.origin   ?? P.origin   ?? "")
+      });
+    }
+
+    localStorage.setItem("gufa_cart", JSON.stringify(out));
   } catch {}
 }
 window.addEventListener("cart:update", persistCartSnapshotThrottled);
+
 
 // —— Service mode sync (Cart) ——
 (function ensureCartModeSync(){
@@ -364,22 +395,41 @@ function activeMode(){
 }
 
 
-  /* ===================== Cart I/O ===================== */
-  function entries(){
-    try {
-      const store = window?.Cart?.get?.();
-      if (store && typeof store === "object") return Object.entries(store);
-    } catch {}
-    try {
-      const raw = localStorage.getItem("gufa_cart");
-      if (!raw) return [];
+/* ===================== Cart I/O ===================== */
+function entries(){
+  // read live store
+  let live = {};
+  try {
+    const store = window?.Cart?.get?.();
+    if (store && typeof store === "object") live = store;
+  } catch {}
+
+  // read LS snapshot (flat bag or {items})
+  let snap = {};
+  try {
+    const raw = localStorage.getItem("gufa_cart");
+    if (raw) {
       const parsed = JSON.parse(raw);
-      const bag = (parsed && typeof parsed === "object")
+      snap = (parsed && typeof parsed === "object")
         ? (parsed.items && typeof parsed.items === "object" ? parsed.items : parsed)
         : {};
-      return Object.entries(bag || {});
-    } catch { return []; }
+    }
+  } catch {}
+
+  // merge: prefer live qty/price; backfill bannerId/origin from LS
+  const out = {};
+  const keys = new Set([...Object.keys(snap || {}), ...Object.keys(live || {})]);
+  for (const k of keys) {
+    const L  = live?.[k] || {};
+    const S  = snap?.[k] || {};
+    out[k] = Object.assign({}, S, L, {
+      bannerId: (L.bannerId ?? S.bannerId ?? ""),
+      origin:   (L.origin   ?? S.origin   ?? "")
+    });
   }
+  return Object.entries(out);
+}
+
   const itemCount = () => entries().reduce((n, [,it]) => n + (Number(it?.qty)||0), 0);
   const isAddonKey = (key) => String(key).split(":").length >= 3;
   const baseKeyOf  = (key) => String(key).split(":").slice(0,2).join(":");
