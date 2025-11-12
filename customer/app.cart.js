@@ -132,10 +132,12 @@ function persistCartSnapshotThrottled() {
     for (const k of keys) {
       const L = liveFlat?.[k] || {};
       const P = prev?.[k] || {};
-      out[k] = Object.assign({}, P, L, {
-        bannerId: (L.bannerId ?? P.bannerId ?? ""),
-        origin:   (L.origin   ?? P.origin   ?? "")
-      });
+      const merged = Object.assign({}, P, L);
+      if (merged.bannerId == null) merged.bannerId = "";
+      if (merged.origin == null || merged.origin === "") {
+      merged.origin = merged.bannerId ? `banner:${merged.bannerId}` : "";
+      }
+      out[k] = merged;
     }
 
     localStorage.setItem("gufa_cart", JSON.stringify(out));
@@ -422,10 +424,12 @@ function entries(){
   for (const k of keys) {
     const L  = live?.[k] || {};
     const S  = snap?.[k] || {};
-    out[k] = Object.assign({}, S, L, {
-      bannerId: (L.bannerId ?? S.bannerId ?? ""),
-      origin:   (L.origin   ?? S.origin   ?? "")
-    });
+    const merged = Object.assign({}, S, L);
+    if (merged.bannerId == null) merged.bannerId = "";
+    if (merged.origin == null || merged.origin === "") {
+    merged.origin = merged.bannerId ? `banner:${merged.bannerId}` : "";
+  }
+    out[k] = merged;
   }
   return Object.entries(out);
 }
