@@ -698,23 +698,25 @@ try {
   if (window.Cart && typeof window.Cart.setQty === "function") {
     // Infer banner provenance from the card or its container
     const card     = document.querySelector(`.menu-item[data-id="${found.id}"]`);
-const activeBannerId = (view === "list" && listKind === "banner") ? String(listId || "") : "";
-const bannerId =
-  card?.getAttribute("data-banner-id") ||
-  card?.dataset?.bannerId ||
-  card?.closest("[data-banner-id]")?.getAttribute("data-banner-id") ||
-  activeBannerId ||                                                // ✅ NEW: state fallback
-  document.querySelector("#globalResults")?.id ||
-  document.querySelector(".deals")?.className ||
-  "";
+    const activeBannerId = (view === "list" && listKind === "banner") ? String(listId || "") : "";
+    const bannerId =
+      card?.getAttribute("data-banner-id") ||
+      card?.dataset?.bannerId ||
+      card?.closest("[data-banner-id]")?.getAttribute("data-banner-id") ||
+      activeBannerId ||
+      document.querySelector("#globalResults")?.id ||
+      document.querySelector(".deals")?.className ||
+      "";
     const origin = bannerId ? `banner:${bannerId}` : "non-banner";
 
     window.Cart.setQty(key, next, {
       id: found.id, name: found.name, variant: variantKey, price: Number(price) || 0,
+      bannerId: bannerId || "",           // ← add this
       origin
     });
   }
 } catch {}
+
 
 
     // 2️⃣ Persistent mirror for checkout hydration (single-key, flat)
@@ -747,17 +749,19 @@ const bannerId =
   document.querySelector("#globalResults")?.id ||
   document.querySelector(".deals")?.className ||
   "";
-  const origin = prev.origin || (bannerId ? `banner:${bannerId}` : "non-banner");
+  
+const origin = prev.origin || (bannerId ? `banner:${bannerId}` : "non-banner");
 
-  bag[key] = {
-    id: found.id,
-    name: found.name,
-    variant: variantKey,
-    price: Number(price) || Number(prev.price) || 0,
-    thumb: prev.thumb || "",
-    qty: next,
-    origin
-  };
+bag[key] = {
+  id: found.id,
+  name: found.name,
+  variant: variantKey,
+  price: Number(price) || Number(prev.price) || 0,
+  thumb: prev.thumb || "",
+  qty: next,
+  bannerId: bannerId || "",    // ← add this
+  origin
+ };
 }
 
 
