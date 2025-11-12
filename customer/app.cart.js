@@ -143,7 +143,37 @@ function persistCartSnapshotThrottled() {
     localStorage.setItem("gufa_cart", JSON.stringify(out));
   } catch {}
 }
+
+/* === Guard: Rehydrate bannerId/origin before persisting === */
+function ensureBannerMetadataIntegrity() {
+  try {
+    const live = window?.Cart?.get?.() || {};
+    const raw = localStorage.getItem("gufa_cart");
+    const snap = raw ? JSON.parse(raw) : {};
+    const bag = (live.items && typeof live.items === "object") ? live.items : live;
+    let changed = false;
+
+    for (const [k, it] of Object.entries(bag || {})) {
+      const ls = snap?.[k] || {};
+      if (!it.bannerId && ls.bannerId) { it.bannerId = ls.bannerId; changed = true; }
+      if ((!it.origin || it.origin === "") && (ls.origin || ls.bannerId)) {
+        it.origin = ls.origin || `banner:${ls.bannerId}`;
+        changed = true;
+      }
+    }
+    if (changed) {
+      window.Cart && window.Cart.set && window.Cart.set(bag);
+      console.info("[cart] banner metadata rehydrated from LS");
+    }
+  } catch (err) {
+    console.warn("[cart] banner metadata rehydration failed", err);
+  }
+}
+
+// Run before each cart:update snapshot
+window.addEventListener("cart:update", ensureBannerMetadataIntegrity);
 window.addEventListener("cart:update", persistCartSnapshotThrottled);
+
 
 
 // —— Service mode sync (Cart) ——
