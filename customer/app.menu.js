@@ -2260,9 +2260,44 @@ window.addEventListener("cart:update", () => {
   persistCouponCodes();
   buildAndPersistCouponIndex();
 });
-
-
 })();
+
+// ✅ Ensure bannerId/origin persistently attach to all banner-added items
+window.addEventListener("cart:update", () => {
+  try {
+    const live = window?.Cart?.get?.() || {};
+    const bag  = (live.items && typeof live.items === "object") ? live.items : live;
+    const snap = JSON.parse(localStorage.getItem("gufa_cart") || "{}");
+    let changed = false;
+
+    for (const [k, it] of Object.entries(bag || {})) {
+      const card = document.querySelector(`.menu-item[data-id="${it.id}"]`);
+      const bannerId =
+        card?.dataset?.bannerId ||
+        card?.getAttribute("data-banner-id") ||
+        card?.closest("[data-banner-id]")?.getAttribute("data-banner-id") || "";
+
+      if (bannerId && (!it.bannerId || it.bannerId !== bannerId)) {
+        it.bannerId = bannerId;
+        it.origin = `banner:${bannerId}`;
+        changed = true;
+      } else if (!it.bannerId && snap[k]?.bannerId) {
+        // fallback: hydrate from LS snapshot
+        it.bannerId = snap[k].bannerId;
+        it.origin = snap[k].origin || `banner:${snap[k].bannerId}`;
+        changed = true;
+      }
+    }
+
+    if (changed && window.Cart?.set) {
+      window.Cart.set(bag);
+      localStorage.setItem("gufa_cart", JSON.stringify(bag));
+      console.info("[menu] banner metadata refreshed into cart snapshot");
+    }
+  } catch (err) {
+    console.warn("[menu] bannerId integrity sync failed", err);
+  }
+});
 
 // Cross-origin checkout handoff: attach cart snapshot to the URL
 document.addEventListener('click', (e) => {
