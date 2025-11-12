@@ -408,6 +408,88 @@ window.addEventListener("serviceMode:changed", () => {
     ]);
     // One extra nudge so pricing & labels can recompute with fresh maps
     window.dispatchEvent(new CustomEvent("cart:update", { detail:{ source:"promos-hydrated" }}));
+ 
+  // === Backfill banner metadata on live cart (independent of Menu) ===
+(function bannerBackfillOnceAfterPromos(){
+  // Normalize BANNERS to an array of {id, itemIds[], couponIds[]}
+  function bannersAsArray(){
+    const raw = window.BANNERS;
+    if (raw instanceof Map) {
+      return Array.from(raw.entries()).map(([id, v]) => ({
+        id: String(id),
+        itemIds: Array.isArray(v?.itemIds) ? v.itemIds.map(String)
+               : Array.isArray(v?.items)   ? v.items.map(String) : [],
+        couponIds: Array.isArray(v?.couponIds) ? v.couponIds.map(String) : []
+      }));
+    }
+    if (Array.isArray(raw)) {
+      return raw.map(b => ({
+        id: String(b?.id || ""),
+        itemIds: (Array.isArray(b?.itemIds) ? b.itemIds
+               : Array.isArray(b?.items) ? b.items : []).map(String),
+        couponIds: (Array.isArray(b?.linkedCouponIds) ? b.linkedCouponIds
+                  : Array.isArray(b?.bannerCouponIds) ? b.bannerCouponIds
+                  : Array.isArray(b?.couponIds) ? b.couponIds : []).map(String)
+      }));
+    }
+    try {
+      const ls = JSON.parse(localStorage.getItem("gufa:BANNERS") || "[]");
+      return Array.isArray(ls) ? ls.map(b => ({
+        id: String(b?.id || ""),
+        itemIds: (Array.isArray(b?.itemIds) ? b.itemIds
+               : Array.isArray(b?.items) ? b.items : []).map(String),
+        couponIds: (Array.isArray(b?.linkedCouponIds) ? b.linkedCouponIds
+                  : Array.isArray(b?.bannerCouponIds) ? b.bannerCouponIds
+                  : Array.isArray(b?.couponIds) ? b.couponIds : []).map(String)
+      })) : [];
+    } catch { return []; }
+  }
+
+  function inferBannerIdForItem(itemIdLower){
+    const B = bannersAsArray();
+    if (!B.length) return "";
+    // Prefer current lock if it narrows to exactly one banner
+    let lock = null; try { lock = JSON.parse(localStorage.getItem("gufa_coupon") || "null"); } catch {}
+    const lockedCid = String(lock?.scope?.couponId || "").trim();
+
+    const carriers = B.filter(b => (b.itemIds||[]).map(s=>String(s).toLowerCase()).includes(itemIdLower));
+    if (lockedCid) {
+      const byLock = carriers.filter(b => (b.couponIds||[]).map(String).includes(lockedCid));
+      if (byLock.length === 1) return byLock[0].id;
+    }
+    return (carriers.length === 1) ? carriers[0].id : "";
+  }
+
+  function backfillNow(){
+    if (!window.Cart || typeof window.Cart.get !== "function" || typeof window.Cart.setQty !== "function") return;
+    const bag = window.Cart.get() || {};
+    for (const [key, it] of Object.entries(bag)) {
+      // base keys are "itemId:variant"
+      if (String(key).split(":").length !== 2) continue;
+      const itemIdLower = String(key.split(":")[0]).toLowerCase();
+      const needs = !it?.bannerId || !it?.origin;
+      if (!needs) continue;
+
+      const bid = inferBannerIdForItem(itemIdLower);
+      if (!bid) continue;
+
+      // Persist via public API so it survives reloads
+      const qty = Number(it?.qty || 0);
+      if (qty > 0) {
+        const meta = Object.assign({}, it, {
+          bannerId: it.bannerId || bid,
+          origin:   it.origin   || `banner:${bid}`
+        });
+        try { window.Cart.setQty(key, qty, meta); } catch {}
+      }
+    }
+    try { window.dispatchEvent(new CustomEvent("cart:update", { detail:{ source:"banner-backfill" } })); } catch {}
+  }
+
+  try { backfillNow(); } catch {}
+})();
+
+  
   })();
 })();
 
