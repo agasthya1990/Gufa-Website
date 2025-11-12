@@ -1102,27 +1102,40 @@ function isKnownBannerOrigin(origin) {
   return false;
 }
 
-// Remove any unknown/stale banner origins (e.g., "banner:test-only")
+// Defer banner scrub until BANNERS are hydrated
 function scrubUnknownBannerOrigins() {
   try {
+    // if banners aren’t ready yet, postpone scrub
+    const ready = (window.BANNERS instanceof Map && window.BANNERS.size > 0) ||
+                  (Array.isArray(window.BANNERS) && window.BANNERS.length > 0);
+    if (!ready) {
+      console.warn("[cart] scrub skipped — banners not yet hydrated");
+      return;
+    }
+
     const bag = window.Cart?.get?.() || {};
     let mutated = false;
+
     for (const [k, v] of Object.entries(bag)) {
       if (String(k).split(":").length >= 3) continue; // skip addons
       if (v && typeof v === "object" && String(v.origin || "").startsWith("banner:")) {
         if (!isKnownBannerOrigin(v.origin)) {
-          // Drop bogus banner marks
           delete v.origin;
+          delete v.bannerId; // also remove dangling bannerId
           mutated = true;
         }
       }
     }
+
     if (mutated) {
       localStorage.setItem("gufa_cart", JSON.stringify(bag));
       window.dispatchEvent(new CustomEvent("cart:update", { detail:{ reason:"scrub-unknown-banner-origin" }}));
     }
-  } catch {}
+  } catch (err) {
+    console.warn("[cart] banner scrub error", err);
+  }
 }
+
 
 
 // explicit eligibleItemIds > banner-derived (STRICT) > catalog > LS index
