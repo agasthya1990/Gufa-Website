@@ -590,6 +590,43 @@ async function ensureCouponsReady() {
   } catch {}
 })();
 
+/* ===================== Ensure BANNERS Ready (Firestore/LocalStorage) ===================== */
+(async function ensureBannersReady(){
+  try {
+    // 1) Try LocalStorage (from menu persistence)
+    const raw = localStorage.getItem("gufa:BANNERS");
+    if (raw) {
+      const arr = JSON.parse(raw);
+      if (Array.isArray(arr)) {
+        if (!(window.BANNERS instanceof Map)) window.BANNERS = new Map();
+        arr.forEach(b => window.BANNERS.set(String(b.id), b.items || []));
+      }
+      if (window.BANNERS.size > 0) return;
+    }
+
+    // 2) Try Firestore
+    if (window.db && typeof window.db.collection === "function") {
+      const snap = await window.db.collection("banners").get();
+      if (!snap.empty) {
+        if (!(window.BANNERS instanceof Map)) window.BANNERS = new Map();
+        snap.forEach(doc => {
+          const d = doc.data() || {};
+          const items = Array.isArray(d.items) ? d.items.map(String) : [];
+          window.BANNERS.set(String(doc.id), items);
+        });
+      }
+      if (window.BANNERS.size > 0) return;
+    }
+
+    // 3) Fallback → empty Map but at least safe
+    if (!(window.BANNERS instanceof Map)) window.BANNERS = new Map();
+  } catch (err) {
+    console.warn("[checkout] ensureBannersReady failed:", err);
+    if (!(window.BANNERS instanceof Map)) window.BANNERS = new Map();
+  }
+})();
+
+  
   /* ===================== Coupon Lock ===================== */
   const getLock = () => { try { return JSON.parse(localStorage.getItem(COUPON_KEY) || "null"); } catch { return null; } };
   const setLock = (obj) => { try { obj ? localStorage.setItem(COUPON_KEY, JSON.stringify(obj)) : localStorage.removeItem(COUPON_KEY); } catch {} };
