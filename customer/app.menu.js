@@ -167,11 +167,12 @@ if (!Array.isArray(window.BANNERS)) window.BANNERS = [];
 // NEW —— Persist coupon→items index from catalog (codes & ids accepted)
 (function buildAndPersistCouponIndex(){
   try {
-    const catalog = (Array.isArray(ITEMS) && ITEMS.length) ? ITEMS : (Array.isArray(window.ITEMS) ? window.ITEMS : []);
+    const catalog = (Array.isArray(ITEMS) && ITEMS.length) ? ITEMS
+                   : (Array.isArray(window.ITEMS) ? window.ITEMS : []);
     if (!catalog.length) return;
 
     // Build { tokenLower -> Set(itemIdLower) }, where token is either a coupon CODE or ID
-    const idx = {}; // token -> Set(itemId)
+    const idx = {}; // token -> Set(itemIdLower)
     const put = (token, itemId) => {
       if (!token || !itemId) return;
       const k = String(token).toLowerCase();
@@ -189,33 +190,122 @@ if (!Array.isArray(window.BANNERS)) window.BANNERS = [];
       for (const raw of ids) {
         const cid = String(raw);
         put(cid, itemId);
-        // also index by human code if we can map id->meta with code
         if (window.COUPONS instanceof Map && window.COUPONS.has(cid)) {
           const meta = window.COUPONS.get(cid);
           const code = (meta?.code || "").toString().trim();
           if (code) put(code, itemId);
         }
       }
+
+      // ✅ ADD #1 — also index coupons referenced via per-item bannerLinks
+      if (Array.isArray(it.bannerLinks)) {
+        for (const bl of it.bannerLinks) {
+          const arr = Array.isArray(bl?.bannerCouponIds) ? bl.bannerCouponIds : [];
+          for (const tok of arr) {
+            const cid = String(tok);
+            put(cid, itemId);
+            if (window.COUPONS instanceof Map && window.COUPONS.has(cid)) {
+              const meta = window.COUPONS.get(cid);
+              const code = (meta?.code || "").toString().trim();
+              if (code) put(code, itemId);
+            }
+          }
+        }
+      }
     }
 
-// If nothing found, leave any prior index intact.
-const out = Object.fromEntries(Object.entries(idx).map(([k,s]) => [k, Array.from(s)]));
-if (Object.keys(out).length) {
-  // Re-entry guard + single-tick debounce for broadcast
-  if (window.__IDX_BUILDING) return;
-  window.__IDX_BUILDING = true;
-  try {
-    localStorage.setItem("gufa:COUPON_INDEX", JSON.stringify(out));
-    // Defer notify to next frame; coalesce multiple writes into one event
-    cancelAnimationFrame(window.__IDX_NOTIFY_RAF || 0);
-    window.__IDX_NOTIFY_RAF = requestAnimationFrame(() => {
-      try { window.dispatchEvent(new CustomEvent("promotions:hydrated")); } catch {}
-    });
-  } finally {
-    // release guard on microtask so any sync listeners finish first
-    Promise.resolve().then(() => { window.__IDX_BUILDING = false; });
-  }
-}
+    // ✅ ADD #2 — fold in BANNERS dataset so couponIndex also sees banner-linked coupons
+    if (Array.isArray(window.BANNERS) && window.BANNERS.length) {
+      for (const b of window.BANNERS) {
+        const itemIds = Array.isArray(b.items) ? b.items.map(String) : [];
+        const couponIds = Array.isArray(b.linkedCouponIds) ? b.linkedCouponIds.map(String)
+                         : Array.isArray(b.bannerCouponIds) ? b.bannerCouponIds.map(String)
+                         : [];
+        for (const cid of couponIds) {
+          for (const iid of itemIds) {
+            put(cid, iid);
+            if (window.COUPONS instanceof Map && window.COUPONS.has(cid)) {
+              const meta = window.COUPONS.get(cid);
+              const code = (meta?.code || "").toString().trim();
+              if (code) put(code, iid);
+            }
+          }
+        }
+      }
+    }
+
+    // ✅ ADD #3 — Backfill banner.items[] from couponIndex + catalog so
+    //            each banner knows exactly which itemIds it touches.
+    if (Array.isArray(window.BANNERS) && window.BANNERS.length) {
+      // Map lowercased itemId -> original itemId from catalog
+      const idByLower = {};
+      for (const it of catalog) {
+        if (it && it.id) {
+          const orig = String(it.id);
+          idByLower[orig.toLowerCase()] = orig;
+        }
+      }
+
+      window.BANNERS = window.BANNERS.map(b => {
+        if (!b || !b.id) return b;
+
+        const existing = Array.isArray(b.items) ? b.items.map(String) : [];
+        const existingSet = new Set(existing);
+
+        const couponIds = Array.isArray(b.linkedCouponIds) ? b.linkedCouponIds
+                         : Array.isArray(b.bannerCouponIds) ? b.bannerCouponIds
+                         : [];
+
+        for (const rawCid of couponIds) {
+          const token = String(rawCid).toLowerCase();
+          const set = idx[token];
+          if (!set) continue;
+
+          for (const itemLower of set) {
+            const orig = idByLower[itemLower] || itemLower;
+            existingSet.add(orig);
+          }
+        }
+
+        return {
+          ...b,
+          items: Array.from(existingSet)
+        };
+      });
+
+      // Refresh gufa:BANNERS snapshot with the new items[]
+      try {
+        const slim = window.BANNERS.map(b => ({
+          id: String(b.id || ""),
+          items: Array.isArray(b.items) ? b.items.map(String) : [],
+          linkedCouponIds: Array.isArray(b.linkedCouponIds)
+            ? b.linkedCouponIds.map(String)
+            : []
+        }));
+        localStorage.setItem("gufa:BANNERS", JSON.stringify(slim));
+      } catch {}
+    }
+
+    // If nothing found, leave any prior index intact.
+    const out = Object.fromEntries(
+      Object.entries(idx).map(([k, s]) => [k, Array.from(s)])
+    );
+    if (Object.keys(out).length) {
+      // Re-entry guard + single-tick debounce for broadcast
+      if (window.__IDX_BUILDING) return;
+      window.__IDX_BUILDING = true;
+      try {
+        localStorage.setItem("gufa:COUPON_INDEX", JSON.stringify(out));
+        // Defer notify to next frame; coalesce multiple writes into one event
+        cancelAnimationFrame(window.__IDX_NOTIFY_RAF || 0);
+        window.__IDX_NOTIFY_RAF = requestAnimationFrame(() => {
+          try { window.dispatchEvent(new CustomEvent("promotions:hydrated")); } catch {}
+        });
+      } finally {
+        // release guard on microtask so any sync listeners finish first
+        Promise.resolve().then(() => { window.__IDX_BUILDING = false; });
+      }
+    }
 
   } catch {}
 })();
