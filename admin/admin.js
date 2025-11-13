@@ -707,6 +707,71 @@ addAddonBtn && (addAddonBtn.onclick = async () => {
     attachPromotionsSnapshot();
     attachBannersSnapshot();
 
+    // ==== Dev Backfill Tool: Sync itemIds across banners → coupons (runs once per load) ====
+    if (!window.__ranCouponItemIdsBackfill__) {
+      window.__ranCouponItemIdsBackfill__ = true;
+
+      // STEP 1 — Build banner.itemIds from menuItems.promotions (where a “promotion” is a banner)
+      async function syncBannerItemIds() {
+        const banners = new Map(); // Map<bannerId, Set<itemId>>
+        const menuSnap = await getDocs(collection(db, "menuItems"));
+        for (const itemDoc of menuSnap.docs) {
+          const itemId = itemDoc.id;
+          const { promotions = [] } = itemDoc.data() || {};
+          for (const pid of promotions) {
+            try {
+              const pSnap = await getDoc(doc(db, "promotions", String(pid)));
+              const p = pSnap.data() || {};
+              if (p.kind === "banner") {
+                if (!banners.has(pid)) banners.set(pid, new Set());
+                banners.get(pid).add(itemId);
+              }
+            } catch {}
+          }
+        }
+        const writes = [];
+        for (const [bannerId, itemIdSet] of banners.entries()) {
+          writes.push(
+            updateDoc(doc(db, "promotions", String(bannerId)), {
+              itemIds: Array.from(itemIdSet),
+              updatedAt: serverTimestamp()
+            }).catch(()=>{})
+          );
+        }
+        if (writes.length) await Promise.all(writes);
+      }
+
+      // STEP 2 — Mirror banner.itemIds → each linked coupon.itemIds
+      async function syncCouponItemIds() {
+        const snap = await getDocs(query(collection(db, "promotions")));
+        const writes = [];
+        for (const d of snap.docs) {
+          const b = d.data() || {};
+          if (b.kind !== "banner") continue;
+          const itemIds   = Array.isArray(b.itemIds) ? b.itemIds : [];
+          const couponIds = Array.isArray(b.linkedCouponIds) ? b.linkedCouponIds : [];
+          for (const cid of couponIds) {
+            writes.push(
+              updateDoc(doc(db, "promotions", String(cid)), {
+                itemIds,
+                updatedAt: serverTimestamp()
+              }).catch(()=>{})
+            );
+          }
+        }
+        if (writes.length) await Promise.all(writes);
+      }
+
+      try {
+        await syncBannerItemIds();
+        await syncCouponItemIds();
+        console.log("[admin] ✅ coupon.itemIds backfill complete.");
+      } catch (e) {
+        console.error("[admin] coupon.itemIds backfill failed", e);
+      }
+    }
+
+     
   } else {
     if (loginBox) loginBox.style.display = "block";
     if (adminContent) adminContent.style.display = "none";
