@@ -1022,6 +1022,20 @@ await updateDoc(ref, {
   updatedAt: serverTimestamp()
 });
 
+try {
+  const fresh = await getDoc(ref);
+  const b = fresh.data() || {};
+  const bannerItemIds = Array.isArray(b.itemIds) ? b.itemIds : [];
+  for (const cid of idsClean) {
+    await updateDoc(doc(db, "promotions", cid), {
+      itemIds: bannerItemIds,
+      updatedAt: serverTimestamp()
+    });
+  }
+} catch (err) {
+  console.error("Failed syncing coupon.itemIds:", err);
+}
+             
 // Back-reference coupons → update bannerIds[] (idempotent, matches backend)
 const beforeIds = Array.isArray(p.linkedCouponIds) ? p.linkedCouponIds.map(String) : []; 
 const added   = idsClean.filter(x => !beforeIds.includes(x)); 
