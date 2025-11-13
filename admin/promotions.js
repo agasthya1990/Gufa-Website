@@ -919,11 +919,10 @@ rows.push(`
     <div><img src="${p.imageUrl}" alt="" width="80" height="80" style="object-fit:cover;border-radius:8px;border:1px solid #eee"/></div>
     <div>
       ${p.title || "(untitled)"}
-      <span class="adm-muted jsLiveItemCount" data-banner="${d.id}" style="margin-left:6px; font-size:12px;">
-        • — linked items
-      </span>
+      <span class="adm-muted" style="margin-left:6px; font-size:12px;">
+      • ${Array.isArray(p.itemIds) ? p.itemIds.length : 0} linked item${Array.isArray(p.itemIds) && p.itemIds.length===1 ? "" : "s"}
+     </span>
     </div>
-
 
     <div>${linkedHTML}</div>
     <div class="adm-muted">${publishedTo}</div>
@@ -943,11 +942,7 @@ rows.push(`
   ? (headerB + rows.join(""))
   : (headerB + `<div class="adm-muted" style="padding:8px">No banners</div>`);
 
-// Wire per-banner live count from couponLinks/*
-bannersList.querySelectorAll(".jsLiveItemCount[data-banner]").forEach(span => {
-  const bid = span.getAttribute("data-banner");
-  liveCountForBanner(bid, span);
-});
+
 
       // 🔧 Wire events **inside** the snapshot (so they match the latest DOM)
       bannersList.querySelectorAll(".jsDelBanner").forEach(btn => {
