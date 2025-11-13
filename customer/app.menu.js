@@ -135,7 +135,7 @@ if (!Array.isArray(window.BANNERS)) window.BANNERS = [];
     window.dispatchEvent(new CustomEvent("cart:update", { detail:{ source:"promos-hydrated" }}));
  
   })();
-})();
+
 
 
 // —— Persist a lightweight coupons snapshot for checkout hydration ——//
