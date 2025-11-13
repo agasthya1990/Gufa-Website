@@ -753,20 +753,21 @@ try {
 if (next <= 0) {
   delete bag[key];
 } else {
-  const prev = bag[key] || {};
-  // Reuse the same origin we computed above if available
-  const card     = document.querySelector(`.menu-item[data-id="${found.id}"]`);
+const prev = bag[key] || {};
+
+const card     = document.querySelector(`.menu-item[data-id="${found.id}"]`);
 const activeBannerId = (view === "list" && listKind === "banner") ? String(listId || "") : "";
-const bannerId =
+const inferredBannerId =
   card?.getAttribute("data-banner-id") ||
   card?.dataset?.bannerId ||
   card?.closest("[data-banner-id]")?.getAttribute("data-banner-id") ||
-  activeBannerId ||                                                // ✅ NEW: state fallback
+  activeBannerId ||
   document.querySelector("#globalResults")?.id ||
   document.querySelector(".deals")?.className ||
   "";
-  
-const origin = prev.origin || (bannerId ? `banner:${bannerId}` : "non-banner");
+
+const bannerId = (inferredBannerId || prev.bannerId || "");
+const origin   = bannerId ? `banner:${bannerId}` : (prev.origin || "non-banner");
 
 bag[key] = {
   id: found.id,
@@ -775,17 +776,15 @@ bag[key] = {
   price: Number(price) || Number(prev.price) || 0,
   thumb: prev.thumb || "",
   qty: next,
-  bannerId: bannerId || "",    // ← add this
+  bannerId,
   origin
- };
+};
 }
-
 
 localStorage.setItem(LS_KEY, JSON.stringify(bag));
 window.dispatchEvent(new CustomEvent("cart:update", { detail: { cart: { items: bag } } }));
   
 } catch {}
-
 
   if (next > 0) {
     try { window.lockCouponForActiveBannerIfNeeded?.(found.id); } catch {}
