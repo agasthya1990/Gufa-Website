@@ -213,25 +213,41 @@
 <script>
   if (!localStorage.getItem("gufa_mode")) localStorage.setItem("gufa_mode", "delivery");
 </script>
-<script id="promo-data" type="application/json">
-{
-  "coupons": [
-    ["CHRISTMAS75", { "code": "CHRISTMAS75" }],
-    ["DIWALI100",   { "code": "DIWALI100" }],
-    ["NEWYEAR25",   { "code": "NEWYEAR25" }]
-  ],
-  "banners": [
-    ["couponCode:CHRISTMAS75", []],
-    ["couponCode:DIWALI100",   []],
-    ["couponCode:NEWYEAR25",   []]
-  ]
+
+<script type="module">
+import { db } from "/admin/firebase.js";
+import { collection, getDocs } 
+  from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+async function loadPromotions() {
+  const out = { coupons: [], banners: [] };
+
+  // Load coupons
+  const cSnap = await getDocs(collection(db, "promotions"));
+  cSnap.forEach(doc => {
+    const d = doc.data();
+    out.coupons.push([d.id, d]);
+  });
+
+  // Load banners
+  const bSnap = await getDocs(collection(db, "banners"));
+  bSnap.forEach(doc => {
+    const d = doc.data();
+    out.banners.push([d.id, d.itemIds || []]);
+  });
+
+  window.PROMO_DATA = out;
+  console.log("[checkout] Hydrated live PROMO_DATA:", out);
 }
+
+loadPromotions();
 </script>
 
 <script src="./coupon-engine.js"></script>
 <script src="./app.cart.js"></script>
 </body>
 </html>
+
 
 
 
