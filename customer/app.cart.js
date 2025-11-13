@@ -102,7 +102,6 @@ window.addEventListener("storage", (e) => {
 })();
 
 /* === Deferred Hydration from LocalStorage (Banner Metadata) === */
-/* === Deferred Hydration from LocalStorage (Banner Metadata) === */
 (function cartHydrateOnceCartReady(){
   const hydrate = () => {
     try {
@@ -112,11 +111,12 @@ window.addEventListener("storage", (e) => {
       const bag = (parsed.items && typeof parsed.items === "object") ? parsed.items : parsed;
       if (!bag || Object.keys(bag).length === 0) return;
 
-      // Normalize banner metadata
-      for (const [k, v] of Object.entries(bag)) {
+      // NOTE: Do NOT transform or delete any banner metadata here.
+      // Only use what's present; normalization is strictly additive + idempotent.
+      for (const [, v] of Object.entries(bag)) {
         if (!v) continue;
         if (!v.bannerId && v.origin && String(v.origin).startsWith("banner:")) {
-          v.bannerId = v.origin.replace("banner:", "");
+          v.bannerId = v.origin.slice(7);
         }
         if (!v.origin && v.bannerId) {
           v.origin = `banner:${v.bannerId}`;
@@ -125,6 +125,12 @@ window.addEventListener("storage", (e) => {
 
       if (window.Cart && typeof window.Cart.set === "function") {
         window.Cart.set(bag);
+        console.info("[cart] hydrated from LS (non-destructive)");
+      }
+    } catch (err) {
+      console.error("[cart] failed to hydrate from localStorage", err);
+    }
+  };
         console.info("[cart] ✅ hydrated from localStorage snapshot with banner metadata");
       }
     } catch (err) {
