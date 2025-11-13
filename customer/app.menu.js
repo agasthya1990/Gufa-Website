@@ -740,45 +740,43 @@ try {
   const LS_KEY = "gufa_cart";
   let bag = {};
 
-  // Prefer the live store’s flat items object
-  const live = window?.Cart?.get?.();
-  if (live && typeof live === "object" && Object.keys(live).length) {
-    bag = (live.items && typeof live.items === "object") ? live.items : live;
-  } else {
-    try { bag = JSON.parse(localStorage.getItem(LS_KEY) || "{}"); }
-    catch { bag = {}; }
-  }
+  // Always start from LS to preserve banner locks; never prefer the live store here
+  const LS_KEY = "gufa_cart";
+  let bag = {};
+  try { bag = JSON.parse(localStorage.getItem(LS_KEY) || "{}"); } catch { bag = {}; }
   if (!bag || typeof bag !== "object") bag = {};
+
 
 if (next <= 0) {
   delete bag[key];
 } else {
-const prev = bag[key] || {};
+  const prev = bag[key] || {};
 
-const card     = document.querySelector(`.menu-item[data-id="${found.id}"]`);
-const activeBannerId = (view === "list" && listKind === "banner") ? String(listId || "") : "";
-const inferredBannerId =
-  card?.getAttribute("data-banner-id") ||
-  card?.dataset?.bannerId ||
-  card?.closest("[data-banner-id]")?.getAttribute("data-banner-id") ||
-  activeBannerId ||
-  document.querySelector("#globalResults")?.id ||
-  document.querySelector(".deals")?.className ||
-  "";
+  // Infer banner deterministically from DOM, then fall back to previous lock
+  const card = document.querySelector(`.menu-item[data-id="${found.id}"]`);
+  const activeBannerId = (view === "list" && listKind === "banner") ? String(listId || "") : "";
+  const inferredBannerId =
+        card?.getAttribute("data-banner-id") ||
+        card?.dataset?.bannerId ||
+        card?.closest("[data-banner-id]")?.getAttribute("data-banner-id") ||
+        activeBannerId ||
+        ""; // ← no fuzzy globals
 
-const bannerId = (inferredBannerId || prev.bannerId || "");
-const origin   = bannerId ? `banner:${bannerId}` : (prev.origin || "non-banner");
+  const bannerId = String(inferredBannerId || prev.bannerId || "");
+  const origin   = bannerId
+      ? `banner:${bannerId}`
+      : (prev.origin && prev.origin.startsWith("banner:") ? prev.origin : "non-banner");
 
-bag[key] = {
-  id: found.id,
-  name: found.name,
-  variant: variantKey,
-  price: Number(price) || Number(prev.price) || 0,
-  thumb: prev.thumb || "",
-  qty: next,
-  bannerId,
-  origin
-};
+  bag[key] = {
+    id: found.id,
+    name: found.name,
+    variant: variantKey,
+    price: Number(price) || Number(prev.price) || 0,
+    thumb: prev.thumb || "",
+    qty: next,
+    bannerId,
+    origin
+  };
 }
 
 localStorage.setItem(LS_KEY, JSON.stringify(bag));
