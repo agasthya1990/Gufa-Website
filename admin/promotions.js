@@ -875,11 +875,9 @@ const minHtml = (Number.isFinite(Number(p?.minOrderOverride)) && Number(p.minOrd
   ? `₹${Number(p.minOrderOverride)}`
   : `<span class="adm-muted">—</span>`;
 
-// NEW: count how many itemIds this banner advertises (optional fallback keys included)
-const itemCount = Array.isArray(p.itemIds)     ? p.itemIds.length
-                : Array.isArray(p.items)       ? p.items.length
-                : Array.isArray(p.itemIDs)     ? p.itemIDs.length   // tolerate different casing seen in drafts
-                : 0;
+// Count strictly from canonical field so UI never shows stale legacy counts
+const itemCount = Array.isArray(p.itemIds) ? p.itemIds.length : 0;
+
 
 rows.push(`
   <div class="adm-grid adm-grid-banners" data-id="${d.id}">
@@ -1026,15 +1024,30 @@ try {
   const fresh = await getDoc(ref);
   const b = fresh.data() || {};
   const bannerItemIds = Array.isArray(b.itemIds) ? b.itemIds : [];
-  for (const cid of idsClean) {
-    await updateDoc(doc(db, "promotions", cid), {
+
+  // Write itemIds to all currently-linked coupons
+  await Promise.all(idsClean.map(cid =>
+    updateDoc(doc(db, "promotions", String(cid)), {
       itemIds: bannerItemIds,
       updatedAt: serverTimestamp()
-    });
+    })
+  ));
+
+  // Also CLEAR stale itemIds on coupons that were just unlinked
+  const beforeIds = Array.isArray(p.linkedCouponIds) ? p.linkedCouponIds.map(String) : [];
+  const removedNow = beforeIds.filter(x => !idsClean.includes(x));
+  if (removedNow.length) {
+    await Promise.all(removedNow.map(cid =>
+      updateDoc(doc(db, "promotions", String(cid)), {
+        itemIds: [],
+        updatedAt: serverTimestamp()
+      })
+    ));
   }
 } catch (err) {
   console.error("Failed syncing coupon.itemIds:", err);
 }
+
              
 // Back-reference coupons → update bannerIds[] (idempotent, matches backend)
 const beforeIds = Array.isArray(p.linkedCouponIds) ? p.linkedCouponIds.map(String) : []; 
