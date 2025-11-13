@@ -43,6 +43,8 @@
         return;
       }
 
+      const prev = bag[key] || {};
+
 bag[key] = {
   id:       meta?.id       ?? prev.id       ?? "",
   name:     meta?.name     ?? prev.name     ?? "",
