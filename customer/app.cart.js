@@ -101,134 +101,17 @@ window.addEventListener("storage", (e) => {
 });
 })();
 
-/* === Deferred Hydration from LocalStorage (Banner Metadata) === */
-(function cartHydrateOnceCartReady(){
-  const hydrate = () => {
-    try {
-      const raw = localStorage.getItem("gufa_cart");
-      if (!raw) return;
-      const parsed = JSON.parse(raw);
-      const bag = (parsed.items && typeof parsed.items === "object") ? parsed.items : parsed;
-      if (!bag || Object.keys(bag).length === 0) return;
-
-      // NOTE: Do NOT transform or delete any banner metadata here.
-      // Only use what's present; normalization is strictly additive + idempotent.
-      for (const [, v] of Object.entries(bag)) {
-        if (!v) continue;
-        if (!v.bannerId && v.origin && String(v.origin).startsWith("banner:")) {
-          v.bannerId = v.origin.slice(7);
-        }
-        if (!v.origin && v.bannerId) {
-          v.origin = `banner:${v.bannerId}`;
-        }
-      }
-
-      if (window.Cart && typeof window.Cart.set === "function") {
-        window.Cart.set(bag);
-        console.info("[cart] hydrated from LS (non-destructive)");
-      }
-    } catch (err) {
-      console.error("[cart] failed to hydrate from localStorage", err);
-    }
-  };
-        console.info("[cart] ✅ hydrated from localStorage snapshot with banner metadata");
-      }
-    } catch (err) {
-      console.error("[cart] failed to hydrate from localStorage", err);
-    }
-  };
-
-  // Attempt immediately; retry until Cart API available
-  if (window.Cart && typeof window.Cart.set === "function") {
-    hydrate();
-  } else {
-    const timer = setInterval(() => {
-      if (window.Cart && typeof window.Cart.set === "function") {
-        clearInterval(timer);
-        hydrate();
-      }
-    }, 250);
-    setTimeout(() => clearInterval(timer), 8000); // auto-stop after 8s
-  }
-})();
-
-
 let lastSnapshotAt = 0;
 function persistCartSnapshotThrottled() {
   const now = Date.now();
   if (now - lastSnapshotAt < 1000) return; // 1s debounce
   lastSnapshotAt = now;
   try {
-    const live = window?.Cart?.get?.() || {};
-
-    // flatten live (accept {items} or flat)
-    const liveFlat = (live && typeof live === "object")
-      ? (live.items && typeof live.items === "object" ? live.items : live)
-      : {};
-
-    // read prior LS bag (to keep bannerId/origin)
-    let prev = {};
-    try {
-      const raw = localStorage.getItem("gufa_cart");
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        prev = (parsed && typeof parsed === "object")
-          ? (parsed.items && typeof parsed.items === "object" ? parsed.items : parsed)
-          : {};
-      }
-    } catch {}
-
-    // merge: prefer live qty/price; retain bannerId/origin if live misses them
-    const out = {};
-    const keys = new Set([...Object.keys(prev || {}), ...Object.keys(liveFlat || {})]);
-    for (const k of keys) {
-      const L = liveFlat?.[k] || {};
-      const P = prev?.[k] || {};
-      const merged = Object.assign({}, P, L);
-      if (merged.bannerId == null) merged.bannerId = "";
-      if (merged.origin == null || merged.origin === "") {
-      merged.origin = merged.bannerId ? `banner:${merged.bannerId}` : "";
-      }
-      out[k] = merged;
-    }
-
-    localStorage.setItem("gufa_cart", JSON.stringify(out));
+    const cart = window?.Cart?.get?.() || {};
+    localStorage.setItem("gufa_cart", JSON.stringify(cart));
   } catch {}
 }
-
-/* === Guard: Rehydrate bannerId/origin before persisting === */
-function ensureBannerMetadataIntegrity() {
-  try {
-    const live = window?.Cart?.get?.() || {};
-    const raw = localStorage.getItem("gufa_cart");
-    const snap = raw ? JSON.parse(raw) : {};
-    const bag = (live.items && typeof live.items === "object") ? live.items : live;
-    let changed = false;
-
-for (const [k, it] of Object.entries(bag || {})) {
-  const ls = snap?.[k] || {};
-  if (!it.bannerId && ls.bannerId) { it.bannerId = ls.bannerId; changed = true; }
-  if ((!it.origin || it.origin === "") && (ls.origin || ls.bannerId)) {
-    it.origin = ls.origin || `banner:${ls.bannerId}`;
-    changed = true;
-  }
-}
-
-
-    if (changed) {
-      window.Cart && window.Cart.set && window.Cart.set(bag);
-      console.info("[cart] banner metadata rehydrated from LS");
-    }
-  } catch (err) {
-    console.warn("[cart] banner metadata rehydration failed", err);
-  }
-}
-
-// Run before each cart:update snapshot
-window.addEventListener("cart:update", ensureBannerMetadataIntegrity);
 window.addEventListener("cart:update", persistCartSnapshotThrottled);
-
-
 
 // —— Service mode sync (Cart) ——
 (function ensureCartModeSync(){
@@ -295,109 +178,6 @@ window.addEventListener("serviceMode:changed", () => {
   window.CART_UI.list = Object.assign({}, defaults, root); // any page overrides still win
 })();
 
-/* === Firestore promotions hydration (Cart-owned) ============================
-   Requires the compat-like shim in checkout.html (window.db) — confirmed here:
-   checkout.html lines 47–66 define window.db with collection(...).where(...).get()
-   ========================================================================== */
-
-(function ensureCartPromotions(){
-  if (!window.db || typeof window.db.collection !== "function") return; // shim missing
-
-  // Idempotent, run once
-  if (window.__CART_PROMOS_READY__) return;
-  window.__CART_PROMOS_READY__ = true;
-
-  // Helpers
-  const toMap = (arr, keyField) => {
-    const m = new Map();
-    for (const row of (arr || [])) {
-      const id = String(row?.[keyField] || row?.id || "").trim();
-      if (!id) continue;
-      m.set(id, row);
-    }
-    return m;
-  };
-
-  // Coupon: shape { id, code, type, value, active, channels?, usageLimit?, minOrder?, targets? }
-  async function hydrateCouponsFromFirestoreOnce(){
-    try {
-      const out = [];
-      const q = window.db.collection("promotions").where("kind","==","coupon");
-      const snap = await q.get();
-      if (snap && !snap.empty) {
-        snap.forEach((doc) => {
-          const d = (typeof doc.data === "function" ? doc.data() : {}); // compat
-          const id = String(doc.id);
-          out.push({
-            id,
-            code: d?.code || "",
-            type: d?.type || d?.discountType || "",
-            value: Number(d?.value ?? d?.amount ?? 0),
-            active: !!d?.active,
-            channels: Array.isArray(d?.channels) ? d.channels : null,
-            usageLimit: (typeof d?.usageLimit === "number" ? d.usageLimit : null),
-            minOrder: (typeof d?.minOrder === "number" ? d.minOrder
-                       : typeof d?.minimumOrderValue === "number" ? d.minimumOrderValue
-                       : null),
-            targets: Array.isArray(d?.targets) ? d.targets : null
-          });
-        });
-      }
-      // Persist both Map and LS snapshot for any consumers
-      window.COUPONS = toMap(out, "id");
-      try { localStorage.setItem("gufa:COUPONS", JSON.stringify(out)); } catch {}
-      // Broadcast so existing listeners (e.g., cart:update hooks) repaint
-      window.dispatchEvent(new CustomEvent("promotions:hydrated"));
-    } catch (e) { console.warn("[cart] coupon hydrate failed", e); }
-  }
-
-  // Banner: shape { id, itemIds:[], couponIds:[], channels?, minOrderOverride? }
-  async function hydrateBannersFromFirestoreOnce(){
-    try {
-      const out = [];
-      const q = window.db.collection("promotions").where("kind","==","banner");
-      const snap = await q.get();
-      if (snap && !snap.empty) {
-        snap.forEach((doc) => {
-          const d = (typeof doc.data === "function" ? doc.data() : {});
-          const id = String(doc.id);
-          // accept multiple admin field spellings
-          const itemIds =
-            Array.isArray(d?.eligibleItemIds) ? d.eligibleItemIds :
-            Array.isArray(d?.itemIds)        ? d.itemIds        :
-            Array.isArray(d?.items)          ? d.items          : [];
-          const couponIds =
-            Array.isArray(d?.linkedCouponIds) ? d.linkedCouponIds :
-            Array.isArray(d?.bannerCouponIds) ? d.bannerCouponIds :
-            Array.isArray(d?.couponIds)       ? d.couponIds       : [];
-          out.push({
-            id,
-            itemIds: itemIds.map(String),
-            couponIds: couponIds.map(String),
-            channels: Array.isArray(d?.channels) ? d.channels : null,
-            minOrderOverride: (typeof d?.minOrderOverride === "number" ? d.minOrderOverride : null)
-          });
-        });
-      }
-      // Persist both Map/Array and LS snapshot for any consumers
-      window.BANNERS = toMap(out, "id");
-      try { localStorage.setItem("gufa:BANNERS", JSON.stringify(out)); } catch {}
-      // Broadcast (same event name used elsewhere so downstream can repaint)
-      window.dispatchEvent(new CustomEvent("promotions:hydrated"));
-    } catch (e) { console.warn("[cart] banner hydrate failed", e); }
-  }
-
-  // Kick both in parallel; Cart becomes independent of Menu for promos.
-  (async () => {
-    await Promise.all([
-      hydrateCouponsFromFirestoreOnce(),
-      hydrateBannersFromFirestoreOnce()
-    ]);
-    // One extra nudge so pricing & labels can recompute with fresh maps
-    window.dispatchEvent(new CustomEvent("cart:update", { detail:{ source:"promos-hydrated" }}));
- 
-  })();
-})();
 
 
 // --- Promo label pulse (visual only) ---
@@ -444,27 +224,16 @@ function computeEligibleItemIdsForCoupon(couponId){
   try {
     const id = String(couponId || "");
     const all = (window.ITEMS || []);
-
+    // items list may use promotions | coupons | couponIds
     return all.filter((it) => {
-      // legacy/general paths
-      const plain = Array.isArray(it.promotions) ? it.promotions
-                 : Array.isArray(it.coupons)    ? it.coupons
-                 : Array.isArray(it.couponIds)  ? it.couponIds
-                 : [];
-
-      // NEW: bannerLinks support [{ bannerId, bannerCouponIds:[], channels, minOrderOverride? }]
-      const viaBanner = Array.isArray(it.bannerLinks)
-        ? it.bannerLinks.some(bl =>
-            Array.isArray(bl.bannerCouponIds) &&
-            bl.bannerCouponIds.map(String).includes(id)
-          )
-        : false;
-
-      return plain.map(String).includes(id) || viaBanner;
+      const ids = Array.isArray(it.promotions) ? it.promotions
+                : Array.isArray(it.coupons)    ? it.coupons
+                : Array.isArray(it.couponIds)  ? it.couponIds
+                : [];
+      return ids.map(String).includes(id);
     }).map(it => String(it.id));
   } catch { return []; }
 }
-
 
 function writeCouponLockFromMeta(couponId, meta){
   if (!couponId || !meta) return false;
@@ -584,43 +353,22 @@ function activeMode(){
 }
 
 
-/* ===================== Cart I/O ===================== */
-function entries(){
-  // read live store
-  let live = {};
-  try {
-    const store = window?.Cart?.get?.();
-    if (store && typeof store === "object") live = store;
-  } catch {}
-
-  // read LS snapshot (flat bag or {items})
-  let snap = {};
-  try {
-    const raw = localStorage.getItem("gufa_cart");
-    if (raw) {
+  /* ===================== Cart I/O ===================== */
+  function entries(){
+    try {
+      const store = window?.Cart?.get?.();
+      if (store && typeof store === "object") return Object.entries(store);
+    } catch {}
+    try {
+      const raw = localStorage.getItem("gufa_cart");
+      if (!raw) return [];
       const parsed = JSON.parse(raw);
-      snap = (parsed && typeof parsed === "object")
+      const bag = (parsed && typeof parsed === "object")
         ? (parsed.items && typeof parsed.items === "object" ? parsed.items : parsed)
         : {};
-    }
-  } catch {}
-
-  // merge: prefer live qty/price; backfill bannerId/origin from LS
-  const out = {};
-  const keys = new Set([...Object.keys(snap || {}), ...Object.keys(live || {})]);
-  for (const k of keys) {
-    const L  = live?.[k] || {};
-    const S  = snap?.[k] || {};
-    const merged = Object.assign({}, S, L);
-    if (merged.bannerId == null) merged.bannerId = "";
-    if (merged.origin == null || merged.origin === "") {
-    merged.origin = merged.bannerId ? `banner:${merged.bannerId}` : "";
+      return Object.entries(bag || {});
+    } catch { return []; }
   }
-    out[k] = merged;
-  }
-  return Object.entries(out);
-}
-
   const itemCount = () => entries().reduce((n, [,it]) => n + (Number(it?.qty)||0), 0);
   const isAddonKey = (key) => String(key).split(":").length >= 3;
   const baseKeyOf  = (key) => String(key).split(":").slice(0,2).join(":");
@@ -680,32 +428,7 @@ function entries(){
   if (!(window.COUPONS instanceof Map)) window.COUPONS = new Map();
   if (!window.BANNERS) window.BANNERS = new Map(); // Map preferred; Array tolerated
 
-/* ===================== Global Catalogs ===================== */
-if (!(window.COUPONS instanceof Map)) window.COUPONS = new Map();
-if (!window.BANNERS) window.BANNERS = new Map(); // Map preferred; Array tolerated
 
-// === Hydrate BANNERS from Menu snapshot (Array form) ===
-(function hydrateBannersOnce(){
-  try {
-    const hasMap = (window.BANNERS instanceof Map) && window.BANNERS.size > 0;
-    const hasArr = Array.isArray(window.BANNERS) && window.BANNERS.length > 0;
-    if (hasMap || hasArr) return; // already hydrated here
-
-    const raw = localStorage.getItem("gufa:BANNERS");
-    if (!raw) return;
-    const arr = JSON.parse(raw);
-    if (!Array.isArray(arr) || arr.length === 0) return;
-
-    // Cart tolerates Array or Map; we’ll keep Array for simplicity (your eligibility code supports both)
-    window.BANNERS = arr.map(b => ({
-      id: String(b?.id || ""),
-      items: Array.isArray(b?.items) ? b.items.map(String) : [],
-      linkedCouponIds: Array.isArray(b?.linkedCouponIds) ? b.linkedCouponIds.map(String) : []
-    }));
-  } catch {}
-})();
-
-  
   /* ===== INSERT: read-only Firestore hydrate for promotions ===== */
   async function hydrateCouponsFromFirestoreOnce() {
     try {
@@ -730,44 +453,18 @@ if (!window.BANNERS) window.BANNERS = new Map(); // Map preferred; Array tolerat
         if (kind !== "coupon") return;
 
         const targetsRaw = d.channels || d.targets || {};
-const meta = {
-  code:      d.code ? String(d.code) : undefined,
-  type:      String(d.type || "flat").toLowerCase(), // 'percent' | 'flat'
-  value:     Number(d.value || 0),
-  minOrder:  Number(d.minOrder || 0),
-  targets:   { delivery: !!targetsRaw.delivery, dining: !!targetsRaw.dining },
+        const meta = {
+          code:      d.code ? String(d.code) : undefined,
+          type:      String(d.type || "flat").toLowerCase(), // 'percent' | 'flat'
+          value:     Number(d.value || 0),
+          minOrder:  Number(d.minOrder || 0),
+          targets:   { delivery: !!targetsRaw.delivery, dining: !!targetsRaw.dining },
+          // optional fields if you later add them
+          eligibleItemIds: Array.isArray(d.eligibleItemIds) ? d.eligibleItemIds : undefined,
+          usageLimit: d.usageLimit ?? undefined,
+          usedCount:  d.usedCount  ?? undefined
+        };
 
-  // NEW: carry bannerIds from Firestore so we can derive eligibility from banners
-  bannerIds: Array.isArray(d.bannerIds) ? d.bannerIds.map(String) : undefined,
-
-  // optional fields if you later add them
-  eligibleItemIds: Array.isArray(d.eligibleItemIds) ? d.eligibleItemIds.map(String) : undefined,
-  usageLimit: d.usageLimit ?? undefined,
-  usedCount:  d.usedCount  ?? undefined
-};
-
-
-// ✅ ADD — if Firestore gave bannerIds but no explicit eligible list, derive now
-if ((!meta.eligibleItemIds || !meta.eligibleItemIds.length) && Array.isArray(meta.bannerIds) && meta.bannerIds.length) {
-  try {
-    const eligible = [];
-    if (window.BANNERS instanceof Map) {
-      for (const bid of meta.bannerIds) {
-        const arr = window.BANNERS.get(String(bid));
-        if (Array.isArray(arr)) eligible.push(...arr.map(String));
-      }
-    } else if (Array.isArray(window.BANNERS)) {
-      for (const bid of meta.bannerIds) {
-        const b = window.BANNERS.find(x => String(x.id) === String(bid));
-        const arr = Array.isArray(b?.items) ? b.items : Array.isArray(b?.itemIds) ? b.itemIds : [];
-        eligible.push(...arr.map(String));
-      }
-    }
-    if (eligible.length) meta.eligibleItemIds = Array.from(new Set(eligible));
-  } catch {}
-}
-
-  
         window.COUPONS.set(String(doc.id), meta);
         added++;
       });
@@ -1067,37 +764,7 @@ function showPromoError(msg) {
   if (host) host.textContent = msg || "";
 }
 
-  //*===================== Promotions Discipline =====================*// 
-
-  function eligibleIdsFromBanners({ couponId } = {}) {
-  try {
-    const out = new Set();
-    const cid = String(couponId || "");
-    if (!cid) return out;
-
-    if (window.BANNERS instanceof Map) {
-      // If your Map form is Map(bannerId -> [itemId, ...]) and you also have a way to read
-      // banner->couponIds elsewhere, skip — the Menu index already covers this path.
-      // Cart uses this only as a fallback.
-      // (No-op for Map unless you also key by coupon; kept for parity.)
-    } else if (Array.isArray(window.BANNERS)) {
-      for (const b of window.BANNERS) {
-        const coupons = Array.isArray(b.linkedCouponIds) ? b.linkedCouponIds.map(String)
-                      : Array.isArray(b.bannerCouponIds) ? b.bannerCouponIds.map(String)
-                      : [];
-        if (!coupons.includes(cid)) continue;
-
-        const items = Array.isArray(b.items) ? b.items
-                    : Array.isArray(b.itemIds) ? b.itemIds
-                    : Array.isArray(b.eligibleItemIds) ? b.eligibleItemIds
-                    : [];
-        items.forEach(x => out.add(String(x).toLowerCase()));
-      }
-    }
-    return out;
-  } catch { return new Set(); }
-}
-
+  /* ===================== Promotions Discipline ===================== */
 
   // Eligibility core that tolerates Map or Array BANNERS and restores general-coupon scope
 
@@ -1213,40 +880,27 @@ function isKnownBannerOrigin(origin) {
   return false;
 }
 
-// Defer banner scrub until BANNERS are hydrated
+// Remove any unknown/stale banner origins (e.g., "banner:test-only")
 function scrubUnknownBannerOrigins() {
   try {
-    // if banners aren’t ready yet, postpone scrub
-    const ready = (window.BANNERS instanceof Map && window.BANNERS.size > 0) ||
-                  (Array.isArray(window.BANNERS) && window.BANNERS.length > 0);
-    if (!ready) {
-      console.warn("[cart] scrub skipped — banners not yet hydrated");
-      return;
-    }
-
     const bag = window.Cart?.get?.() || {};
     let mutated = false;
-
     for (const [k, v] of Object.entries(bag)) {
       if (String(k).split(":").length >= 3) continue; // skip addons
       if (v && typeof v === "object" && String(v.origin || "").startsWith("banner:")) {
         if (!isKnownBannerOrigin(v.origin)) {
+          // Drop bogus banner marks
           delete v.origin;
-          delete v.bannerId; // also remove dangling bannerId
           mutated = true;
         }
       }
     }
-
     if (mutated) {
       localStorage.setItem("gufa_cart", JSON.stringify(bag));
       window.dispatchEvent(new CustomEvent("cart:update", { detail:{ reason:"scrub-unknown-banner-origin" }}));
     }
-  } catch (err) {
-    console.warn("[cart] banner scrub error", err);
-  }
+  } catch {}
 }
-
 
 
 // explicit eligibleItemIds > banner-derived (STRICT) > catalog > LS index
