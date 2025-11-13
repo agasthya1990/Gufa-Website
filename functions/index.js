@@ -309,6 +309,10 @@ exports.syncBannerLinks = onDocumentWritten("menuItems/{itemId}/bannerLinks/{ban
   const removed = Array.from(prev).filter(x => !next.has(x));
   const added   = Array.from(next).filter(x => !prev.has(x));
 
+  if (removed.length === 0 && added.length === 0) {
+    return; // nothing to sync
+  }
+
   // carry-through fields for couponLinks/*
   const extra = {};
   if (after.minOrderOverride != null) extra.minOrderOverride = Number(after.minOrderOverride);
