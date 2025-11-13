@@ -107,42 +107,6 @@ function updateCartLink(){
 if (!(window.COUPONS instanceof Map)) window.COUPONS = new Map();
 if (!Array.isArray(window.BANNERS)) window.BANNERS = [];
 
-// ✅ ADD — normalize BANNERS so every banner exposes .items:[itemId]
-(function normalizeBannersForIndex(){
-  try {
-    if (window.BANNERS instanceof Map) return; // already keyed
-    if (!Array.isArray(window.BANNERS)) { window.BANNERS = []; return; }
-
-    window.BANNERS = window.BANNERS.map(b => {
-      const items = Array.isArray(b.items) ? b.items
-                  : Array.isArray(b.itemIds) ? b.itemIds
-                  : Array.isArray(b.eligibleItemIds) ? b.eligibleItemIds
-                  : [];
-      const coupons = Array.isArray(b.linkedCouponIds) ? b.linkedCouponIds
-                    : Array.isArray(b.bannerCouponIds) ? b.bannerCouponIds
-                    : [];
-      return { ...b, items: items.map(String), linkedCouponIds: coupons.map(String) };
-    });
-  } catch {}
-})();
-
-// —— Persist a lightweight BANNERS snapshot so checkout can hydrate —— //
-(function persistBannersSnapshot(){
-  try {
-    // Only persist if we have a usable array form
-    if (Array.isArray(window.BANNERS) && window.BANNERS.length > 0) {
-      // Keep only the fields the cart needs
-      const slim = window.BANNERS.map(b => ({
-        id: String(b.id || ""),
-        items: Array.isArray(b.items) ? b.items.map(String) : [],
-        linkedCouponIds: Array.isArray(b.linkedCouponIds) ? b.linkedCouponIds.map(String) : []
-      }));
-      localStorage.setItem("gufa:BANNERS", JSON.stringify(slim));
-    }
-  } catch {}
-})();
-
-
 
 // —— Persist a lightweight coupons snapshot for checkout hydration ——//
 
@@ -186,29 +150,16 @@ if (!Array.isArray(window.BANNERS)) window.BANNERS = [];
     };
 
     // Walk catalog: accept promotions | coupons | couponIds (any present)
-   for (const it of catalog) {
-  const itemId = it?.id;
-  const ids = Array.isArray(it.promotions) ? it.promotions
-           : Array.isArray(it.coupons)    ? it.coupons
-           : Array.isArray(it.couponIds)  ? it.couponIds
-           : [];
-  for (const raw of ids) {
-    const cid = String(raw);
-    put(cid, itemId);
-    if (window.COUPONS instanceof Map && window.COUPONS.has(cid)) {
-      const meta = window.COUPONS.get(cid);
-      const code = (meta?.code || "").toString().trim();
-      if (code) put(code, itemId);
-    }
-  }
-
-  // ✅ ADD #1 — also index coupons referenced via per-item bannerLinks
-  if (Array.isArray(it.bannerLinks)) {
-    for (const bl of it.bannerLinks) {
-      const arr = Array.isArray(bl?.bannerCouponIds) ? bl.bannerCouponIds : [];
-      for (const tok of arr) {
-        const cid = String(tok);
+    for (const it of catalog) {
+      const itemId = it?.id;
+      const ids = Array.isArray(it.promotions) ? it.promotions
+               : Array.isArray(it.coupons)    ? it.coupons
+               : Array.isArray(it.couponIds)  ? it.couponIds
+               : [];
+      for (const raw of ids) {
+        const cid = String(raw);
         put(cid, itemId);
+        // also index by human code if we can map id->meta with code
         if (window.COUPONS instanceof Map && window.COUPONS.has(cid)) {
           const meta = window.COUPONS.get(cid);
           const code = (meta?.code || "").toString().trim();
@@ -216,28 +167,6 @@ if (!Array.isArray(window.BANNERS)) window.BANNERS = [];
         }
       }
     }
-  }
-}
-
-// ✅ ADD #2 — (after the for-loop, before you compute `out`) fold in BANNERS dataset
-if (Array.isArray(window.BANNERS) && window.BANNERS.length) {
-  for (const b of window.BANNERS) {
-    const itemIds = Array.isArray(b.items) ? b.items.map(String) : [];
-    const couponIds = Array.isArray(b.linkedCouponIds) ? b.linkedCouponIds.map(String)
-                     : Array.isArray(b.bannerCouponIds) ? b.bannerCouponIds.map(String)
-                     : [];
-    for (const cid of couponIds) {
-      for (const iid of itemIds) {
-        put(cid, iid);
-        if (window.COUPONS instanceof Map && window.COUPONS.has(cid)) {
-          const meta = window.COUPONS.get(cid);
-          const code = (meta?.code || "").toString().trim();
-          if (code) put(code, iid);
-        }
-      }
-    }
-  }
-}
 
 // If nothing found, leave any prior index intact.
 const out = Object.fromEntries(Object.entries(idx).map(([k,s]) => [k, Array.from(s)]));
@@ -466,21 +395,8 @@ if (!couponId) return;
 const catalog = (ITEMS && ITEMS.length ? ITEMS : (window.ITEMS || []));
 
 const eligibleItemIds = catalog
-  .filter(it => {
-    const plain = Array.isArray(it.promotions) ? it.promotions
-                : Array.isArray(it.coupons)    ? it.coupons
-                : Array.isArray(it.couponIds)  ? it.couponIds
-                : [];
-    const viaBanner = Array.isArray(it.bannerLinks)
-      ? it.bannerLinks.some(bl =>
-          Array.isArray(bl.bannerCouponIds) &&
-          bl.bannerCouponIds.map(String).includes(String(couponId))
-        )
-      : false;
-    return plain.map(String).includes(String(couponId)) || viaBanner;
-  })
+  .filter(it => Array.isArray(it.promotions) && it.promotions.map(String).includes(String(couponId)))
   .map(it => String(it.id));
-
 
 
 
@@ -712,70 +628,71 @@ function setQty(found, variantKey, price, nextQty) {
 // 1️⃣ Live Cart update
 try {
   if (window.Cart && typeof window.Cart.setQty === "function") {
-   // Infer banner provenance from the card or its container (deterministic only)
-  const card     = document.querySelector(`.menu-item[data-id="${found.id}"]`);
-  const activeBannerId = (view === "list" && listKind === "banner") ? String(listId || "") : "";
-  const bannerId =
-    card?.getAttribute("data-banner-id") ||
-    card?.dataset?.bannerId ||
-    card?.closest("[data-banner-id]")?.getAttribute("data-banner-id") ||
-    activeBannerId ||
-    "";
-  const origin = bannerId ? `banner:${bannerId}` : "non-banner";
-
+    // Infer banner provenance from the card or its container
+    const card     = document.querySelector(`.menu-item[data-id="${found.id}"]`);
+    const bannerId =
+      card?.getAttribute("data-banner-id") ||
+      card?.dataset?.bannerId ||
+      card?.closest("[data-banner-id]")?.getAttribute("data-banner-id") ||
+      document.querySelector("#globalResults")?.id ||  // safe fallback from your page
+      document.querySelector(".deals")?.className ||   // secondary fallback
+      "";
+    const origin = bannerId ? `banner:${bannerId}` : "non-banner";
 
     window.Cart.setQty(key, next, {
       id: found.id, name: found.name, variant: variantKey, price: Number(price) || 0,
-      bannerId: bannerId || "",           // ← add this
       origin
     });
   }
 } catch {}
 
-// 2️⃣ Persistent mirror for checkout hydration (single-key, flat)
+
+    // 2️⃣ Persistent mirror for checkout hydration (single-key, flat)
 try {
   const LS_KEY = "gufa_cart";
-  // Always start from LS to preserve banner locks; never prefer the live store here
   let bag = {};
-  try { bag = JSON.parse(localStorage.getItem(LS_KEY) || "{}"); } catch { bag = {}; }
+
+  // Prefer the live store’s flat items object
+  const live = window?.Cart?.get?.();
+  if (live && typeof live === "object" && Object.keys(live).length) {
+    bag = (live.items && typeof live.items === "object") ? live.items : live;
+  } else {
+    try { bag = JSON.parse(localStorage.getItem(LS_KEY) || "{}"); }
+    catch { bag = {}; }
+  }
   if (!bag || typeof bag !== "object") bag = {};
 
-  if (next <= 0) {
-    delete bag[key];
-  } else {
-    const prev = bag[key] || {};
+if (next <= 0) {
+  delete bag[key];
+} else {
+  const prev = bag[key] || {};
+  // Reuse the same origin we computed above if available
+  const card     = document.querySelector(`.menu-item[data-id="${found.id}"]`);
+  const bannerId =
+    card?.getAttribute("data-banner-id") ||
+    card?.dataset?.bannerId ||
+    card?.closest("[data-banner-id]")?.getAttribute("data-banner-id") ||
+    document.querySelector("#globalResults")?.id ||
+    document.querySelector(".deals")?.className ||
+    "";
+  const origin = prev.origin || (bannerId ? `banner:${bannerId}` : "non-banner");
 
-    // Infer banner deterministically from DOM, then fall back to previous lock
-    const card = document.querySelector(`.menu-item[data-id="${found.id}"]`);
-    const activeBannerId = (view === "list" && listKind === "banner") ? String(listId || "") : "";
-    const inferredBannerId =
-          card?.getAttribute("data-banner-id") ||
-          card?.dataset?.bannerId ||
-          card?.closest("[data-banner-id]")?.getAttribute("data-banner-id") ||
-          activeBannerId ||
-          ""; // no fuzzy globals
+  bag[key] = {
+    id: found.id,
+    name: found.name,
+    variant: variantKey,
+    price: Number(price) || Number(prev.price) || 0,
+    thumb: prev.thumb || "",
+    qty: next,
+    origin
+  };
+}
 
-    const bannerId = String(inferredBannerId || prev.bannerId || "");
-    const origin   = bannerId
-        ? `banner:${bannerId}`
-        : (prev.origin && prev.origin.startsWith("banner:") ? prev.origin : "non-banner");
 
-    bag[key] = {
-      id: found.id,
-      name: found.name,
-      variant: variantKey,
-      price: Number(price) || Number(prev.price) || 0,
-      thumb: prev.thumb || "",
-      qty: next,
-      bannerId,
-      origin
-    };
-  }
-
-  localStorage.setItem(LS_KEY, JSON.stringify(bag));
-  window.dispatchEvent(new CustomEvent("cart:update", { detail: { cart: { items: bag } } }));
+localStorage.setItem(LS_KEY, JSON.stringify(bag));
+window.dispatchEvent(new CustomEvent("cart:update", { detail: { cart: { items: bag } } }));
+  
 } catch {}
-
 
 
   if (next > 0) {
@@ -882,11 +799,9 @@ setTimeout(() => {
   : "";
 
     const steppers = variants.map(v => stepperHTML(m, v)).join("");
-    const isBannerView = (view === "list" && listKind === "banner");
-    const bannerAttr   = isBannerView ? ` data-banner-id="${String(listId || "")}"` : "";
 
     return `
-      <article class="menu-item" data-id="${m.id}"${bannerAttr}>
+      <article class="menu-item" data-id="${m.id}">
         ${m.imageUrl ? `<img loading="lazy" src="${m.imageUrl}" alt="${m.name||""}" class="menu-img"/>` : ""}
         <div class="menu-header">
           <h4 class="menu-name">${m.name || ""}</h4>
@@ -2251,44 +2166,9 @@ window.addEventListener("cart:update", () => {
   persistCouponCodes();
   buildAndPersistCouponIndex();
 });
+
+
 })();
-
-// ✅ Ensure bannerId/origin persistently attach to all banner-added items
-window.addEventListener("cart:update", () => {
-  try {
-    const live = window?.Cart?.get?.() || {};
-    const bag  = (live.items && typeof live.items === "object") ? live.items : live;
-    const snap = JSON.parse(localStorage.getItem("gufa_cart") || "{}");
-    let changed = false;
-
-    for (const [k, it] of Object.entries(bag || {})) {
-      const card = document.querySelector(`.menu-item[data-id="${it.id}"]`);
-      const bannerId =
-        card?.dataset?.bannerId ||
-        card?.getAttribute("data-banner-id") ||
-        card?.closest("[data-banner-id]")?.getAttribute("data-banner-id") || "";
-
-      if (bannerId && (!it.bannerId || it.bannerId !== bannerId)) {
-        it.bannerId = bannerId;
-        it.origin = `banner:${bannerId}`;
-        changed = true;
-      } else if (!it.bannerId && snap[k]?.bannerId) {
-        // fallback: hydrate from LS snapshot
-        it.bannerId = snap[k].bannerId;
-        it.origin = snap[k].origin || `banner:${snap[k].bannerId}`;
-        changed = true;
-      }
-    }
-
-    if (changed && window.Cart?.set) {
-      window.Cart.set(bag);
-      localStorage.setItem("gufa_cart", JSON.stringify(bag));
-      console.info("[menu] banner metadata refreshed into cart snapshot");
-    }
-  } catch (err) {
-    console.warn("[menu] bannerId integrity sync failed", err);
-  }
-});
 
 // Cross-origin checkout handoff: attach cart snapshot to the URL
 document.addEventListener('click', (e) => {
