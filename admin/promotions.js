@@ -195,6 +195,7 @@ function channelsToText(p){
   // fallback to legacy single-value 'channel'
   return (p?.channel === "dining") ? "Dining" : "Delivery";
 }
+
 function primaryChannelClass(p){
   // for pill coloring; if both checked, bias to Delivery so it's consistent
   const ch = p?.channels;
@@ -204,6 +205,41 @@ function primaryChannelClass(p){
   return p?.channel === "dining" ? "adm-pill--dining" : "adm-pill--delivery";
 }
 
+// --- Live "Linked items" counters (subscribe per-banner) --------------------
+const BANNER_LINK_UNSUBS = new Map(); // bannerId -> unsubscribe fn
+
+function tearDownBannerSubs(){
+  BANNER_LINK_UNSUBS.forEach(off => { try { off(); } catch(_){} });
+  BANNER_LINK_UNSUBS.clear();
+}
+
+/**
+ * Subscribe to /promotions/{bannerId}/couponLinks/* and compute live union of itemIds.
+ * Writes the count into the provided <span>.
+ */
+function liveCountForBanner(bannerId, spanEl){
+  if (!bannerId || !spanEl) return;
+  // Clean any previous sub for this bannerId
+  const prev = BANNER_LINK_UNSUBS.get(bannerId);
+  if (typeof prev === "function") { try { prev(); } catch(_){} }
+
+  const unsub = onSnapshot(
+    collection(db, "promotions", String(bannerId), "couponLinks"),
+    (snap) => {
+      const set = new Set();
+      snap.forEach(d => {
+        const link = d.data() || {};
+        if (link.active === false) return;
+        const arr = Array.isArray(link.itemIds) ? link.itemIds : [];
+        arr.forEach(x => set.add(String(x)));
+      });
+      const n = set.size;
+      spanEl.textContent = `• ${n} linked item${n===1 ? "" : "s"}`;
+    },
+    (err) => { console.error("[promotions] liveCountForBanner error:", err); }
+  );
+  BANNER_LINK_UNSUBS.set(bannerId, unsub);
+}
 
 // ===== Public init (same entry point, same shell) =====
 export function initPromotions() {
@@ -838,6 +874,8 @@ const headerB = `
   </div>
 `;
 
+// Kill any previous per-banner live subscriptions before re-render
+tearDownBannerSubs();
 
       // 1) Build a local coupon map from this same snapshot (id -> {code, channel})
       const couponMap = {};
@@ -876,18 +914,16 @@ const minHtml = (Number.isFinite(Number(p?.minOrderOverride)) && Number(p.minOrd
   : `<span class="adm-muted">—</span>`;
 
 // Count strictly from canonical field so UI never shows stale legacy counts
-const itemCount = Array.isArray(p.itemIds) ? p.itemIds.length : 0;
-
-
 rows.push(`
   <div class="adm-grid adm-grid-banners" data-id="${d.id}">
     <div><img src="${p.imageUrl}" alt="" width="80" height="80" style="object-fit:cover;border-radius:8px;border:1px solid #eee"/></div>
     <div>
       ${p.title || "(untitled)"}
-      <span class="adm-muted" style="margin-left:6px; font-size:12px;">
-        • ${itemCount} linked item${itemCount===1 ? "" : "s"}
+      <span class="adm-muted jsLiveItemCount" data-banner="${d.id}" style="margin-left:6px; font-size:12px;">
+        • — linked items
       </span>
     </div>
+
     <div>${linkedHTML}</div>
     <div class="adm-muted">${publishedTo}</div>
     <div>${minHtml}</div>  <!-- NEW: Min Order column -->
@@ -903,8 +939,14 @@ rows.push(`
 
       
       bannersList.innerHTML = rows.length
-        ? (headerB + rows.join(""))
-        : (headerB + `<div class="adm-muted" style="padding:8px">No banners</div>`);
+  ? (headerB + rows.join(""))
+  : (headerB + `<div class="adm-muted" style="padding:8px">No banners</div>`);
+
+// Wire per-banner live count from couponLinks/*
+bannersList.querySelectorAll(".jsLiveItemCount[data-banner]").forEach(span => {
+  const bid = span.getAttribute("data-banner");
+  liveCountForBanner(bid, span);
+});
 
       // 🔧 Wire events **inside** the snapshot (so they match the latest DOM)
       bannersList.querySelectorAll(".jsDelBanner").forEach(btn => {
