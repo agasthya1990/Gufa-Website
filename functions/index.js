@@ -1,13 +1,14 @@
-// functions/index.js  — banner-aware validation (Option B)
-// -------------------------------------------------------
+// functions/index.js — Realtime promos consistency + validation endpoints
+// Node 18+, Firebase Functions v2 Firestore triggers
+
 const functions = require("firebase-functions");
+const { onDocumentWritten } = require("firebase-functions/v2/firestore");
 const admin = require("firebase-admin");
 const cors = require("cors")({ origin: true });
-const { onDocumentWritten } = require("firebase-functions/v2/firestore");
-
 
 if (!admin.apps.length) admin.initializeApp();
 const db = admin.firestore();
+const TS = admin.firestore.FieldValue.serverTimestamp;
 
 // ---------------- helpers ----------------
 const norm = (s) => String(s || "").trim();
@@ -127,17 +128,17 @@ async function validateForBanner({ items, couponCode, bannerId, channel, phone, 
     if (!coupon || !link) return { ok: false, reason: "Coupon not allowed for this banner" };
     if (!channelAllowed({ coupon, banner, link, channel: ch }))
       return { ok: false, reason: "Coupon not available for this channel" };
-    // First check coupon link’s own itemIds
-if (!intersects(link.itemIds?.map(String) || [], itemIds)) {
-  // ✅ Fallback: allow banner-level itemIds
-  const bannerSnap = await getDoc(doc(db, "promotions", link.bannerId));
-  const bannerData = bannerSnap.exists() ? bannerSnap.data() : {};
-  const bannerItemIds = Array.isArray(bannerData.itemIds) ? bannerData.itemIds.map(String) : [];
-  if (!intersects(bannerItemIds, itemIds)) {
-    return { ok: false, reason: "Coupon not eligible for selected items" };
-  }
-}
 
+    // First check coupon link’s own itemIds; else fallback to banner.itemIds
+    const linkItemIds = Array.isArray(link.itemIds) ? link.itemIds.map(String) : [];
+    if (!intersects(linkItemIds, itemIds)) {
+      const bannerSnap = await db.doc(`promotions/${link.bannerId}`).get(); // admin SDK (no client getDoc/doc)
+      const bannerData = bannerSnap.exists ? bannerSnap.data() : {};
+      const bannerItemIds = Array.isArray(bannerData.itemIds) ? bannerData.itemIds.map(String) : [];
+      if (!intersects(bannerItemIds, itemIds)) {
+        return { ok: false, reason: "Coupon not eligible for selected items" };
+      }
+    }
 
     const minNeed = effectiveMinOrder({ coupon, link, banner, channel: ch });
     if (subtotal < minNeed) return { ok: false, reason: `Min order ₹${minNeed}` };
@@ -258,8 +259,8 @@ exports.placeOrder = functions.https.onRequest((req, res) =>
         coupon: applied, customer,
         payment: { method, status: method === "COD" ? "pending" : "created" },
         status: "pending",
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        createdAt: TS(),
+        updatedAt: TS(),
         // Keep traceability:
         bannerId: norm(bannerId),
         channel: (channel === "dining") ? "dining" : "delivery",
@@ -295,6 +296,7 @@ exports.getOrderPublic = functions.https.onRequest((req, res) =>
   })
 );
 
+// --- Keep your existing bannerLinks sync (unchanged) -------------------------
 exports.syncBannerLinks = onDocumentWritten("menuItems/{itemId}/bannerLinks/{bannerId}", async (event) => {
   const { itemId, bannerId } = event.params;
   const before = event.data?.before?.data() || {};
@@ -334,133 +336,52 @@ exports.syncBannerLinks = onDocumentWritten("menuItems/{itemId}/bannerLinks/{ban
   }
 });
 
+// === REALTIME CONSISTENCY TRIGGERS ===========================================
+// A) menuItems write → recompute itemIds on affected banners
+exports.onMenuItemWrite = onDocumentWritten("menuItems/{itemId}", async (event) => {
+  const itemId = String(event.params.itemId);
+  const after = event.data?.after?.data() || null;
+  const before = event.data?.before?.data() || null;
 
-// === AUTO-MIRROR: when an item's promotions array changes, recompute /bannerLinks/* ===
-exports.mirrorBannerLinksOnPromotionChange = onDocumentWritten("menuItems/{itemId}", async (event) => {
-exports.mirrorBannerIdOnCoupon = onDocumentWritten("promotions/{bannerId}", async (event) => {
-  const bannerId = String(event.params.bannerId);
+  const afterPromos  = new Set(Array.isArray(after?.promotions)  ? after.promotions.map(String)  : []);
+  const beforePromos = new Set(Array.isArray(before?.promotions) ? before.promotions.map(String) : []);
+  const affected = new Set([...afterPromos, ...beforePromos]); // union
+  if (affected.size === 0) return;
 
+  const snaps = await Promise.all([...affected].map(id => db.doc(`promotions/${id}`).get()));
+  const batch = db.batch();
+  for (const snap of snaps) {
+    if (!snap.exists) continue;
+    const data = snap.data() || {};
+    if (data.kind !== "banner") continue;
+
+    const set = new Set(Array.isArray(data.itemIds) ? data.itemIds.map(String) : []);
+    if (afterPromos.has(snap.id)) set.add(itemId); else set.delete(itemId);
+
+    batch.update(snap.ref, { itemIds: [...set], updatedAt: TS() });
+  }
+  await batch.commit();
+});
+
+// B) banner write → mirror banner.itemIds to each linked coupon.itemIds (and clear removed)
+exports.onBannerWrite = onDocumentWritten("promotions/{bannerId}", async (event) => {
   const before = event.data?.before?.data() || null;
   const after  = event.data?.after?.data()  || null;
 
-  // Only handle documents that are (or were) banners
   const wasBanner = before?.kind === "banner";
   const isBanner  = after?.kind === "banner";
   if (!wasBanner && !isBanner) return;
 
-  // Resolve previous/next linked coupon ids
-  const prev = new Set(Array.isArray(before?.linkedCouponIds) ? before.linkedCouponIds.map(String) : []);
-  const next = new Set(Array.isArray(after?.linkedCouponIds)  ? after.linkedCouponIds.map(String)  : []);
+  const itemIds    = Array.isArray(after?.itemIds) ? after.itemIds : [];
+  const nowSet     = new Set(Array.isArray(after?.linkedCouponIds)  ? after.linkedCouponIds.map(String)  : []);
+  const oldSet     = new Set(Array.isArray(before?.linkedCouponIds) ? before.linkedCouponIds.map(String) : []);
 
-  // If the banner was deleted, "next" is empty and all previous are removals
-  const added   = Array.from(next).filter(x => !prev.has(x));
-  const removed = Array.from(prev).filter(x => !next.has(x));
-
-  const ops = [];
-
-  // Add this bannerId to newly linked coupons
-  for (const cid of added) {
-    ops.push(
-      db.doc(`promotions/${String(cid)}`).set(
-        {
-          bannerIds: admin.firestore.FieldValue.arrayUnion(bannerId),
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        },
-        { merge: true }
-      )
-    );
+  const batch = db.batch();
+  for (const cid of nowSet) {
+    batch.update(db.doc(`promotions/${cid}`), { itemIds, updatedAt: TS() });
   }
-
-  // Remove this bannerId from unlinked coupons
-  for (const cid of removed) {
-    ops.push(
-      db.doc(`promotions/${String(cid)}`).set(
-        {
-          bannerIds: admin.firestore.FieldValue.arrayRemove(bannerId),
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        },
-        { merge: true }
-      )
-    );
+  for (const cid of oldSet) {
+    if (!nowSet.has(cid)) batch.update(db.doc(`promotions/${cid}`), { itemIds: [], updatedAt: TS() });
   }
-
-  if (ops.length) await Promise.all(ops);
-});
-
-  const after  = event.data.after?.data();
-  const before = event.data.before?.data();
-  if (!after) return; // deletion
-
-  const itemId = String(event.params.itemId);
-  const afterIds  = Array.isArray(after.promotions)  ? after.promotions.map(String) : [];
-  const beforeIds = Array.isArray(before?.promotions) ? before.promotions.map(String) : [];
-
-  // No change → nothing to do
-  if (JSON.stringify(afterIds.sort()) === JSON.stringify(beforeIds.sort())) return;
-
-  // Build couponId -> bannerId index (active banners)
-  const bannerSnap = await db.collection("promotions").where("kind","==","banner").get();
-  const couponToBanner = {};
-  bannerSnap.forEach(bDoc => {
-    const b = bDoc.data() || {};
-    if (b.active === false) return;
-    const linked = Array.isArray(b.linkedCouponIds) ? b.linkedCouponIds : [];
-    linked.forEach(cid => { couponToBanner[String(cid)] = String(bDoc.id); });
-  });
-
-  // Normalize: resolve any coupon *codes* in afterIds to their promotion *IDs*
-  const resolvedIds = new Set();
-
-  // Pass 1: keep any that are real doc IDs
-  for (const tok of afterIds) {
-    const snap = await db.collection("promotions").doc(String(tok)).get();
-    if (snap.exists && (snap.data()?.kind === "coupon")) {
-      resolvedIds.add(String(snap.id));
-    }
-  }
-
-  // Pass 2: for leftovers, treat as codes and resolve to active coupon IDs
-  const leftovers = afterIds.filter(x => !resolvedIds.has(String(x)));
-  for (const code of leftovers) {
-    const q = await db.collection("promotions")
-      .where("kind","==","coupon")
-      .where("code","==", String(code))
-      .limit(1).get();
-    if (!q.empty) {
-      const d = q.docs[0];
-      if (d.data()?.active !== false) resolvedIds.add(String(d.id));
-    }
-  }
-
-  const afterIdsNorm = Array.from(resolvedIds);
-
-  // Group selected coupons by banner (use normalized IDs)
-  const buckets = new Map(); // bannerId -> Set<couponId>
-  for (const cid of afterIdsNorm) {
-    const bid = couponToBanner[String(cid)];
-    if (!bid) continue;
-    if (!buckets.has(bid)) buckets.set(bid, new Set());
-    buckets.get(bid).add(String(cid));
-  }
-
-
-  const itemRef = db.doc(`menuItems/${itemId}`);
-  const blCol   = itemRef.collection("bannerLinks");
-
-  // 1) Upsert one doc per banner under /menuItems/{itemId}/bannerLinks/{bannerId}
-  for (const [bannerId, setOfCids] of buckets.entries()) {
-    await blCol.doc(bannerId).set({
-      bannerId,
-      bannerCouponIds: Array.from(setOfCids),
-      channels: { delivery: true, dining: true }  // adjust if you gate per banner
-    }, { merge: true });
-  }
-
-  // 2) Cleanup: remove orphan bannerLinks when a banner no longer applies
-  const existing = await blCol.get();
-  for (const d of existing.docs) {
-    if (!buckets.has(d.id)) {
-      await d.ref.delete();
-    }
-  }
+  await batch.commit();
 });
