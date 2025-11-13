@@ -759,10 +759,14 @@ try {
       "";
     const origin = bannerId ? `banner:${bannerId}` : "non-banner";
 
-    window.Cart.setQty(key, next, {
-      id: found.id, name: found.name, variant: variantKey, price: Number(price) || 0,
-      origin
-    });
+window.Cart.setQty(key, next, {
+  id: found.id,
+  name: found.name,
+  variant: variantKey,
+  price: Number(price) || 0,
+  bannerId: bannerId || "",
+  origin: bannerId ? `banner:${bannerId}` : "non-banner"
+   });
   }
 } catch {}
 
@@ -920,8 +924,8 @@ setTimeout(() => {
 
     const steppers = variants.map(v => stepperHTML(m, v)).join("");
 
-    return `
-      <article class="menu-item" data-id="${m.id}">
+        return `
+        <article class="menu-item" data-id="${m.id}" ${listKind==="banner" && listId ? `data-banner-id="${listId}"` : ""}>
         ${m.imageUrl ? `<img loading="lazy" src="${m.imageUrl}" alt="${m.name||""}" class="menu-img"/>` : ""}
         <div class="menu-header">
           <h4 class="menu-name">${m.name || ""}</h4>
