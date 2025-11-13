@@ -107,6 +107,36 @@ function updateCartLink(){
 if (!(window.COUPONS instanceof Map)) window.COUPONS = new Map();
 if (!Array.isArray(window.BANNERS)) window.BANNERS = [];
 
+// ✅ ADD — normalize BANNERS so every banner exposes .items:[itemId]
+(function normalizeBannersForIndex(){
+  try {
+    if (window.BANNERS instanceof Map) return; // already keyed
+    if (!Array.isArray(window.BANNERS)) { window.BANNERS = []; return; }
+
+    window.BANNERS = window.BANNERS.map(b => {
+      const items = Array.isArray(b.items) ? b.items
+                  : Array.isArray(b.itemIds) ? b.itemIds
+                  : Array.isArray(b.eligibleItemIds) ? b.eligibleItemIds
+                  : [];
+      const coupons = Array.isArray(b.linkedCouponIds) ? b.linkedCouponIds
+                    : Array.isArray(b.bannerCouponIds) ? b.bannerCouponIds
+                    : [];
+      return { ...b, items: items.map(String), linkedCouponIds: coupons.map(String) };
+    });
+  } catch {}
+})();
+
+  (async () => {
+    await Promise.all([
+      hydrateCouponsFromFirestoreOnce(),
+      hydrateBannersFromFirestoreOnce()
+    ]);
+    // One extra nudge so pricing & labels can recompute with fresh maps
+    window.dispatchEvent(new CustomEvent("cart:update", { detail:{ source:"promos-hydrated" }}));
+ 
+  })();
+})();
+
 
 // —— Persist a lightweight coupons snapshot for checkout hydration ——//
 
