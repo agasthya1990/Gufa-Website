@@ -241,42 +241,6 @@ function liveCountForBanner(bannerId, spanEl){
   BANNER_LINK_UNSUBS.set(bannerId, unsub);
 }
 
-// --- Live "Linked items" counters (subscribe per-banner) --------------------
-const BANNER_LINK_UNSUBS = new Map(); // bannerId -> unsubscribe fn
-
-function tearDownBannerSubs(){
-  BANNER_LINK_UNSUBS.forEach(off => { try { off(); } catch(_){} });
-  BANNER_LINK_UNSUBS.clear();
-}
-
-/**
- * Subscribe to /promotions/{bannerId}/couponLinks/* and compute live union of itemIds.
- * Writes the count into the provided <span>.
- */
-function liveCountForBanner(bannerId, spanEl){
-  if (!bannerId || !spanEl) return;
-  // Clean any previous sub for this bannerId
-  const prev = BANNER_LINK_UNSUBS.get(bannerId);
-  if (typeof prev === "function") { try { prev(); } catch(_){} }
-
-  const unsub = onSnapshot(
-    collection(db, "promotions", String(bannerId), "couponLinks"),
-    (snap) => {
-      const set = new Set();
-      snap.forEach(d => {
-        const link = d.data() || {};
-        if (link.active === false) return;
-        const arr = Array.isArray(link.itemIds) ? link.itemIds : [];
-        arr.forEach(x => set.add(String(x)));
-      });
-      const n = set.size;
-      spanEl.textContent = `• ${n} linked item${n===1 ? "" : "s"}`;
-    },
-    (err) => { console.error("[promotions] liveCountForBanner error:", err); }
-  );
-  BANNER_LINK_UNSUBS.set(bannerId, unsub);
-}
-
 // ===== Public init (same entry point, same shell) =====
 export function initPromotions() {
   const root = document.getElementById("promotionsRoot");
