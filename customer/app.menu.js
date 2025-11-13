@@ -732,9 +732,10 @@ try {
   }
 } catch {}
 
- // 2️⃣ Persistent mirror for checkout hydration (single-key, flat)
+// 2️⃣ Persistent mirror for checkout hydration (single-key, flat)
 try {
   const LS_KEY = "gufa_cart";
+  // Always start from LS to preserve banner locks; never prefer the live store here
   let bag = {};
   try { bag = JSON.parse(localStorage.getItem(LS_KEY) || "{}"); } catch { bag = {}; }
   if (!bag || typeof bag !== "object") bag = {};
@@ -748,15 +749,16 @@ try {
     const card = document.querySelector(`.menu-item[data-id="${found.id}"]`);
     const activeBannerId = (view === "list" && listKind === "banner") ? String(listId || "") : "";
     const inferredBannerId =
-      card?.getAttribute("data-banner-id") ||
-      card?.dataset?.bannerId ||
-      card?.closest("[data-banner-id]")?.getAttribute("data-banner-id") ||
-      activeBannerId || "";
+          card?.getAttribute("data-banner-id") ||
+          card?.dataset?.bannerId ||
+          card?.closest("[data-banner-id]")?.getAttribute("data-banner-id") ||
+          activeBannerId ||
+          ""; // no fuzzy globals
 
     const bannerId = String(inferredBannerId || prev.bannerId || "");
     const origin   = bannerId
-      ? `banner:${bannerId}`
-      : (prev.origin && prev.origin.startsWith("banner:") ? prev.origin : "non-banner");
+        ? `banner:${bannerId}`
+        : (prev.origin && prev.origin.startsWith("banner:") ? prev.origin : "non-banner");
 
     bag[key] = {
       id: found.id,
@@ -773,6 +775,7 @@ try {
   localStorage.setItem(LS_KEY, JSON.stringify(bag));
   window.dispatchEvent(new CustomEvent("cart:update", { detail: { cart: { items: bag } } }));
 } catch {}
+
 
 
   if (next > 0) {
