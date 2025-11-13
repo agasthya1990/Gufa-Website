@@ -712,18 +712,17 @@ function setQty(found, variantKey, price, nextQty) {
 // 1️⃣ Live Cart update
 try {
   if (window.Cart && typeof window.Cart.setQty === "function") {
-    // Infer banner provenance from the card or its container
-    const card     = document.querySelector(`.menu-item[data-id="${found.id}"]`);
-    const activeBannerId = (view === "list" && listKind === "banner") ? String(listId || "") : "";
-    const bannerId =
-      card?.getAttribute("data-banner-id") ||
-      card?.dataset?.bannerId ||
-      card?.closest("[data-banner-id]")?.getAttribute("data-banner-id") ||
-      activeBannerId ||
-      document.querySelector("#globalResults")?.id ||
-      document.querySelector(".deals")?.className ||
-      "";
-    const origin = bannerId ? `banner:${bannerId}` : "non-banner";
+   // Infer banner provenance from the card or its container (deterministic only)
+  const card     = document.querySelector(`.menu-item[data-id="${found.id}"]`);
+  const activeBannerId = (view === "list" && listKind === "banner") ? String(listId || "") : "";
+  const bannerId =
+    card?.getAttribute("data-banner-id") ||
+    card?.dataset?.bannerId ||
+    card?.closest("[data-banner-id]")?.getAttribute("data-banner-id") ||
+    activeBannerId ||
+    "";
+  const origin = bannerId ? `banner:${bannerId}` : "non-banner";
+
 
     window.Cart.setQty(key, next, {
       id: found.id, name: found.name, variant: variantKey, price: Number(price) || 0,
