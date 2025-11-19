@@ -770,16 +770,20 @@ function setQty(found, variantKey, price, nextQty) {
   const badge = document.querySelector(`.qty[data-key="${key}"] .num`);
   if (badge) badge.textContent = String(next);
 
-// 1️⃣ Live Cart update
+// 1️⃣ Live Cart update — STRICT + CONSISTENT provenance
+  
 try {
   if (window.Cart && typeof window.Cart.setQty === "function") {
-    // Infer banner provenance only from real banner containers
+
+    // Determine banner provenance
     const card = document.querySelector(`.menu-item[data-id="${found.id}"]`);
     const bannerId =
       card?.getAttribute("data-banner-id") ||
       card?.dataset?.bannerId ||
       card?.closest("[data-banner-id]")?.getAttribute("data-banner-id") ||
       "";
+
+    // Always mark origin deterministically
     const origin = bannerId ? `banner:${bannerId}` : "non-banner";
 
     window.Cart.setQty(key, next, {
@@ -787,11 +791,12 @@ try {
       name: found.name,
       variant: variantKey,
       price: Number(price) || 0,
-      bannerId: bannerId || "",
+      bannerId,
       origin
     });
   }
 } catch {}
+
 
 
 
@@ -815,13 +820,15 @@ if (next <= 0) {
 } else {
   const prev = bag[key] || {};
   // Reuse the same origin we computed above if available
- const card = document.querySelector(`.menu-item[data-id="${found.id}"]`);
+// Always recompute provenance cleanly (never inherit stale origin)
+const card = document.querySelector(`.menu-item[data-id="${found.id}"]`);
 const bannerId =
   card?.getAttribute("data-banner-id") ||
   card?.dataset?.bannerId ||
   card?.closest("[data-banner-id]")?.getAttribute("data-banner-id") ||
   "";
-const origin = prev.origin || (bannerId ? `banner:${bannerId}` : "non-banner");
+
+const origin = bannerId ? `banner:${bannerId}` : "non-banner";
 
 bag[key] = {
   id: found.id,
@@ -830,8 +837,10 @@ bag[key] = {
   price: Number(price) || Number(prev.price) || 0,
   thumb: prev.thumb || "",
   qty: next,
+  bannerId,
   origin
- };
+};
+
 }
 
 
