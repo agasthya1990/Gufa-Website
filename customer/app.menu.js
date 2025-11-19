@@ -782,17 +782,8 @@ try {
 
     // Determine banner provenance
     const card = document.querySelector(`.menu-item[data-id="${found.id}"]`);
-    const bannerId =
-      card?.getAttribute("data-banner-id") ||
-      card?.dataset?.bannerId ||
-      card?.closest("[data-banner-id]")?.getAttribute("data-banner-id") ||
-      "";
-
-    // Always mark origin deterministically
-    const origin = (bannerId && bannerId.trim() !== "") 
-  ? `banner:${bannerId.trim()}` 
-  : "non-banner";
-
+    const bannerId = (card?.getAttribute("data-banner-id") || "").trim();
+    const origin = (bannerId && bannerId.trim() !== "") ? banner:${bannerId.trim()} : "non-banner"
 
     window.Cart.setQty(key, next, {
       id: found.id,
@@ -830,16 +821,7 @@ if (next <= 0) {
   // Reuse the same origin we computed above if available
 // Always recompute provenance cleanly (never inherit stale origin)
 const card = document.querySelector(`.menu-item[data-id="${found.id}"]`);
-const bannerId =
-  card?.getAttribute("data-banner-id") ||
-  card?.dataset?.bannerId ||
-  card?.closest("[data-banner-id]")?.getAttribute("data-banner-id") ||
-  "";
-
-const origin = (bannerId && bannerId.trim() !== "") 
-  ? `banner:${bannerId.trim()}` 
-  : "non-banner";
-
+const bannerId = (card?.getAttribute("data-banner-id") || "").trim();
 
 bag[key] = {
   id: found.id,
@@ -850,8 +832,7 @@ bag[key] = {
   qty: next,
   bannerId,
   origin
-};
-
+ };
 }
 
 
