@@ -1088,39 +1088,48 @@ function findFirstApplicableCouponForCart(){
     const preferred = [];
     const fallback  = [];
 
-    for (const [cid, meta] of window.COUPONS){
-      if (!checkUsageAvailable(meta)) continue;
+     for (const [cid, meta] of window.COUPONS){
+    if (!checkUsageAvailable(meta)) continue;
 
-      const lock = buildLockFromMeta(String(cid), meta);
-      lock.source = "auto";
+    const lock = buildLockFromMeta(String(cid), meta);
+    lock.source = "auto";
 
-      // 🚫 NEW: skip non-banner coupons from auto-apply (global/manual-only)
-      if (!isBannerScoped(lock)) continue;
+    // 🚫 hard rule: auto-apply must be banner-only
+    // Global / non-banner coupons remain manual-only (Apply Coupon box).
+    if (!isBannerScoped(lock)) continue;
 
-      // --- SAFETY: resolver → meta/lock fallback (strict; no baseId injection)
-      let eligSet = (typeof resolveEligibilitySet === "function") 
-        ? resolveEligibilitySet(lock) 
-        : new Set();
-      if (!eligSet || eligSet.size === 0) {
-        const metaElig = Array.isArray(meta?.eligibleItemIds) ? meta.eligibleItemIds.map(s=>String(s).toLowerCase()) : [];
-        const lockElig = Array.isArray(lock?.scope?.eligibleItemIds) ? lock.scope.eligibleItemIds.map(s=>String(s).toLowerCase()) : [];
-        const merged   = Array.from(new Set([...metaElig, ...lockElig]));
-        if (merged.length) {
-          lock.scope = Object.assign({}, lock.scope, { eligibleItemIds: merged });
-          eligSet = new Set(merged);
-        } else {
-          // strict: leave empty; coupon not eligible for this base in auto selection
-          eligSet = new Set();
-        }
+    // --- SAFETY: resolver → meta/lock fallback (strict; no baseId injection)
+    let eligSet = (typeof resolveEligibilitySet === "function") 
+      ? resolveEligibilitySet(lock) 
+      : new Set();
+    if (!eligSet || eligSet.size === 0) {
+      const metaElig = Array.isArray(meta?.eligibleItemIds)
+        ? meta.eligibleItemIds.map(s => String(s).toLowerCase())
+        : [];
+      const lockElig = Array.isArray(lock?.scope?.eligibleItemIds)
+        ? lock.scope.eligibleItemIds.map(s => String(s).toLowerCase())
+        : [];
+      const merged = Array.from(new Set([...metaElig, ...lockElig]));
+      if (merged.length) {
+        lock.scope = Object.assign({}, lock.scope, { eligibleItemIds: merged });
+        eligSet = new Set(merged);
+      } else {
+        // strict: leave empty; coupon not eligible for this base in auto selection
+        eligSet = new Set();
       }
-
-      const hasDirectHit =
-        eligSet.has(baseId) ||
-        eligSet.has(bKey.toLowerCase()) ||
-        Array.from(eligSet).some(x => !String(x).includes(":") && bKey.toLowerCase().startsWith(String(x).toLowerCase() + ":"));
-
-      (hasDirectHit ? preferred : fallback).push(lock);
     }
+
+    const hasDirectHit =
+      eligSet.has(baseId) ||
+      eligSet.has(bKey.toLowerCase()) ||
+      Array.from(eligSet).some(x =>
+        !String(x).includes(":") &&
+        bKey.toLowerCase().startsWith(String(x).toLowerCase() + ":")
+      );
+
+    (hasDirectHit ? preferred : fallback).push(lock);
+  }
+
 
     // Prefer coupons whose eligibility directly matches this baseId
     for (const L of preferred){
