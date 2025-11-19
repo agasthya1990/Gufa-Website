@@ -459,6 +459,30 @@ if (bannerIdsNow.length) {
   );
 }
 
+       // ⭐ Ensure banner.itemIds stays correct based on linkedCouponIds even if not selected now
+try {
+  const allBannersSnap = await getDocs(query(collection(db, "promotions"), where("kind", "==", "banner")));
+  const moreWrites = [];
+  for (const bDoc of allBannersSnap.docs) {
+    const bId = String(bDoc.id);
+    const data = bDoc.data() || {};
+    const linked = Array.isArray(data.linkedCouponIds) ? data.linkedCouponIds.map(String) : [];
+
+    // if ANY linked coupon belongs to this item's couponIds, this item must appear under this banner
+    if (linked.some(cid => ids.includes(cid))) {
+      moreWrites.push(
+        updateDoc(doc(db, "promotions", bId), {
+          itemIds: arrayUnion(String(itemId)),
+          updatedAt: serverTimestamp()
+        })
+      );
+    }
+  }
+  if (moreWrites.length) await Promise.all(moreWrites);
+} catch (e) {
+  console.warn("[admin] forced banner.itemIds sync failed", e);
+}
+
        } catch (e) {
       console.warn("[admin] banner.itemIds arrayUnion failed", e);
     }
