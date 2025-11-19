@@ -1179,15 +1179,15 @@ await setDoc(doc(db, "promotions", id), {
 if (linkedClean.length) {
   await Promise.all(
     linkedClean.map(cid =>
-      updateDoc(doc(db, "promotions", String(cid)), {
-        bannerId: id,
-        bannerIds: arrayUnion(id),
-        updatedAt: serverTimestamp()
-      })
+    updateDoc(doc(db, "promotions", String(cid)), {
+    bannerId: id,
+    bannerIds: arrayUnion(id),
+    itemIds: arrayUnion(),  // safe no-op—will be filled by admin setItemPromotions
+    updatedAt: serverTimestamp()
+    });
     )
   );
 }
-
 
 
     newBannerForm.reset();
