@@ -1061,14 +1061,6 @@ await updateDoc(ref, {
   updatedAt: serverTimestamp()
 });
 
-await updateDoc(ref, {
-  title,
-  linkedCouponIds: idsClean,
-  targets,
-  minOrderOverride: (Number.isFinite(moo) && moo > 0) ? moo : null,
-  updatedAt: serverTimestamp()
-});
-
 /* ---------------------------
    SYNC banner.itemIds (canonical)
    --------------------------- */
