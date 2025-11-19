@@ -107,36 +107,6 @@ function updateCartLink(){
 if (!(window.COUPONS instanceof Map)) window.COUPONS = new Map();
 if (!Array.isArray(window.BANNERS)) window.BANNERS = [];
 
-// ✅ ADD — normalize BANNERS so every banner exposes .items:[itemId]
-(function normalizeBannersForIndex(){
-  try {
-    if (window.BANNERS instanceof Map) return; // already keyed
-    if (!Array.isArray(window.BANNERS)) { window.BANNERS = []; return; }
-
-    window.BANNERS = window.BANNERS.map(b => {
-      const items = Array.isArray(b.items) ? b.items
-                  : Array.isArray(b.itemIds) ? b.itemIds
-                  : Array.isArray(b.eligibleItemIds) ? b.eligibleItemIds
-                  : [];
-      const coupons = Array.isArray(b.linkedCouponIds) ? b.linkedCouponIds
-                    : Array.isArray(b.bannerCouponIds) ? b.bannerCouponIds
-                    : [];
-      return { ...b, items: items.map(String), linkedCouponIds: coupons.map(String) };
-    });
-  } catch {}
-})();
-
-  (async () => {
-    await Promise.all([
-      hydrateCouponsFromFirestoreOnce(),
-      hydrateBannersFromFirestoreOnce()
-    ]);
-    // One extra nudge so pricing & labels can recompute with fresh maps
-    window.dispatchEvent(new CustomEvent("cart:update", { detail:{ source:"promos-hydrated" }}));
- 
-  })();
-
-
 
 // —— Persist a lightweight coupons snapshot for checkout hydration ——//
 
@@ -167,12 +137,11 @@ if (!Array.isArray(window.BANNERS)) window.BANNERS = [];
 // NEW —— Persist coupon→items index from catalog (codes & ids accepted)
 (function buildAndPersistCouponIndex(){
   try {
-    const catalog = (Array.isArray(ITEMS) && ITEMS.length) ? ITEMS
-                   : (Array.isArray(window.ITEMS) ? window.ITEMS : []);
+    const catalog = (Array.isArray(ITEMS) && ITEMS.length) ? ITEMS : (Array.isArray(window.ITEMS) ? window.ITEMS : []);
     if (!catalog.length) return;
 
     // Build { tokenLower -> Set(itemIdLower) }, where token is either a coupon CODE or ID
-    const idx = {}; // token -> Set(itemIdLower)
+    const idx = {}; // token -> Set(itemId)
     const put = (token, itemId) => {
       if (!token || !itemId) return;
       const k = String(token).toLowerCase();
@@ -190,122 +159,33 @@ if (!Array.isArray(window.BANNERS)) window.BANNERS = [];
       for (const raw of ids) {
         const cid = String(raw);
         put(cid, itemId);
+        // also index by human code if we can map id->meta with code
         if (window.COUPONS instanceof Map && window.COUPONS.has(cid)) {
           const meta = window.COUPONS.get(cid);
           const code = (meta?.code || "").toString().trim();
           if (code) put(code, itemId);
         }
       }
-
-      // ✅ ADD #1 — also index coupons referenced via per-item bannerLinks
-      if (Array.isArray(it.bannerLinks)) {
-        for (const bl of it.bannerLinks) {
-          const arr = Array.isArray(bl?.bannerCouponIds) ? bl.bannerCouponIds : [];
-          for (const tok of arr) {
-            const cid = String(tok);
-            put(cid, itemId);
-            if (window.COUPONS instanceof Map && window.COUPONS.has(cid)) {
-              const meta = window.COUPONS.get(cid);
-              const code = (meta?.code || "").toString().trim();
-              if (code) put(code, itemId);
-            }
-          }
-        }
-      }
     }
 
-    // ✅ ADD #2 — fold in BANNERS dataset so couponIndex also sees banner-linked coupons
-    if (Array.isArray(window.BANNERS) && window.BANNERS.length) {
-      for (const b of window.BANNERS) {
-        const itemIds = Array.isArray(b.items) ? b.items.map(String) : [];
-        const couponIds = Array.isArray(b.linkedCouponIds) ? b.linkedCouponIds.map(String)
-                         : Array.isArray(b.bannerCouponIds) ? b.bannerCouponIds.map(String)
-                         : [];
-        for (const cid of couponIds) {
-          for (const iid of itemIds) {
-            put(cid, iid);
-            if (window.COUPONS instanceof Map && window.COUPONS.has(cid)) {
-              const meta = window.COUPONS.get(cid);
-              const code = (meta?.code || "").toString().trim();
-              if (code) put(code, iid);
-            }
-          }
-        }
-      }
-    }
-
-    // ✅ ADD #3 — Backfill banner.items[] from couponIndex + catalog so
-    //            each banner knows exactly which itemIds it touches.
-    if (Array.isArray(window.BANNERS) && window.BANNERS.length) {
-      // Map lowercased itemId -> original itemId from catalog
-      const idByLower = {};
-      for (const it of catalog) {
-        if (it && it.id) {
-          const orig = String(it.id);
-          idByLower[orig.toLowerCase()] = orig;
-        }
-      }
-
-      window.BANNERS = window.BANNERS.map(b => {
-        if (!b || !b.id) return b;
-
-        const existing = Array.isArray(b.items) ? b.items.map(String) : [];
-        const existingSet = new Set(existing);
-
-        const couponIds = Array.isArray(b.linkedCouponIds) ? b.linkedCouponIds
-                         : Array.isArray(b.bannerCouponIds) ? b.bannerCouponIds
-                         : [];
-
-        for (const rawCid of couponIds) {
-          const token = String(rawCid).toLowerCase();
-          const set = idx[token];
-          if (!set) continue;
-
-          for (const itemLower of set) {
-            const orig = idByLower[itemLower] || itemLower;
-            existingSet.add(orig);
-          }
-        }
-
-        return {
-          ...b,
-          items: Array.from(existingSet)
-        };
-      });
-
-      // Refresh gufa:BANNERS snapshot with the new items[]
-      try {
-        const slim = window.BANNERS.map(b => ({
-          id: String(b.id || ""),
-          items: Array.isArray(b.items) ? b.items.map(String) : [],
-          linkedCouponIds: Array.isArray(b.linkedCouponIds)
-            ? b.linkedCouponIds.map(String)
-            : []
-        }));
-        localStorage.setItem("gufa:BANNERS", JSON.stringify(slim));
-      } catch {}
-    }
-
-    // If nothing found, leave any prior index intact.
-    const out = Object.fromEntries(
-      Object.entries(idx).map(([k, s]) => [k, Array.from(s)])
-    );
-    if (Object.keys(out).length) {
-      // Re-entry guard + single-tick debounce for broadcast
-      if (window.__IDX_BUILDING) return;
-      window.__IDX_BUILDING = true;
-      try {
-        localStorage.setItem("gufa:COUPON_INDEX", JSON.stringify(out));
-        // Defer notify to next frame; coalesce multiple writes into one event
-        cancelAnimationFrame(window.__IDX_NOTIFY_RAF || 0);
-        window.__IDX_NOTIFY_RAF = requestAnimationFrame(() => {
-          try { window.dispatchEvent(new CustomEvent("promotions:hydrated")); } catch {}
-        });
-      } finally {
-        // release guard on microtask so any sync listeners finish first
-        Promise.resolve().then(() => { window.__IDX_BUILDING = false; });
-      }
-    }
+// If nothing found, leave any prior index intact.
+const out = Object.fromEntries(Object.entries(idx).map(([k,s]) => [k, Array.from(s)]));
+if (Object.keys(out).length) {
+  // Re-entry guard + single-tick debounce for broadcast
+  if (window.__IDX_BUILDING) return;
+  window.__IDX_BUILDING = true;
+  try {
+    localStorage.setItem("gufa:COUPON_INDEX", JSON.stringify(out));
+    // Defer notify to next frame; coalesce multiple writes into one event
+    cancelAnimationFrame(window.__IDX_NOTIFY_RAF || 0);
+    window.__IDX_NOTIFY_RAF = requestAnimationFrame(() => {
+      try { window.dispatchEvent(new CustomEvent("promotions:hydrated")); } catch {}
+    });
+  } finally {
+    // release guard on microtask so any sync listeners finish first
+    Promise.resolve().then(() => { window.__IDX_BUILDING = false; });
+  }
+}
 
   } catch {}
 })();
@@ -496,9 +376,9 @@ window.addEventListener("serviceMode:changed", () => {
 });
 
 
-window.lockCouponForActiveBannerIfNeeded = function (addedItemId) {
+
+   window.lockCouponForActiveBannerIfNeeded = function (addedItemId) {
   try {
-    // Only lock from within an actual banner list view
     if (!(view === "list" && listKind === "banner")) return;
 
     // Skip if another coupon is already locked
@@ -506,48 +386,24 @@ window.lockCouponForActiveBannerIfNeeded = function (addedItemId) {
     if (existing && existing.code) return;
 
     const ACTIVE_BANNER_ID = String(listId || "");
-    const ACTIVE_BANNER = (window.BANNERS || []).find(
-      b => String(b.id) === ACTIVE_BANNER_ID
-    );
+    const ACTIVE_BANNER = (window.BANNERS || []).find(b => String(b.id) === ACTIVE_BANNER_ID);
     if (!ACTIVE_BANNER) return;
 
-    const [couponId] = Array.isArray(ACTIVE_BANNER.linkedCouponIds)
-      ? ACTIVE_BANNER.linkedCouponIds
-      : [];
-    if (!couponId) return;
+const [couponId] = Array.isArray(ACTIVE_BANNER.linkedCouponIds) ? ACTIVE_BANNER.linkedCouponIds : [];
+if (!couponId) return;
 
-    const catalog = (ITEMS && ITEMS.length ? ITEMS : (window.ITEMS || [])) || [];
+const catalog = (ITEMS && ITEMS.length ? ITEMS : (window.ITEMS || []));
 
-    // Canonical eligible set: items listed under this banner.
-    // Fallback to catalog scan if banner.items is missing (defensive).
-    let eligibleItemIds = Array.isArray(ACTIVE_BANNER.items)
-      ? ACTIVE_BANNER.items.map(String)
-      : [];
+const eligibleItemIds = catalog
+  .filter(it => Array.isArray(it.promotions) && it.promotions.map(String).includes(String(couponId)))
+  .map(it => String(it.id));
 
-    if (!eligibleItemIds.length) {
-      eligibleItemIds = catalog
-        .filter(
-          it =>
-            Array.isArray(it.promotions) &&
-            it.promotions.map(String).includes(String(couponId))
-        )
-        .map(it => String(it.id));
-    }
 
-    // Ensure the just-added item is actually eligible for this banner coupon
+
     if (!eligibleItemIds.includes(String(addedItemId))) return;
 
-    // prune eligible strictly to banner items only
-eligibleItemIds = eligibleItemIds
-  .map(String)
-  .filter(id => Array.isArray(ACTIVE_BANNER.items) && ACTIVE_BANNER.items.map(String).includes(id));
-
-    const meta = (window.COUPONS instanceof Map)
-      ? window.COUPONS.get(String(couponId))
-      : null;
-    const targets = (meta && meta.targets)
-      ? meta.targets
-      : { delivery: true, dining: true };
+    const meta = (window.COUPONS instanceof Map) ? window.COUPONS.get(String(couponId)) : null;
+    const targets = (meta && meta.targets) ? meta.targets : { delivery: true, dining: true };
 
     const payload = {
       code:  (meta?.code || String(couponId)).toUpperCase(),
@@ -557,21 +413,15 @@ eligibleItemIds = eligibleItemIds
         delivery: !!targets.delivery,
         dining:   !!targets.dining
       },
-      scope: {
-        bannerId:        ACTIVE_BANNER_ID,        // 🔒 banner-scoped
-        couponId:        String(couponId),
-        eligibleItemIds: eligibleItemIds
-      },
-      source:  `banner:${ACTIVE_BANNER_ID}`,      // helps cart side classify scope
+      scope: { couponId: String(couponId), eligibleItemIds },
       lockedAt: Date.now()
     };
 
     localStorage.setItem("gufa_coupon", JSON.stringify(payload));
-    window.dispatchEvent(
-      new CustomEvent("cart:update", { detail: { coupon: payload } })
-    );
+    window.dispatchEvent(new CustomEvent("cart:update", { detail: { coupon: payload } }));
   } catch {}
 };
+
 
 
   /* ---------- DOM ---------- */
@@ -775,30 +625,26 @@ function setQty(found, variantKey, price, nextQty) {
   const badge = document.querySelector(`.qty[data-key="${key}"] .num`);
   if (badge) badge.textContent = String(next);
 
-// 1️⃣ Live Cart update — STRICT + CONSISTENT provenance
-  
+// 1️⃣ Live Cart update
 try {
   if (window.Cart && typeof window.Cart.setQty === "function") {
-
-    // Determine banner provenance
-    const card = document.querySelector(`.menu-item[data-id="${found.id}"]`);
-    const bannerId = (card?.getAttribute("data-banner-id") || "").trim();
-    const origin = (bannerId && bannerId.trim() !== "")
-  ? `banner:${bannerId.trim()}`
-  : "non-banner";
+    // Infer banner provenance from the card or its container
+    const card     = document.querySelector(`.menu-item[data-id="${found.id}"]`);
+    const bannerId =
+      card?.getAttribute("data-banner-id") ||
+      card?.dataset?.bannerId ||
+      card?.closest("[data-banner-id]")?.getAttribute("data-banner-id") ||
+      document.querySelector("#globalResults")?.id ||  // safe fallback from your page
+      document.querySelector(".deals")?.className ||   // secondary fallback
+      "";
+    const origin = bannerId ? `banner:${bannerId}` : "non-banner";
 
     window.Cart.setQty(key, next, {
-      id: found.id,
-      name: found.name,
-      variant: variantKey,
-      price: Number(price) || 0,
-      bannerId,
+      id: found.id, name: found.name, variant: variantKey, price: Number(price) || 0,
       origin
     });
   }
 } catch {}
-
-
 
 
     // 2️⃣ Persistent mirror for checkout hydration (single-key, flat)
@@ -821,47 +667,33 @@ if (next <= 0) {
 } else {
   const prev = bag[key] || {};
   // Reuse the same origin we computed above if available
-// Always recompute provenance cleanly (never inherit stale origin)
-const card = document.querySelector(`.menu-item[data-id="${found.id}"]`);
-const bannerId = (card?.getAttribute("data-banner-id") || "").trim();
-const origin = (bannerId && bannerId.trim() !== "")
-  ? `banner:${bannerId.trim()}`
-  : "non-banner";
+  const card     = document.querySelector(`.menu-item[data-id="${found.id}"]`);
+  const bannerId =
+    card?.getAttribute("data-banner-id") ||
+    card?.dataset?.bannerId ||
+    card?.closest("[data-banner-id]")?.getAttribute("data-banner-id") ||
+    document.querySelector("#globalResults")?.id ||
+    document.querySelector(".deals")?.className ||
+    "";
+  const origin = prev.origin || (bannerId ? `banner:${bannerId}` : "non-banner");
 
-  
-bag[key] = {
-  id: found.id,
-  name: found.name,
-  variant: variantKey,
-  price: Number(price) || Number(prev.price) || 0,
-  thumb: prev.thumb || "",
-  qty: next,
-  bannerId,
-  origin
- };
+  bag[key] = {
+    id: found.id,
+    name: found.name,
+    variant: variantKey,
+    price: Number(price) || Number(prev.price) || 0,
+    thumb: prev.thumb || "",
+    qty: next,
+    origin
+  };
 }
 
- 
 
 localStorage.setItem(LS_KEY, JSON.stringify(bag));
 window.dispatchEvent(new CustomEvent("cart:update", { detail: { cart: { items: bag } } }));
   
 } catch {}
 
-/* === FCFS writer === */
-try {
-  const baseKey = `${found.id}:${variantKey}`;
-  const bagLive = window?.Cart?.get?.() || {};
-  const qtyLive = Number(bagLive?.[baseKey]?.qty || 0);
-
-  if (qtyLive > 0){
-    const ORDER_KEY = "gufa:baseOrder";
-    let order = [];
-    try { order = JSON.parse(localStorage.getItem(ORDER_KEY) || "[]"); } catch {}
-    if (!order.includes(baseKey)) order.push(baseKey);
-    localStorage.setItem(ORDER_KEY, JSON.stringify(order));
-  }
-} catch {}
 
   if (next > 0) {
     try { window.lockCouponForActiveBannerIfNeeded?.(found.id); } catch {}
@@ -968,10 +800,8 @@ setTimeout(() => {
 
     const steppers = variants.map(v => stepperHTML(m, v)).join("");
 
-        return `
-        <article class="menu-item"
-        data-id="${m.id}"
-        data-banner-id="${(listKind==="banner" && listId) ? String(listId) : ""}"
+    return `
+      <article class="menu-item" data-id="${m.id}">
         ${m.imageUrl ? `<img loading="lazy" src="${m.imageUrl}" alt="${m.name||""}" class="menu-img"/>` : ""}
         <div class="menu-header">
           <h4 class="menu-name">${m.name || ""}</h4>
@@ -2218,10 +2048,8 @@ function persistCouponCodes(){
 
 // Build coupon → [itemIds] index from the live catalog/cards and write gufa:COUPON_INDEX
 function buildAndPersistCouponIndex(){
-if (window.__IDX_BUILDING) return;
-window.__IDX_BUILDING = true;
-if (!Array.isArray(ITEMS) || !ITEMS.length) { window.__IDX_BUILDING=false; return; }
-
+  if (window.__IDX_BUILDING) return;
+  window.__IDX_BUILDING = true;
   try {
     // Prefer a real catalog if present
     const ITEMS = Array.isArray(window.ITEMS) ? window.ITEMS : null;
