@@ -419,30 +419,32 @@ async function setItemPromotions(itemId, couponIds) {
       const bId = String(idx[String(cid)]);
       if (!bId) continue;
 
-      writes.push(
-        updateDoc(doc(db, "promotions", String(cid)), {
-          bannerId: bId,
-          bannerIds: arrayUnion(bId),
-          updatedAt: serverTimestamp()
-        })
-      );
-    }
+writes.push(
+  updateDoc(doc(db, "promotions", String(cid)), {
+    bannerId: bId,
+    bannerIds: arrayUnion(bId),
+    itemIds: arrayUnion(String(itemId)),     // ⭐ NEW: ensures /promotions/{couponId}/itemIds is correct
+    updatedAt: serverTimestamp()
+  })
+);
+}
     if (writes.length) await Promise.all(writes);
      
 // Step 3c: mirror item → banners (reverse index, no UI change)//
 // Guarantees promotions/{bannerId}.itemIds includes this itemId//
     try {
       const bannerIdsNow = Array.from(new Set(bannerOnlyIds.map(cid => String(idx[String(cid)])).filter(Boolean)));
-      if (bannerIdsNow.length) {
-        await Promise.all(
-          bannerIdsNow.map(bid =>
-            updateDoc(doc(db, "promotions", bid), {
-              itemIds: arrayUnion(String(itemId)),
-              updatedAt: serverTimestamp()
-            })
-          )
-        );
-      }
+if (bannerIdsNow.length) {
+  await Promise.all(
+    bannerIdsNow.map(bid =>
+      updateDoc(doc(db, "promotions", bid), {
+        itemIds: arrayUnion(String(itemId)),   // ⭐ NEW: ensures /promotions/{bannerId}/itemIds updates
+        updatedAt: serverTimestamp()
+      })
+    )
+  );
+}
+
        } catch (e) {
       console.warn("[admin] banner.itemIds arrayUnion failed", e);
     }
@@ -542,14 +544,14 @@ async function syncBannerLinksForItem(itemId, selectedCouponIds) {
         // remove stale subdoc
         deletions.push(deleteDoc(d.ref));
         // mirror: remove this item from the banner's reverse index
-        bannerRemovals.push(
-          updateDoc(doc(db, "promotions", bid), {
-            itemIds: arrayRemove(String(itemId)),
-            updatedAt: serverTimestamp()
-          })
-        );
-      }
-    });
+       bannerRemovals.push(
+       updateDoc(doc(db, "promotions", bid), {
+       itemIds: arrayRemove(String(itemId)),   // ⭐ keep data consistent
+      updatedAt: serverTimestamp()
+     })
+   );
+ }
+});
 
     if (deletions.length) await Promise.all(deletions);
     if (bannerRemovals.length) {
