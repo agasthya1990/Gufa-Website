@@ -496,9 +496,9 @@ window.addEventListener("serviceMode:changed", () => {
 });
 
 
-
-   window.lockCouponForActiveBannerIfNeeded = function (addedItemId) {
+window.lockCouponForActiveBannerIfNeeded = function (addedItemId) {
   try {
+    // Only lock from within an actual banner list view
     if (!(view === "list" && listKind === "banner")) return;
 
     // Skip if another coupon is already locked
@@ -506,24 +506,43 @@ window.addEventListener("serviceMode:changed", () => {
     if (existing && existing.code) return;
 
     const ACTIVE_BANNER_ID = String(listId || "");
-    const ACTIVE_BANNER = (window.BANNERS || []).find(b => String(b.id) === ACTIVE_BANNER_ID);
+    const ACTIVE_BANNER = (window.BANNERS || []).find(
+      b => String(b.id) === ACTIVE_BANNER_ID
+    );
     if (!ACTIVE_BANNER) return;
 
-const [couponId] = Array.isArray(ACTIVE_BANNER.linkedCouponIds) ? ACTIVE_BANNER.linkedCouponIds : [];
-if (!couponId) return;
+    const [couponId] = Array.isArray(ACTIVE_BANNER.linkedCouponIds)
+      ? ACTIVE_BANNER.linkedCouponIds
+      : [];
+    if (!couponId) return;
 
-const catalog = (ITEMS && ITEMS.length ? ITEMS : (window.ITEMS || []));
+    const catalog = (ITEMS && ITEMS.length ? ITEMS : (window.ITEMS || [])) || [];
 
-const eligibleItemIds = catalog
-  .filter(it => Array.isArray(it.promotions) && it.promotions.map(String).includes(String(couponId)))
-  .map(it => String(it.id));
+    // Canonical eligible set: items listed under this banner.
+    // Fallback to catalog scan if banner.items is missing (defensive).
+    let eligibleItemIds = Array.isArray(ACTIVE_BANNER.items)
+      ? ACTIVE_BANNER.items.map(String)
+      : [];
 
+    if (!eligibleItemIds.length) {
+      eligibleItemIds = catalog
+        .filter(
+          it =>
+            Array.isArray(it.promotions) &&
+            it.promotions.map(String).includes(String(couponId))
+        )
+        .map(it => String(it.id));
+    }
 
-
+    // Ensure the just-added item is actually eligible for this banner coupon
     if (!eligibleItemIds.includes(String(addedItemId))) return;
 
-    const meta = (window.COUPONS instanceof Map) ? window.COUPONS.get(String(couponId)) : null;
-    const targets = (meta && meta.targets) ? meta.targets : { delivery: true, dining: true };
+    const meta = (window.COUPONS instanceof Map)
+      ? window.COUPONS.get(String(couponId))
+      : null;
+    const targets = (meta && meta.targets)
+      ? meta.targets
+      : { delivery: true, dining: true };
 
     const payload = {
       code:  (meta?.code || String(couponId)).toUpperCase(),
@@ -533,15 +552,21 @@ const eligibleItemIds = catalog
         delivery: !!targets.delivery,
         dining:   !!targets.dining
       },
-      scope: { couponId: String(couponId), eligibleItemIds },
+      scope: {
+        bannerId:        ACTIVE_BANNER_ID,        // 🔒 banner-scoped
+        couponId:        String(couponId),
+        eligibleItemIds: eligibleItemIds
+      },
+      source:  `banner:${ACTIVE_BANNER_ID}`,      // helps cart side classify scope
       lockedAt: Date.now()
     };
 
     localStorage.setItem("gufa_coupon", JSON.stringify(payload));
-    window.dispatchEvent(new CustomEvent("cart:update", { detail: { coupon: payload } }));
+    window.dispatchEvent(
+      new CustomEvent("cart:update", { detail: { coupon: payload } })
+    );
   } catch {}
 };
-
 
 
   /* ---------- DOM ---------- */
@@ -748,27 +773,26 @@ function setQty(found, variantKey, price, nextQty) {
 // 1️⃣ Live Cart update
 try {
   if (window.Cart && typeof window.Cart.setQty === "function") {
-    // Infer banner provenance from the card or its container
-    const card     = document.querySelector(`.menu-item[data-id="${found.id}"]`);
+    // Infer banner provenance only from real banner containers
+    const card = document.querySelector(`.menu-item[data-id="${found.id}"]`);
     const bannerId =
       card?.getAttribute("data-banner-id") ||
       card?.dataset?.bannerId ||
       card?.closest("[data-banner-id]")?.getAttribute("data-banner-id") ||
-      document.querySelector("#globalResults")?.id ||  // safe fallback from your page
-      document.querySelector(".deals")?.className ||   // secondary fallback
       "";
     const origin = bannerId ? `banner:${bannerId}` : "non-banner";
 
-window.Cart.setQty(key, next, {
-  id: found.id,
-  name: found.name,
-  variant: variantKey,
-  price: Number(price) || 0,
-  bannerId: bannerId || "",
-  origin: bannerId ? `banner:${bannerId}` : "non-banner"
-   });
+    window.Cart.setQty(key, next, {
+      id: found.id,
+      name: found.name,
+      variant: variantKey,
+      price: Number(price) || 0,
+      bannerId: bannerId || "",
+      origin
+    });
   }
 } catch {}
+
 
 
     // 2️⃣ Persistent mirror for checkout hydration (single-key, flat)
@@ -791,25 +815,23 @@ if (next <= 0) {
 } else {
   const prev = bag[key] || {};
   // Reuse the same origin we computed above if available
-  const card     = document.querySelector(`.menu-item[data-id="${found.id}"]`);
-  const bannerId =
-    card?.getAttribute("data-banner-id") ||
-    card?.dataset?.bannerId ||
-    card?.closest("[data-banner-id]")?.getAttribute("data-banner-id") ||
-    document.querySelector("#globalResults")?.id ||
-    document.querySelector(".deals")?.className ||
-    "";
-  const origin = prev.origin || (bannerId ? `banner:${bannerId}` : "non-banner");
+ const card = document.querySelector(`.menu-item[data-id="${found.id}"]`);
+const bannerId =
+  card?.getAttribute("data-banner-id") ||
+  card?.dataset?.bannerId ||
+  card?.closest("[data-banner-id]")?.getAttribute("data-banner-id") ||
+  "";
+const origin = prev.origin || (bannerId ? `banner:${bannerId}` : "non-banner");
 
-  bag[key] = {
-    id: found.id,
-    name: found.name,
-    variant: variantKey,
-    price: Number(price) || Number(prev.price) || 0,
-    thumb: prev.thumb || "",
-    qty: next,
-    origin
-  };
+bag[key] = {
+  id: found.id,
+  name: found.name,
+  variant: variantKey,
+  price: Number(price) || Number(prev.price) || 0,
+  thumb: prev.thumb || "",
+  qty: next,
+  origin
+ };
 }
 
 
