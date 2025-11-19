@@ -783,7 +783,9 @@ try {
     // Determine banner provenance
     const card = document.querySelector(`.menu-item[data-id="${found.id}"]`);
     const bannerId = (card?.getAttribute("data-banner-id") || "").trim();
-    const origin = (bannerId && bannerId.trim() !== "") ? banner:${bannerId.trim()} : "non-banner"
+    const origin = (bannerId && bannerId.trim() !== "")
+  ? `banner:${bannerId.trim()}`
+  : "non-banner";
 
     window.Cart.setQty(key, next, {
       id: found.id,
@@ -822,7 +824,11 @@ if (next <= 0) {
 // Always recompute provenance cleanly (never inherit stale origin)
 const card = document.querySelector(`.menu-item[data-id="${found.id}"]`);
 const bannerId = (card?.getAttribute("data-banner-id") || "").trim();
+const origin = (bannerId && bannerId.trim() !== "")
+  ? `banner:${bannerId.trim()}`
+  : "non-banner";
 
+  
 bag[key] = {
   id: found.id,
   name: found.name,
@@ -835,6 +841,7 @@ bag[key] = {
  };
 }
 
+ 
 
 localStorage.setItem(LS_KEY, JSON.stringify(bag));
 window.dispatchEvent(new CustomEvent("cart:update", { detail: { cart: { items: bag } } }));
@@ -963,8 +970,8 @@ setTimeout(() => {
 
         return `
         <article class="menu-item"
-         data-id="${m.id}"
-         data-banner-id="${listKind==="banner" && listId ? listId : ""}">
+        data-id="${m.id}"
+        data-banner-id="${(listKind==="banner" && listId) ? String(listId) : ""}"
         ${m.imageUrl ? `<img loading="lazy" src="${m.imageUrl}" alt="${m.name||""}" class="menu-img"/>` : ""}
         <div class="menu-header">
           <h4 class="menu-name">${m.name || ""}</h4>
