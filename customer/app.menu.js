@@ -537,6 +537,11 @@ window.lockCouponForActiveBannerIfNeeded = function (addedItemId) {
     // Ensure the just-added item is actually eligible for this banner coupon
     if (!eligibleItemIds.includes(String(addedItemId))) return;
 
+    // prune eligible strictly to banner items only
+eligibleItemIds = eligibleItemIds
+  .map(String)
+  .filter(id => Array.isArray(ACTIVE_BANNER.items) && ACTIVE_BANNER.items.map(String).includes(id));
+
     const meta = (window.COUPONS instanceof Map)
       ? window.COUPONS.get(String(couponId))
       : null;
@@ -784,7 +789,10 @@ try {
       "";
 
     // Always mark origin deterministically
-    const origin = bannerId ? `banner:${bannerId}` : "non-banner";
+    const origin = (bannerId && bannerId.trim() !== "") 
+  ? `banner:${bannerId.trim()}` 
+  : "non-banner";
+
 
     window.Cart.setQty(key, next, {
       id: found.id,
@@ -828,7 +836,10 @@ const bannerId =
   card?.closest("[data-banner-id]")?.getAttribute("data-banner-id") ||
   "";
 
-const origin = bannerId ? `banner:${bannerId}` : "non-banner";
+const origin = (bannerId && bannerId.trim() !== "") 
+  ? `banner:${bannerId.trim()}` 
+  : "non-banner";
+
 
 bag[key] = {
   id: found.id,
@@ -849,6 +860,20 @@ window.dispatchEvent(new CustomEvent("cart:update", { detail: { cart: { items: b
   
 } catch {}
 
+/* === FCFS writer === */
+try {
+  const baseKey = `${found.id}:${variantKey}`;
+  const bagLive = window?.Cart?.get?.() || {};
+  const qtyLive = Number(bagLive?.[baseKey]?.qty || 0);
+
+  if (qtyLive > 0){
+    const ORDER_KEY = "gufa:baseOrder";
+    let order = [];
+    try { order = JSON.parse(localStorage.getItem(ORDER_KEY) || "[]"); } catch {}
+    if (!order.includes(baseKey)) order.push(baseKey);
+    localStorage.setItem(ORDER_KEY, JSON.stringify(order));
+  }
+} catch {}
 
   if (next > 0) {
     try { window.lockCouponForActiveBannerIfNeeded?.(found.id); } catch {}
@@ -956,7 +981,9 @@ setTimeout(() => {
     const steppers = variants.map(v => stepperHTML(m, v)).join("");
 
         return `
-        <article class="menu-item" data-id="${m.id}" ${listKind==="banner" && listId ? `data-banner-id="${listId}"` : ""}>
+        <article class="menu-item"
+         data-id="${m.id}"
+         data-banner-id="${listKind==="banner" && listId ? listId : ""}">
         ${m.imageUrl ? `<img loading="lazy" src="${m.imageUrl}" alt="${m.name||""}" class="menu-img"/>` : ""}
         <div class="menu-header">
           <h4 class="menu-name">${m.name || ""}</h4>
@@ -2203,8 +2230,10 @@ function persistCouponCodes(){
 
 // Build coupon → [itemIds] index from the live catalog/cards and write gufa:COUPON_INDEX
 function buildAndPersistCouponIndex(){
-  if (window.__IDX_BUILDING) return;
-  window.__IDX_BUILDING = true;
+if (window.__IDX_BUILDING) return;
+window.__IDX_BUILDING = true;
+if (!Array.isArray(ITEMS) || !ITEMS.length) { window.__IDX_BUILDING=false; return; }
+
   try {
     // Prefer a real catalog if present
     const ITEMS = Array.isArray(window.ITEMS) ? window.ITEMS : null;
