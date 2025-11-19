@@ -265,51 +265,126 @@ function writeCouponLockFromMeta(couponId, meta){
 }
 
 function wireApplyCouponUI(){
-  const UI = resolveLayout();
+  const UI    = resolveLayout();
   const input = UI.promoInput;
   const btn   = UI.promoApply;
+  const label = UI.promoLbl || null;
+
   if (!btn || !input) return;
 
+  const showError = (msg) => {
+    if (label) label.textContent = msg;
+  };
+
+  const showSuccess = (msg) => {
+    if (label) label.textContent = msg;
+  };
+
   const apply = () => {
-    const query = input.value;
-    const found = findCouponByCodeOrId(query);
-    if (!found || !found.meta || found.meta.active === false) {
-      // Minimal UX: reflect error in label line; totals will stay unchanged
-      if (UI.promoLbl) UI.promoLbl.textContent = "Promotion (): invalid or inactive";
+    const raw = (input.value || "").trim();
+    if (!raw) {
+      showError("Please enter a coupon code.");
       return;
     }
-    const ok = writeCouponLockFromMeta(found.id, found.meta);
 
-    // If nothing in cart qualifies yet, stash a hint for Menu to highlight next eligible item
-    try {
-      const ids = computeEligibleItemIdsForCoupon(found.id);
-      const hasEligibleInCart = (function(){
-        const bag = window?.Cart?.get?.() || {};
-        return Object.keys(bag).some(k => {
-          const baseId = String(k).split(":")[0];
-          return ids.includes(baseId) && Number(bag[k]?.qty || 0) > 0;
-        });
-      })();
-      if (!hasEligibleInCart && ids.length) {
-        localStorage.setItem("gufa:nextEligibleItem", ids[0]);
+    const codeLower = raw.toLowerCase();
+    const COUPONS   = window.COUPONS instanceof Map ? window.COUPONS : new Map();
+    let matchId = null;
+    let meta    = null;
+
+    // Find coupon by code (case-insensitive)
+    for (const [cid, m] of COUPONS.entries()) {
+      const c = String(m?.code || "").toLowerCase();
+      if (!c) continue;
+      if (c === codeLower) {
+        matchId = cid;
+        meta    = m;
+        break;
       }
+    }
+
+    if (!matchId || !meta || meta.active === false) {
+      showError("Promotion: invalid or inactive");
+      return;
+    }
+
+    // Build lock using the unified engine (banner/global aware)
+    const lock = buildLockFromMeta(matchId, meta);
+    lock.source      = "manual";
+    lock.enteredCode = raw;
+
+    // Mode validation (delivery vs dining)
+    const mode = (localStorage.getItem("gufa_mode") || "delivery").toLowerCase();
+    if (lock.valid) {
+      const allowed = mode === "delivery" ? !!lock.valid.delivery : !!lock.valid.dining;
+      if (!allowed) {
+        showError(`Coupon not valid for ${mode} orders.`);
+        return;
+      }
+    }
+
+    // Resolve final eligibility set (bannerOnly + catalog fallback for globals)
+    const eSet = resolveEligibilitySet(lock);
+    if (!eSet || eSet.size === 0) {
+      if (lock.scope && lock.scope.bannerOnly) {
+        showError("This coupon applies only to items in its banner.");
+      } else {
+        showError("No eligible items in your cart.");
+      }
+      return;
+    }
+
+    // Pick a baseId that actually exists in the cart & is eligible
+    const baseId = findBestDiscountingBaseId(lock);
+    if (!baseId) {
+      showError("This coupon does not reduce the order total.");
+      return;
+    }
+
+    lock.baseId = baseId;
+
+    // Persist lock + notify
+    try { localStorage.setItem("gufa_coupon", JSON.stringify(lock)); } catch {}
+    try {
+      window.dispatchEvent(
+        new CustomEvent("cart:update", { detail: { coupon: lock } })
+      );
     } catch {}
 
-    // Repaint will be triggered via cart:update; keep a tiny UX touch here
-    if (ok && UI.promoLbl) {
-      const c = found.meta.code || found.id;
-      UI.promoLbl.textContent = `Promotion (${String(c).toUpperCase()})`;
-    }
+    const codeToShow = meta.code || matchId;
+    showSuccess(`Promotion (${String(codeToShow).toUpperCase()}) applied`);
   };
 
   btn.addEventListener("click", apply);
-  input.addEventListener("keydown", (e) => { if (e.key === "Enter") apply(); });
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") apply();
+  });
+}
+
+
+function findBestDiscountingBaseId(lock){
+  const eSet = resolveEligibilitySet(lock);
+  if (!eSet || !eSet.size) return null;
+
+  const es = entries();
+  if (!Array.isArray(es) || !es.length) return null;
+
+  for (const [key] of es){
+    if (isAddonKey(key)) continue;
+    const baseId = String(key).split(":")[0].toLowerCase();
+    if (eSet.has(baseId)) {
+      return baseId;
+    }
+  }
+
+  return null;
 }
 
 // Boot the wire-up after DOM is ready
 document.addEventListener("DOMContentLoaded", () => {
   try { wireApplyCouponUI(); } catch {}
 });
+
 
 
 ;(function(){
