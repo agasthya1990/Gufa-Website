@@ -362,9 +362,26 @@ function wireApplyCouponUI(){
 }
 
 
+/* === FCFS base-order selector === */
+function pickFCFSBaseId(eligSet){
+  try {
+    const order = JSON.parse(localStorage.getItem("gufa:baseOrder") || "[]");
+    if (!Array.isArray(order) || !order.length) return null;
+
+    for (const baseKey of order){
+      const id = String(baseKey).split(":")[0].toLowerCase();
+      if (eligSet.has(id)) return id;
+    }
+    return null;
+  } catch { return null; }
+}
+
 function findBestDiscountingBaseId(lock){
   const eSet = resolveEligibilitySet(lock);
   if (!eSet || !eSet.size) return null;
+
+  const fcfs = pickFCFSBaseId(eSet);
+  if (fcfs) return fcfs;
 
   const es = entries();
   if (!Array.isArray(es) || !es.length) return null;
@@ -372,11 +389,8 @@ function findBestDiscountingBaseId(lock){
   for (const [key] of es){
     if (isAddonKey(key)) continue;
     const baseId = String(key).split(":")[0].toLowerCase();
-    if (eSet.has(baseId)) {
-      return baseId;
-    }
+    if (eSet.has(baseId)) return baseId;
   }
-
   return null;
 }
 
@@ -733,6 +747,40 @@ function guardStaleCouponLock(){
 
     const elig = (typeof resolveEligibilitySet === "function") ? resolveEligibilitySet(baseLock) : new Set();
 
+/* === Eligibility Resolver (banner-only aware) === */
+function resolveEligibilitySet(lock){
+  try {
+    const scope = lock?.scope || {};
+    const ids = Array.isArray(scope.eligibleItemIds)
+      ? scope.eligibleItemIds.map(s => String(s).toLowerCase())
+      : [];
+    const baseSet = new Set(ids);
+
+    // banner-only filter
+    if (lock?.scope?.bannerOnly) {
+      const bag = window?.Cart?.get?.() || {};
+      const filtered = new Set();
+      for (const id of baseSet){
+        const key = Object.keys(bag).find(k => k.split(":")[0].toLowerCase() === id);
+        const origin = key ? String(bag[key]?.origin || "") : "";
+        if (origin.startsWith("banner:")) filtered.add(id);
+      }
+      return filtered;
+    }
+
+    return baseSet;
+  } catch { return new Set(); }
+}
+
+function isBannerScoped(lock){
+  return !!lock?.scope?.bannerOnly;
+}
+
+function isKnownBannerOrigin(origin){
+  return typeof origin === "string" && origin.startsWith("banner:");
+}
+
+    
  const bannerOnly = isBannerScoped(baseLock); // ← NEW
 
 const ok = Object.keys(bag)
@@ -743,6 +791,7 @@ const ok = Object.keys(bag)
     if (bannerOnly && !isKnownBannerOrigin(origin)) return false;
     return elig.has(id);
   });
+
 
 if (!ok) {
   localStorage.removeItem("gufa_coupon");
@@ -1063,31 +1112,26 @@ function resolveEligibilitySet(locked){
     } catch {}
   }
 
-  // LS coupon→items index (supports code or id)
-  try {
-    const rawIdx = localStorage.getItem("gufa:COUPON_INDEX");
-    if (rawIdx) {
-      const idx = JSON.parse(rawIdx); // { tokenLower: [itemIdLower...] }
-      let key = String(scope.couponId || "").toLowerCase();
 
-      // Try mapping code -> id if needed
-      if (!idx[key]) {
-        const codesRaw = localStorage.getItem("gufa:COUPON_CODES");
-        if (codesRaw) {
-          const codes = JSON.parse(codesRaw); // { codeLower: idLower }
-          const mapped = codes[key];
-          if (mapped && idx[mapped]) key = mapped;
-        }
-      }
-      const arr = idx[key] || [];
-      if (Array.isArray(arr) && arr.length) {
-        return new Set(arr.map(s => String(s).toLowerCase()));
-      }
-    }
-  } catch {}
+  // Banner-only filter: remove any itemId not originating from a banner
 
-  return new Set();
+  if (isBannerScoped(locked)) {
+    try {
+      const bag = window?.Cart?.get?.() || {};
+      const filtered = new Set();
+      for (const id of ids || []) {
+        const key = Object.keys(bag).find(k => k.split(":")[0].toLowerCase() === id);
+        const origin = key ? String(bag[key]?.origin || "") : "";
+        if (isKnownBannerOrigin(origin)) filtered.add(id);
+      }
+      return filtered;
+    } catch {}
+  }
+
+  // fallback to “as-is”
+  return new Set(ids || []);
 }
+
 
 // Provenance: did this base line come from the currently locked banner/coupon?
 function hasBannerProvenance(baseKey) {
