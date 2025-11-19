@@ -1061,6 +1061,37 @@ await updateDoc(ref, {
   updatedAt: serverTimestamp()
 });
 
+await updateDoc(ref, {
+  title,
+  linkedCouponIds: idsClean,
+  targets,
+  minOrderOverride: (Number.isFinite(moo) && moo > 0) ? moo : null,
+  updatedAt: serverTimestamp()
+});
+
+/* ---------------------------
+   SYNC banner.itemIds (canonical)
+   --------------------------- */
+try {
+  // gather itemIds from all linked coupons
+  const itemSet = new Set();
+  const coupons = await Promise.all(idsClean.map(cid =>
+    getDoc(doc(db, "promotions", String(cid)))
+  ));
+
+  coupons.forEach(s => {
+    const dat = s.data() || {};
+    const arr = Array.isArray(dat.itemIds) ? dat.itemIds : [];
+    arr.forEach(it => itemSet.add(String(it)));
+  });
+
+  await updateDoc(ref, {
+    itemIds: Array.from(itemSet),
+    updatedAt: serverTimestamp()
+  });
+} catch (err) {
+  console.error("Failed to sync banner.itemIds:", err);
+}
            
 // Back-reference coupons → update bannerIds[] (idempotent, matches backend)
 const beforeIds = Array.isArray(p.linkedCouponIds) ? p.linkedCouponIds.map(String) : []; 
@@ -1154,6 +1185,26 @@ if (linkedClean.length) {
   );
 }
 
+// === Sync banner.itemIds on CREATE ===
+try {
+  const itemSet = new Set();
+  const coupons = await Promise.all(
+    linkedClean.map(cid => getDoc(doc(db, "promotions", String(cid))))
+  );
+
+  coupons.forEach(s => {
+    const dat = s.data() || {};
+    const arr = Array.isArray(dat.itemIds) ? dat.itemIds : [];
+    arr.forEach(it => itemSet.add(String(it)));
+  });
+
+  await updateDoc(doc(db, "promotions", id), {
+    itemIds: Array.from(itemSet),
+    updatedAt: serverTimestamp()
+  });
+} catch (err) {
+  console.error("Failed to seed banner.itemIds on create:", err);
+}
 
     newBannerForm.reset();
     // keep link/targets state visible in previews
