@@ -1117,26 +1117,16 @@ if (newBannerForm) {
       60000,
       "upload"
     );
+    
 const id = crypto.randomUUID();
 const linked = Array.isArray(NEW_BANNER_LINKED) ? NEW_BANNER_LINKED : [];
 const linkedClean = Array.from(new Set(linked.map(String)));
 
-// ✅ NEW: gather linked item IDs (menu items)
-const itemPickEls = document.querySelectorAll('.adm-menu-item[data-selected="true"]');
-const linkedItemIds = Array.from(itemPickEls)
-  .map(el => el.dataset.id || el.getAttribute('data-id'))
-  .filter(Boolean);
-
-// fallback note
-if (!linkedItemIds.length) console.warn("[Admin] Banner created without explicit itemIds.");
-
-// ✅ Replacement: add `itemIds` to banner doc
 await setDoc(doc(db, "promotions", id), {
   kind: "banner",
   title,
   imageUrl,
   linkedCouponIds: linkedClean,
-  itemIds: linkedItemIds,  // ✅ NEW FIELD
   targets: {
     delivery: !!NEW_BANNER_TARGETS?.delivery,
     dining:  !!NEW_BANNER_TARGETS?.dining
@@ -1149,6 +1139,7 @@ await setDoc(doc(db, "promotions", id), {
   createdAt: serverTimestamp(),
   active: true
 });
+
 
 // === Seed back-references on the linked coupons (single write per coupon) ===
 if (linkedClean.length) {
