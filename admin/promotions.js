@@ -1175,27 +1175,19 @@ await setDoc(doc(db, "promotions", id), {
   active: true
 });
 
-// === Seed back-references on the linked coupons (safe with backend, uses arrayUnion) ===
+// === Seed back-references on the linked coupons (single write per coupon) ===
 if (linkedClean.length) {
   await Promise.all(
     linkedClean.map(cid =>
       updateDoc(doc(db, "promotions", String(cid)), {
+        bannerId: id,
         bannerIds: arrayUnion(id),
         updatedAt: serverTimestamp()
       })
     )
   );
 }
-    
-// Back-reference coupons for a NEW banner
-if (linkedClean.length) {
-  await Promise.all(linkedClean.map(cid =>
-    updateDoc(doc(db, "promotions", String(cid)), {
-      bannerId: id,
-      updatedAt: serverTimestamp()
-    })
-  ));
-}
+
 
 
     newBannerForm.reset();
