@@ -1086,9 +1086,14 @@ try {
 }
            
 // Back-reference coupons → update bannerIds[] (idempotent, matches backend)
-const beforeIds = Array.isArray(p.linkedCouponIds) ? p.linkedCouponIds.map(String) : []; 
-const added   = idsClean.filter(x => !beforeIds.includes(x)); 
-const removed = beforeIds.filter(x => !idsClean.includes(x)); 
+const snapNow = await getDoc(ref);
+const after = Array.isArray(snapNow.data()?.linkedCouponIds)
+  ? snapNow.data().linkedCouponIds.map(String)
+  : [];
+
+const added   = idsClean.filter(x => !after.includes(x));
+const removed = after.filter(x => !idsClean.includes(x));
+ 
  
 if (added.length) { 
  await Promise.all(added.map(cid => 
