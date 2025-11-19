@@ -1094,92 +1094,84 @@ function findFirstApplicableCouponForCart(){
       const lock = buildLockFromMeta(String(cid), meta);
       lock.source = "auto";
 
+      // 🚫 NEW: skip non-banner coupons from auto-apply (global/manual-only)
+      if (!isBannerScoped(lock)) continue;
 
-// --- SAFETY: resolver → meta/lock fallback (strict; no baseId injection)
-let eligSet = (typeof resolveEligibilitySet === "function") 
-  ? resolveEligibilitySet(lock) 
-  : new Set();
-if (!eligSet || eligSet.size === 0) {
-  const metaElig = Array.isArray(meta?.eligibleItemIds) ? meta.eligibleItemIds.map(s=>String(s).toLowerCase()) : [];
-  const lockElig = Array.isArray(lock?.scope?.eligibleItemIds) ? lock.scope.eligibleItemIds.map(s=>String(s).toLowerCase()) : [];
-  const merged   = Array.from(new Set([...metaElig, ...lockElig]));
-  if (merged.length) {
-    lock.scope = Object.assign({}, lock.scope, { eligibleItemIds: merged });
-    eligSet = new Set(merged);
-  } else {
-    // strict: leave empty; coupon not eligible for this base in auto selection
-    eligSet = new Set();
-  }
-}
+      // --- SAFETY: resolver → meta/lock fallback (strict; no baseId injection)
+      let eligSet = (typeof resolveEligibilitySet === "function") 
+        ? resolveEligibilitySet(lock) 
+        : new Set();
+      if (!eligSet || eligSet.size === 0) {
+        const metaElig = Array.isArray(meta?.eligibleItemIds) ? meta.eligibleItemIds.map(s=>String(s).toLowerCase()) : [];
+        const lockElig = Array.isArray(lock?.scope?.eligibleItemIds) ? lock.scope.eligibleItemIds.map(s=>String(s).toLowerCase()) : [];
+        const merged   = Array.from(new Set([...metaElig, ...lockElig]));
+        if (merged.length) {
+          lock.scope = Object.assign({}, lock.scope, { eligibleItemIds: merged });
+          eligSet = new Set(merged);
+        } else {
+          // strict: leave empty; coupon not eligible for this base in auto selection
+          eligSet = new Set();
+        }
+      }
 
+      const hasDirectHit =
+        eligSet.has(baseId) ||
+        eligSet.has(bKey.toLowerCase()) ||
+        Array.from(eligSet).some(x => !String(x).includes(":") && bKey.toLowerCase().startsWith(String(x).toLowerCase() + ":"));
 
-const hasDirectHit =
-  eligSet.has(baseId) ||
-  eligSet.has(bKey.toLowerCase()) ||
-  Array.from(eligSet).some(x => !String(x).includes(":") && bKey.toLowerCase().startsWith(String(x).toLowerCase() + ":"));
+      (hasDirectHit ? preferred : fallback).push(lock);
+    }
 
-(hasDirectHit ? preferred : fallback).push(lock);
-      
-  }
+    // Prefer coupons whose eligibility directly matches this baseId
+    for (const L of preferred){
+      const eSet = (typeof resolveEligibilitySet === "function") ? resolveEligibilitySet(L) : new Set();
 
-for (const L of preferred){
-const eSet = (typeof resolveEligibilitySet === "function") ? resolveEligibilitySet(L) : new Set();
+      // banner-first, order-aware
+      const chosenBaseId = pickEligibleBaseIdForCouponBannerFirst(eSet, L);
+      if (!chosenBaseId) { 
+        // no banner candidate → do NOT spill to non-banner
+        continue; 
+      }
 
-// banner-first, order-aware
-const chosenBaseId = pickEligibleBaseIdForCouponBannerFirst(eSet, L);
-if (!chosenBaseId) { 
-  // no banner candidate → do NOT spill to non-banner
-  continue; 
-}
+      const bound = Object.assign({}, L, {
+        baseId: chosenBaseId,
+        scope: Object.assign({}, L.scope || {}, {
+          baseId: chosenBaseId,
+          eligibleItemIds: Array.isArray(L?.scope?.eligibleItemIds) && L.scope.eligibleItemIds.length
+            ? L.scope.eligibleItemIds
+            : Array.from(eSet || [])
+        })
+      });
+      const { discount } = computeDiscount(bound, base);
+      if (discount > 0) return bound;
+    }
 
-const bound = Object.assign({}, L, {
-  baseId: chosenBaseId,
-  scope: Object.assign({}, L.scope || {}, {
-    baseId: chosenBaseId,
-    eligibleItemIds: Array.isArray(L?.scope?.eligibleItemIds) && L.scope.eligibleItemIds.length
-      ? L.scope.eligibleItemIds
-      : Array.from(eSet || [])
-  })
-});
-const { discount } = computeDiscount(bound, base);
-if (discount > 0) return bound;
-}
+    // Otherwise any banner-scoped coupon that actually discounts
+    for (const L of fallback){
+      const eSet = (typeof resolveEligibilitySet === "function") ? resolveEligibilitySet(L) : new Set();
 
+      // banner-first, order-aware
+      const chosenBaseId = pickEligibleBaseIdForCouponBannerFirst(eSet, L);
+      if (!chosenBaseId) { 
+        // no banner candidate → do NOT spill to non-banner
+        continue; 
+      }
 
-
-    // Otherwise any coupon that actually discounts
-for (const L of fallback){
-const eSet = (typeof resolveEligibilitySet === "function") ? resolveEligibilitySet(L) : new Set();
-
-// banner-first, order-aware
-const chosenBaseId = pickEligibleBaseIdForCouponBannerFirst(eSet, L);
-if (!chosenBaseId) { 
-  // no banner candidate → do NOT spill to non-banner
-  continue; 
-}
-
-const bound = Object.assign({}, L, {
-  baseId: chosenBaseId,
-  scope: Object.assign({}, L.scope || {}, {
-    baseId: chosenBaseId,
-    eligibleItemIds: Array.isArray(L?.scope?.eligibleItemIds) && L.scope.eligibleItemIds.length
-      ? L.scope.eligibleItemIds
-      : Array.from(eSet || [])
-  })
-});
-const { discount } = computeDiscount(bound, base);
-if (discount > 0) return bound;
-}
-
-
-
-
+      const bound = Object.assign({}, L, {
+        baseId: chosenBaseId,
+        scope: Object.assign({}, L.scope || {}, {
+          baseId: chosenBaseId,
+          eligibleItemIds: Array.isArray(L?.scope?.eligibleItemIds) && L.scope.eligibleItemIds.length
+            ? L.scope.eligibleItemIds
+            : Array.from(eSet || [])
+        })
+      });
+      const { discount } = computeDiscount(bound, base);
+      if (discount > 0) return bound;
+    }
   }
   return null;
 }
-
-
-
 
 
   function clearLockIfNoLongerApplicable(){
