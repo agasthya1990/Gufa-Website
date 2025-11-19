@@ -361,7 +361,6 @@ function wireApplyCouponUI(){
   });
 }
 
-
 /* === FCFS base-order selector === */
 function pickFCFSBaseId(eligSet){
   try {
@@ -393,6 +392,7 @@ function findBestDiscountingBaseId(lock){
   }
   return null;
 }
+
 
 // Boot the wire-up after DOM is ready
 document.addEventListener("DOMContentLoaded", () => {
@@ -1111,7 +1111,6 @@ function resolveEligibilitySet(locked){
       }
     } catch {}
   }
-
 
   // Banner-only filter: remove any itemId not originating from a banner
 
