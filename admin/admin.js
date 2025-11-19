@@ -426,8 +426,22 @@ writes.push(
     itemIds: arrayUnion(String(itemId)),     // ⭐ NEW: ensures /promotions/{couponId}/itemIds is correct
     updatedAt: serverTimestamp()
   })
-);
+ );
 }
+     // ⭐ PATCH: Remove this itemId from coupons NOT in the new list
+const couponsSnap = await getDocs(query(collection(db, "promotions"), where("kind", "==", "coupon")));
+const staleWrites = [];
+for (const d of couponsSnap.docs) {
+  const cid = String(d.id);
+  if (!bannerOnlyIds.includes(cid)) {
+    staleWrites.push(
+      updateDoc(doc(db, "promotions", cid), {
+        itemIds: arrayRemove(String(itemId))
+      }).catch(()=>{})
+    );
+  }
+}
+    if (staleWrites.length) await Promise.all(staleWrites);
     if (writes.length) await Promise.all(writes);
      
 // Step 3c: mirror item → banners (reverse index, no UI change)//
@@ -552,7 +566,23 @@ async function syncBannerLinksForItem(itemId, selectedCouponIds) {
    );
  }
 });
-
+// ⭐ PATCH: Clean itemIds on banners no longer tied to any selected coupon
+const allBannersSnap = await getDocs(query(collection(db, "promotions"), where("kind", "==", "banner")));
+const staleBanners = [];
+for (const bDoc of allBannersSnap.docs) {
+  const bId = String(bDoc.id);
+  const b = bDoc.data();
+  const linked = Array.isArray(b.linkedCouponIds) ? b.linkedCouponIds.map(String) : [];
+  const intersection = linked.some(cid => ids.includes(cid));
+  if (!intersection) {
+    staleBanners.push(
+      updateDoc(doc(db, "promotions", bId), {
+        itemIds: arrayRemove(String(itemId))
+      }).catch(()=>{})
+    );
+  }
+}
+    if (staleBanners.length) await Promise.all(staleBanners);
     if (deletions.length) await Promise.all(deletions);
     if (bannerRemovals.length) {
       try { await Promise.all(bannerRemovals); }
