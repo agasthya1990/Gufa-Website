@@ -453,27 +453,14 @@ async function setItemPromotions(itemId, couponIds) {
 
 async function bulkSetItemPromotions(itemIds, couponIds) {
   const ids = _uniqStr(couponIds);
+  const targets = Array.isArray(itemIds) ? itemIds.map(String) : [];
+  if (!targets.length) return;
 
-  // 1) Keep UI semantics: write ALL selected IDs back to each item
-  const ops = [];
-  (itemIds || []).forEach(id => {
-    ops.push(updateDoc(doc(db, "menuItems", String(id)), {
-      promotions: ids,
-      updatedAt: serverTimestamp()
-    }));
-  });
-  await Promise.all(ops);
-
-  // 2) Also upsert /bannerLinks/* using only the banner-linked subset
-  try {
-    const idx = await buildCouponToBannerIndex();
-    const bannerOnlyIds = ids.filter(id => idx[String(id)]);
-    await Promise.all((itemIds || []).map(id =>
-      syncBannerLinksForItem(String(id), bannerOnlyIds)
-    ));
-  } catch (e) {
-    console.warn("[admin] bulk syncBannerLinksForItem failed", e);
-  }
+  // Reuse single-item pipeline so all Firestore mirrors stay consistent:
+  // menuItems.promotions, menuItems/{item}/bannerLinks, banner.itemIds, coupon.bannerId/bannerIds.
+  await Promise.all(
+    targets.map(id => setItemPromotions(id, ids))
+  );
 }
 
 
