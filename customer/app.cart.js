@@ -739,10 +739,15 @@ function buildLockFromMeta(cid, meta) {
                  : Array.isArray(meta?.itemIds)         ? meta.itemIds
                  : [];
   let eligSet = new Set(explicit.map(s => String(s).toLowerCase()));
+  let bannerOnly = false;
 
   // 2) Else derive from banners
   if (!eligSet.size) {
-    eligSet = eligibleIdsFromBanners({ couponId: cid });
+    const viaBanner = eligibleIdsFromBanners({ couponId: cid });
+    if (viaBanner && viaBanner.size) {
+      eligSet    = viaBanner;
+      bannerOnly = true; // this lock is fundamentally banner-scoped
+    }
   }
 
   // 3) Else derive from product catalog (ITEMS) by couponId → promotions/coupons/couponIds
@@ -755,17 +760,25 @@ function buildLockFromMeta(cid, meta) {
     } catch {}
   }
 
-return {
-  scope: { couponId: cid, eligibleItemIds: Array.from(eligSet) },
-  type:  String(meta?.type || "flat").toLowerCase(),
-  value: Number(meta?.value || 0),
-  minOrder: Number(meta?.minOrder || 0),
-  valid: meta?.targets ? { delivery: !!meta.targets.delivery, dining: !!meta.targets.dining } : undefined,
-  code: (meta?.code ? String(meta.code).toUpperCase() : undefined),
-  meta: meta || null
-};
+  const scope = {
+    couponId: cid,
+    eligibleItemIds: Array.from(eligSet)
+  };
+  if (bannerOnly) {
+    scope.bannerOnly = true; // used by resolver to block catalog/index fallback
+  }
 
+  return {
+    scope,
+    type:  String(meta?.type || "flat").toLowerCase(),
+    value: Number(meta?.value || 0),
+    minOrder: Number(meta?.minOrder || 0),
+    valid: meta?.targets ? { delivery: !!meta.targets.delivery, dining: !!meta.targets.dining } : undefined,
+    code: (meta?.code ? String(meta.code).toUpperCase() : undefined),
+    meta: meta || null
+  };
 }
+
 
 
 
@@ -955,12 +968,17 @@ function resolveEligibilitySet(locked){
   const byBanner = eligibleIdsFromBanners(scope);
   if (byBanner.size) return byBanner;
 
-  // 👇 NEW: if a bannerId is present but yielded no items, DO NOT fall back.
+  // If this lock was marked as banner-only, do NOT spill over to catalog/LS.
+  if (scope.bannerOnly) {
+    return new Set();
+  }
+
+  // 👇 If a bannerId is present but yielded no items, DO NOT fall back.
   if (String(scope.bannerId||"").trim()) {
     return new Set(); // no spillover to catalog/LS when banner scope is declared
   }
 
-  // Catalog fallback (only when no banner scope)
+  // Catalog fallback (only when no banner scope and not bannerOnly)
   if (typeof computeEligibleItemIdsForCoupon === "function" && scope.couponId) {
     try {
       const via = computeEligibleItemIdsForCoupon(String(scope.couponId));
@@ -995,9 +1013,6 @@ function resolveEligibilitySet(locked){
 
   return new Set();
 }
-
-
-
 
 // Provenance: did this base line come from the currently locked banner/coupon?
 function hasBannerProvenance(baseKey) {
