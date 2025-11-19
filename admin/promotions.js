@@ -214,31 +214,34 @@ function tearDownBannerSubs(){
 }
 
 /**
- * Subscribe to /promotions/{bannerId}/couponLinks/* and compute live union of itemIds.
+ * Subscribe to /promotions/{bannerId} and read the `itemIds` array directly.
  * Writes the count into the provided <span>.
+ *
+ * Source of truth: /promotions/{bannerId}.itemIds
  */
 function liveCountForBanner(bannerId, spanEl){
   if (!bannerId || !spanEl) return;
+
+  const key = String(bannerId);
+
   // Clean any previous sub for this bannerId
-  const prev = BANNER_LINK_UNSUBS.get(bannerId);
+  const prev = BANNER_LINK_UNSUBS.get(key);
   if (typeof prev === "function") { try { prev(); } catch(_){} }
 
+  const ref = doc(db, "promotions", key);
+
   const unsub = onSnapshot(
-    collection(db, "promotions", String(bannerId), "couponLinks"),
+    ref,
     (snap) => {
-      const set = new Set();
-      snap.forEach(d => {
-        const link = d.data() || {};
-        if (link.active === false) return;
-        const arr = Array.isArray(link.itemIds) ? link.itemIds : [];
-        arr.forEach(x => set.add(String(x)));
-      });
-      const n = set.size;
-      spanEl.textContent = `• ${n} linked item${n===1 ? "" : "s"}`;
+      const data = snap.data() || {};
+      const arr = Array.isArray(data.itemIds) ? data.itemIds : [];
+      const n = arr.length;
+      spanEl.textContent = `• ${n} linked item${n === 1 ? "" : "s"}`;
     },
     (err) => { console.error("[promotions] liveCountForBanner error:", err); }
   );
-  BANNER_LINK_UNSUBS.set(bannerId, unsub);
+
+  BANNER_LINK_UNSUBS.set(key, unsub);
 }
 
 // ===== Public init (same entry point, same shell) =====
