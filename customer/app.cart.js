@@ -1156,7 +1156,7 @@ function pickEligibleBaseIdForCouponBannerFirst(eSet, lock) {
 
   // FCFS: pick the first base item in the cart that matches any coupon eligibility,
   // and use that coupon exclusively (non-stackable).
-function findFirstApplicableCouponForCart(){
+function findFirstApplicableCouponForCart(nextTarget){
   const es = entries();
   if (!es.length) return null;
   if (!(window.COUPONS instanceof Map)) return null;
@@ -1209,9 +1209,13 @@ function findFirstApplicableCouponForCart(){
       }
     }
 
-    const hasDirectHit =
+const prioritized = (nextTarget && baseId === String(nextTarget).toLowerCase());
+
+const hasDirectHit =
+      prioritized ||
       eligSet.has(baseId) ||
       eligSet.has(bKey.toLowerCase()) ||
+
       Array.from(eligSet).some(x =>
         !String(x).includes(":") &&
         bKey.toLowerCase().startsWith(String(x).toLowerCase() + ":")
@@ -1273,16 +1277,28 @@ function findFirstApplicableCouponForCart(){
 }
 
 
-  function clearLockIfNoLongerApplicable(){
-    const lock = getLock();
-    if (!lock) return;
-// If no eligible items for this lock remain, clear it and trigger same-frame recompute.
-const elig = resolveEligibilitySet(lock);
-if (!elig.size){
-  setLock(null);
-  window.dispatchEvent(new CustomEvent("cart:update")); // ← ensures FCFS picks next promo immediately
-  return;
-}
+function clearLockIfNoLongerApplicable(){
+  const lock = getLock();
+  if (!lock) return;
+
+  const elig = resolveEligibilitySet(lock);
+
+  // If empty → record next eligible banner and clear
+  if (!elig.size){
+    const bag = window.Cart?.get?.() || {};
+    const next = Object.entries(bag)
+      .filter(([k,v]) => !k.includes(":") && isKnownBannerOrigin(v.origin))
+      .map(([k,v]) => String(v.id || k.split(":")[0]).toLowerCase())[0] || null;
+
+    if (next) {
+      try { localStorage.setItem("gufa:nextEligibleItem", next); } catch {}
+    }
+
+    setLock(null);
+    window.dispatchEvent(new CustomEvent("cart:update"));
+    return;
+  }
+
 
     // If the cart no longer contains any of the eligible IDs as base lines, clear it.
     let any = false;
@@ -1295,12 +1311,22 @@ if (!elig.size){
         any = true; break;
       }
     }
-    if (!any) {
-  setLock(null);
-  // trigger instant recompute so FCFS can pick the next coupon in the same frame
-  window.dispatchEvent(new CustomEvent("cart:update"));
+  
+ if (!any) {
+  const bag = window.Cart?.get?.() || {};
+  const next = Object.entries(bag)
+    .filter(([k,v]) => !k.includes(":") && isKnownBannerOrigin(v.origin))
+    .map(([k,v]) => String(v.id || k.split(":")[0]).toLowerCase())[0] || null;
+
+  if (next) {
+    try { localStorage.setItem("gufa:nextEligibleItem", next); } catch {}
   }
+
+  setLock(null);
+  window.dispatchEvent(new CustomEvent("cart:update"));
+ }
 }
+
 
 function enforceFirstComeLock(){
   // If there’s a current lock but it’s no longer applicable, clear it first.
@@ -1317,10 +1343,17 @@ function enforceFirstComeLock(){
   }
 
   // Pick the first coupon that actually yields a non-zero discount for current cart & mode.
-  const fcfs = findFirstApplicableCouponForCart();
-  if (!fcfs) return;
-  const test = computeDiscount(fcfs, base);
-  if (test.discount > 0) setLock(fcfs);
+let nextHint = null;
+try { nextHint = localStorage.getItem("gufa:nextEligibleItem"); } catch {}
+
+const fcfs = findFirstApplicableCouponForCart(nextHint);
+if (!fcfs) return;
+
+try { localStorage.removeItem("gufa:nextEligibleItem"); } catch {}
+
+const test = computeDiscount(fcfs, base);
+if (test.discount > 0) setLock(fcfs);
+
 }
 
 /* ===================== Discount computation ===================== */
@@ -1888,7 +1921,6 @@ if (!ok) {
   } else {
     boot();
   }
-
 
  /* ===================== Debug helper ===================== */
 window.CartDebug = window.CartDebug || {};
