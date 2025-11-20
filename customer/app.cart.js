@@ -465,9 +465,19 @@ function activeMode(){
           usedCount:  d.usedCount  ?? undefined
         };
 
-        window.COUPONS.set(String(doc.id), meta);
-        added++;
-      });
+window.COUPONS.set(String(doc.id), meta);
+added++;
+
+// === NEW: Record banner metadata for coupon linkage ===
+if (!window.BANNERS._meta) window.BANNERS._meta = {};
+const bannerId = d.bannerId || d.banner || null;
+if (bannerId) {
+  window.BANNERS._meta[bannerId] = {
+    couponId: d.couponId || String(doc.id),
+    couponCode: d.code || null
+   };
+  }
+});
 
       if (added > 0) {
         try {
@@ -504,13 +514,22 @@ function activeMode(){
         }
       }
 
-      // Normalize banners to Map
-      if (!(window.BANNERS instanceof Map)) window.BANNERS = new Map();
-      if (Array.isArray(data.banners)) {
-        for (const [key, arr] of data.banners) {
-          window.BANNERS.set(String(key), Array.isArray(arr) ? arr : []);
-        }
-      }
+// Normalize banners to Map
+if (!(window.BANNERS instanceof Map)) window.BANNERS = new Map();
+if (Array.isArray(data.banners)) {
+  for (const [key, arr] of data.banners) {
+    window.BANNERS.set(String(key), Array.isArray(arr) ? arr : []);
+  }
+}
+
+// === NEW: Attach banner metadata (couponId, couponCode) ===
+if (!window.BANNERS._meta) window.BANNERS._meta = {};
+if (Array.isArray(data.banners)) {
+  data.banners.forEach(([key, arr, meta]) => {
+    if (meta) window.BANNERS._meta[String(key)] = meta;
+  });
+}
+
 
       // Persist a lightweight snapshot for future tabs/pages
       try {
@@ -807,6 +826,31 @@ function eligibleIdsFromBanners(scope){
     const couponId = String(scope?.couponId || "").trim();
     const { meta, cid, code } = __findMetaByIdOrCode__(couponId || scope?.code || "");
     const codeU = String(code || meta?.code || "").toUpperCase();
+
+
+   //FIX: Restore Banner → Coupon linkage using Admin's real schema
+try {
+  if (window.BANNERS instanceof Map) {
+    for (const [bannerId, itemArr] of window.BANNERS.entries()) {
+
+      // ADMIN schema (Menu + Firestore):
+      // bannerId    = unique ID for banner
+      // itemArr     = array of itemIds for that banner
+      // window.BANNERS._meta[bannerId] = { couponId, couponCode }
+
+      const info = window.BANNERS._meta ? window.BANNERS._meta[bannerId] : null;
+
+      // If this banner maps to this coupon → all its items are eligible
+      if (info && (
+        String(info.couponId || "").toLowerCase() === cid.toLowerCase() ||
+        String(info.couponCode || "").toUpperCase() === codeU
+      )) {
+        (itemArr || []).forEach(x => out.add(String(x).toLowerCase()));
+      }
+    }
+  }
+} catch {}
+
 
     // CART FIX: restore banner → coupon linkage
 // So banner coupons regain eligible items & FCFS can detect banner-scoping
