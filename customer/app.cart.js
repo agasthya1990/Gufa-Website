@@ -632,19 +632,10 @@ const ok = Object.keys(bag)
     return elig.has(id);
   });
 
-// For global/non-banner coupons: they must NEVER auto-revive.
-// If this guard is running, and coupon is NOT banner-scoped,
-// treat it as stale, even if elig technically matches.
-if (!bannerOnly) {
-  localStorage.removeItem("gufa_coupon");
-  try {
-    window.dispatchEvent(new CustomEvent("cart:update", {
-      detail: { reason: "global-lock-cleared-enforced" }
-    }));
-  } catch {}
-  return;
-}
-
+// At this point:
+// - bannerOnly coupons must still have at least one eligible banner-origin base
+// - global/manual coupons must still have at least one eligible base (any origin)
+// If no such line remains, treat the lock as stale and drop it.
 if (!ok) {
   localStorage.removeItem("gufa_coupon");
   try {
@@ -656,7 +647,6 @@ if (!ok) {
 
 } catch {}
 }
-
 
 // run once now…
 guardStaleCouponLock();
