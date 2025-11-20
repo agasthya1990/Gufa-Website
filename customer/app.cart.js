@@ -471,15 +471,14 @@ if (bannerId) {
   meta.bannerCode = d.couponCode || d.code || null;
 }
 
-        
 window.COUPONS.set(String(doc.id), meta);
 added++;
 
 // === NEW: Record banner metadata for coupon linkage ===
 if (!window.BANNERS._meta) window.BANNERS._meta = {};
-const bannerId = d.bannerId || d.banner || null;
-if (bannerId) {
-  window.BANNERS._meta[bannerId] = {
+const bannerId2 = d.bannerId || d.banner || null;  // ✔ FIXED
+if (bannerId2) {
+  window.BANNERS._meta[bannerId2] = {
     couponId: d.couponId || String(doc.id),
     couponCode: d.code || null
    };
