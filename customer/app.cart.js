@@ -1201,22 +1201,22 @@ function clearLockIfNoLongerApplicable(){
   }
 
   if (!any) {
-    let next = null;
+  let next = null;
 
-    if (bannerOnly) {
-      next = pickNextBannerBaseId();
-      if (next) {
-        try { localStorage.setItem("gufa:nextEligibleItem", next); } catch {}
-      } else {
-        try { localStorage.removeItem("gufa:nextEligibleItem"); } catch {}
-      }
+  if (bannerOnly) {
+    next = pickNextBannerBaseId();
+    if (next) {
+      try { localStorage.setItem("gufa:nextEligibleItem", next); } catch {}
     } else {
-      // Global/manual lock: clear without setting a new next-eligible banner
       try { localStorage.removeItem("gufa:nextEligibleItem"); } catch {}
     }
+  } else {
+    // FIXED: Global/manual coupons must clear breadcrumb
+    try { localStorage.removeItem("gufa:nextEligibleItem"); } catch {}
+  }
 
-    setLock(null);
-    window.dispatchEvent(new CustomEvent("cart:update"));
+  setLock(null);
+  window.dispatchEvent(new CustomEvent("cart:update"));
   }
 }
 
