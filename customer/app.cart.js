@@ -614,71 +614,101 @@ async function ensureCouponsReady() {
   const getLock = () => { try { return JSON.parse(localStorage.getItem(COUPON_KEY) || "null"); } catch { return null; } };
   const setLock = (obj) => { try { obj ? localStorage.setItem(COUPON_KEY, JSON.stringify(obj)) : localStorage.removeItem(COUPON_KEY); } catch {} };
 
-// === STALE LOCK GUARD (NEW) ===
+// === STALE LOCK GUARD (FIXED: respect banner vs global on *persisted* lock) ===
 function guardStaleCouponLock(){
   try {
     const lock = JSON.parse(localStorage.getItem("gufa_coupon") || "null");
-    if (!lock?.scope?.couponId) return;
+    if (!lock || !lock.scope || !lock.scope.couponId) return;
 
     const map = (window.COUPONS instanceof Map) ? window.COUPONS : null;
-    if (!map) { localStorage.removeItem("gufa_coupon"); return; }
+    if (!map || map.size === 0) {
+      localStorage.removeItem("gufa_coupon");
+      return;
+    }
 
-    // resolve meta by id or by code
-    const cidLower = String(lock.scope.couponId).toLowerCase();
+    // resolve meta by id or by code (for fallback eligibility only)
+    const cidToken = String(lock.scope.couponId || "").toLowerCase();
     let meta = null, cidReal = null;
     for (const [k, m] of map) {
-      if (String(k).toLowerCase() === cidLower) { meta = m; cidReal = k; break; }
+      if (String(k).toLowerCase() === cidToken) { meta = m; cidReal = k; break; }
       const code = String(m?.code || "").toLowerCase();
-      if (!meta && code && code === cidLower) { meta = m; cidReal = k; }
+      if (!meta && code && code === cidToken) { meta = m; cidReal = k; }
     }
-    if (!meta) { localStorage.removeItem("gufa_coupon"); return; }
+    if (!meta) {
+      localStorage.removeItem("gufa_coupon");
+      return;
+    }
 
-    // eligibility must include at least one banner-origin eligible base in cart
     const bag = window.Cart?.get?.() || {};
-    const baseLock = (typeof buildLockFromMeta === "function")
-      ? buildLockFromMeta(String(cidReal), meta)
-      : { scope: { couponId: String(cidReal) } };
 
-    const elig = (typeof resolveEligibilitySet === "function") ? resolveEligibilitySet(baseLock) : new Set();
+    // ✅ Banner/global classification MUST use the persisted lock
+    const bannerOnly = (typeof isBannerScoped === "function") ? isBannerScoped(lock) : false;
 
- const bannerOnly = isBannerScoped(baseLock); // ← NEW
+    // Start with eligibility from the current lock
+    let baseLock = lock;
+    let elig = (typeof resolveEligibilitySet === "function")
+      ? resolveEligibilitySet(baseLock)
+      : new Set();
 
-const ok = Object.keys(bag)
-  .filter(k => k.split(":").length < 3)
-  .some(k => {
-    const id = k.split(":")[0].toLowerCase();
-    const origin = String(bag[k]?.origin || "");
-    if (bannerOnly && !isKnownBannerOrigin(origin)) return false;
-    return elig.has(id);
-  });
+    // If persisted scope has no elig set, fall back to meta-built lock
+    if (!elig || !(elig instanceof Set) || elig.size === 0) {
+      if (typeof buildLockFromMeta === "function") {
+        baseLock = buildLockFromMeta(String(cidReal), meta);
+        elig = (typeof resolveEligibilitySet === "function")
+          ? resolveEligibilitySet(baseLock)
+          : new Set();
+      } else {
+        elig = new Set();
+      }
+    }
 
-// At this point:
-// - bannerOnly coupons must still have at least one eligible banner-origin base
-// - global/manual coupons must still have at least one eligible base (any origin)
-// If no such line remains, treat the lock as stale and drop it.
-if (!ok) {
-  localStorage.removeItem("gufa_coupon");
-  try {
-    window.dispatchEvent(new CustomEvent("cart:update", {
-      detail:{ reason:"stale-lock-cleared" }
-    }));
+    // Still nothing → lock is stale for both banner & global
+    if (!elig || elig.size === 0) {
+      localStorage.removeItem("gufa_coupon");
+      try {
+        window.dispatchEvent(new CustomEvent("cart:update", {
+          detail:{ reason:"stale-lock-cleared:no-elig" }
+        }));
+      } catch {}
+      return;
+    }
+
+    const ok = Object.keys(bag)
+      .filter(k => k.split(":").length < 3) // base lines only
+      .some(k => {
+        const id     = k.split(":")[0].toLowerCase();
+        const origin = String(bag[k]?.origin || "");
+
+        // Banner coupons: require a *real* banner-origin base line
+        if (bannerOnly &&
+            typeof isKnownBannerOrigin === "function" &&
+            !isKnownBannerOrigin(origin)) {
+          return false;
+        }
+        return elig.has(id);
+      });
+
+    if (!ok) {
+      localStorage.removeItem("gufa_coupon");
+      try {
+        window.dispatchEvent(new CustomEvent("cart:update", {
+          detail:{ reason:"stale-lock-cleared" }
+        }));
+      } catch {}
+    }
   } catch {}
 }
 
-} catch {}
-}
 
 // …and re-run whenever the bag/mode changes
 try {
-window.addEventListener("cart:update", () => {
-  // ONLY guard after coupons + banners + cart bag are alive
-  if (window.COUPONS instanceof Map && window.COUPONS.size > 0 &&
-      window.BANNERS && (window.BANNERS instanceof Map ? window.BANNERS.size > 0 : true)) {
+  window.addEventListener("cart:update", () => {
+    // COUPONS must exist; BANNERS may legitimately be empty on checkout
+    if (!(window.COUPONS instanceof Map) || window.COUPONS.size === 0) return;
     guardStaleCouponLock();
-  }
-});
-
+  });
 } catch {}
+
 
   function displayCode(locked){
   try {
