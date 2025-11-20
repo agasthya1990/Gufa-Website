@@ -632,8 +632,28 @@ const ok = Object.keys(bag)
     return elig.has(id);
   });
 
+// For global/non-banner coupons: they must NEVER auto-revive.
+// If this guard is running, and coupon is NOT banner-scoped,
+// treat it as stale, even if elig technically matches.
+if (!bannerOnly) {
+  localStorage.removeItem("gufa_coupon");
+  try {
+    window.dispatchEvent(new CustomEvent("cart:update", {
+      detail: { reason: "global-lock-cleared-enforced" }
+    }));
+  } catch {}
+  return;
+}
+
 if (!ok) {
   localStorage.removeItem("gufa_coupon");
+  try {
+    window.dispatchEvent(new CustomEvent("cart:update", {
+      detail:{ reason:"stale-lock-cleared" }
+    }));
+  } catch {}
+}
+
   try { window.dispatchEvent(new CustomEvent("cart:update", { detail:{ reason:"stale-lock-cleared" } })); } catch {}
 }
   } catch {}
@@ -1052,6 +1072,12 @@ function findFirstApplicableCouponForCart(){
     const fallback  = [];
 
     for (const [cid, meta] of window.COUPONS){
+      const tmpLock = buildLockFromMeta(String(cid), meta);
+const tmpBanner = isBannerScoped(tmpLock);
+
+// 🚫 Global coupon → completely exclude from FCFS
+if (!tmpBanner) continue;
+
       if (!checkUsageAvailable(meta)) continue;
 
       const lock = buildLockFromMeta(String(cid), meta);
@@ -1222,6 +1248,15 @@ function clearLockIfNoLongerApplicable(){
 
 
 function enforceFirstComeLock(){
+  const existing = getLock();
+
+  // If a global/manual coupon exists → NEVER auto-apply anything.
+  if (existing && !isBannerScoped(existing)) {
+    // still allow it to clear if totally invalid
+    clearLockIfNoLongerApplicable();
+    return; // hard stop: no FCFS allowed
+  }
+
   // If there’s a current lock but it’s no longer applicable, clear it first.
   clearLockIfNoLongerApplicable();
 
