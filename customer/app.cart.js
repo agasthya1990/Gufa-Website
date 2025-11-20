@@ -654,10 +654,9 @@ if (!ok) {
   } catch {}
 }
 
-  try { window.dispatchEvent(new CustomEvent("cart:update", { detail:{ reason:"stale-lock-cleared" } })); } catch {}
+} catch {}
 }
-  } catch {}
-}
+
 
 // run once now…
 guardStaleCouponLock();
