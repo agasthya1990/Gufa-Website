@@ -590,6 +590,10 @@ async function ensureCouponsReady() {
   } catch {}
 })();
 
+// RUN STALE-LOCK GUARD ONLY AFTER COUPONS EXIST
+try { guardStaleCouponLock(); } catch {}
+
+  
   /* ===================== Coupon Lock ===================== */
   const getLock = () => { try { return JSON.parse(localStorage.getItem(COUPON_KEY) || "null"); } catch { return null; } };
   const setLock = (obj) => { try { obj ? localStorage.setItem(COUPON_KEY, JSON.stringify(obj)) : localStorage.removeItem(COUPON_KEY); } catch {} };
@@ -648,8 +652,6 @@ if (!ok) {
 } catch {}
 }
 
-// run once now…
-guardStaleCouponLock();
 // …and re-run whenever the bag/mode changes
 try {
   window.addEventListener("cart:update",          guardStaleCouponLock);
