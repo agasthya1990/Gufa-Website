@@ -808,6 +808,24 @@ function eligibleIdsFromBanners(scope){
     const { meta, cid, code } = __findMetaByIdOrCode__(couponId || scope?.code || "");
     const codeU = String(code || meta?.code || "").toUpperCase();
 
+    // CART FIX: restore banner → coupon linkage
+// So banner coupons regain eligible items & FCFS can detect banner-scoping
+try {
+  // Look for banners that list this couponId directly
+  if (window.BANNERS instanceof Map) {
+    for (const [bid, arr] of window.BANNERS) {
+      if (Array.isArray(arr) && arr.length) {
+        // If admin stored banner links under menuItems/... they won’t appear here.
+        // But if you used couponId mapping, detect via eligibleItemIds fallback.
+        if (!out.size && String(scope.couponId) && String(bid).includes(scope.couponId)) {
+          arr.forEach(v => out.add(String(v).toLowerCase()));
+        }
+      }
+    }
+  }
+} catch {}
+
+
     // Helper to add all ids from a banner key
     const addAll = (arr) => {
       if (Array.isArray(arr)) arr.forEach(v => out.add(String(v).toLowerCase()));
