@@ -459,12 +459,19 @@ function activeMode(){
           value:     Number(d.value || 0),
           minOrder:  Number(d.minOrder || 0),
           targets:   { delivery: !!targetsRaw.delivery, dining: !!targetsRaw.dining },
-          // optional fields if you later add them
           eligibleItemIds: Array.isArray(d.eligibleItemIds) ? d.eligibleItemIds : undefined,
           usageLimit: d.usageLimit ?? undefined,
           usedCount:  d.usedCount  ?? undefined
         };
 
+// Inject banner linkage directly into meta so FCFS & resolver see it
+const bannerId = d.bannerId || d.banner || null;
+if (bannerId) {
+  meta.bannerId = String(bannerId);
+  meta.bannerCode = d.couponCode || d.code || null;
+}
+
+        
 window.COUPONS.set(String(doc.id), meta);
 added++;
 
