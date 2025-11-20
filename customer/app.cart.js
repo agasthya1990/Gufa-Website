@@ -590,9 +590,6 @@ async function ensureCouponsReady() {
   } catch {}
 })();
 
-// RUN STALE-LOCK GUARD ONLY AFTER COUPONS EXIST
-try { guardStaleCouponLock(); } catch {}
-
   
   /* ===================== Coupon Lock ===================== */
   const getLock = () => { try { return JSON.parse(localStorage.getItem(COUPON_KEY) || "null"); } catch { return null; } };
@@ -654,12 +651,15 @@ if (!ok) {
 
 // …and re-run whenever the bag/mode changes
 try {
-  window.addEventListener("cart:update",          guardStaleCouponLock);
-  window.addEventListener("mode:change",          guardStaleCouponLock);
-  window.addEventListener("serviceMode:changed",  guardStaleCouponLock);
+window.addEventListener("cart:update", () => {
+  // ONLY guard after coupons + banners + cart bag are alive
+  if (window.COUPONS instanceof Map && window.COUPONS.size > 0 &&
+      window.BANNERS && (window.BANNERS instanceof Map ? window.BANNERS.size > 0 : true)) {
+    guardStaleCouponLock();
+  }
+});
+
 } catch {}
-
-
 
   function displayCode(locked){
   try {
