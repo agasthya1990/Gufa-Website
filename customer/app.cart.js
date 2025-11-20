@@ -647,8 +647,10 @@ function guardStaleCouponLock(){
 
     const bag = window.Cart?.get?.() || {};
 
-    // ✅ Banner/global classification MUST use the persisted lock
-    const bannerOnly = (typeof isBannerScoped === "function") ? isBannerScoped(lock) : false;
+    // HARD SPLIT
+const bannerOnly = lockIsBanner(lock);
+const globalOnly = lockIsGlobal(lock);
+
 
     // Start with eligibility from the current lock
     let baseLock = lock;
@@ -694,8 +696,11 @@ function guardStaleCouponLock(){
         return elig.has(id);
       });
 
-    if (!ok) {
-      localStorage.removeItem("gufa_coupon");
+if (!ok) {
+  // global lock → always clear
+  // banner lock → clear only if no banner-origin base remains
+  localStorage.removeItem("gufa_coupon");
+
       try {
         window.dispatchEvent(new CustomEvent("cart:update", {
           detail:{ reason:"stale-lock-cleared" }
@@ -785,10 +790,11 @@ function buildLockFromMeta(cid, meta) {
   }
 
 return {
-  scope: { 
-    couponId: cid,
-    bannerId: meta?.bannerId || null,  // ← NEW (critical)
-    eligibleItemIds: Array.from(eligSet)
+scope: { 
+  couponId: cid,
+  bannerId: meta?.bannerId || null,
+  type: isGlobalCoupon(meta) ? "global" : "banner",
+  eligibleItemIds: Array.from(eligSet)
   },
   type:  String(meta?.type || "flat").toLowerCase(),
   value: Number(meta?.value || 0),
@@ -947,6 +953,42 @@ function isBannerScoped(locked){
   return false;
 }
 
+/* ================= SEPARATION ENGINE ================= */
+/* Global vs Banner Coupon Hard Split */
+
+function isGlobalCoupon(meta) {
+  // banner coupons have meta.bannerId or bannerCode or mapped meta via banner._meta
+  if (!meta) return true;
+  if (meta.bannerId) return false;
+  if (meta.bannerCode) return false;
+  // banner link table
+  if (window.BANNERS && window.BANNERS._meta) {
+    for (const b in window.BANNERS._meta) {
+      const info = window.BANNERS._meta[b];
+      if (!info) continue;
+      if (String(info.couponId || "").toLowerCase() === String(meta.code || meta.id || "").toLowerCase()) {
+        return false;
+      }
+      if (String(info.couponCode || "").toUpperCase() === String(meta.code || "").toUpperCase()) {
+        return false;
+      }
+    }
+  }
+  return true; // default = global
+}
+
+function lockIsGlobal(lock) {
+  if (!lock) return false;
+  const cid = String(lock?.scope?.couponId || "").trim();
+  const meta = (window.COUPONS instanceof Map) ? window.COUPONS.get(cid) : null;
+  return isGlobalCoupon(meta);
+}
+
+function lockIsBanner(lock) {
+  return !!lock && !lockIsGlobal(lock);
+}
+
+  
   // Hooks for future admin fields:
   // - minOrder: number  (already supported)
   // - usageLimit: number, usedCount: number (supported via checkUsageAvailable)
@@ -1024,16 +1066,34 @@ function resolveEligibilitySet(locked){
   ).map(s=>String(s).toLowerCase());
   if (explicit.length) return new Set(explicit);
 
-  // If a banner scope exists, we are strict: only banner-listed items qualify.
-  const byBanner = eligibleIdsFromBanners(scope);
-  if (byBanner.size) return byBanner;
+    /* ================= HARD SPLIT: GLOBAL vs BANNER ================= */
 
-  // 👇 NEW: if a bannerId is present but yielded no items, DO NOT fall back.
-  if (String(scope.bannerId||"").trim()) {
-    return new Set(); // no spillover to catalog/LS when banner scope is declared
+  // If coupon is GLOBAL → never use banner fallback, never infer elig
+  if (lockIsGlobal(locked)) {
+    if (explicit.length) {
+      return new Set(explicit.map(s => String(s).toLowerCase()));
+    }
+    return new Set(); // global coupons cannot infer eligibility
   }
 
-  // Catalog fallback (only when no banner scope)
+  // If coupon is BANNER → STRICT banner-based eligibility
+  if (lockIsBanner(locked)) {
+    const byBanner = eligibleIdsFromBanners(scope);
+    if (byBanner.size) return byBanner;
+
+    // bannerId declared but no items found → treat as no eligibility
+    if (String(scope.bannerId || "").trim()) {
+      return new Set();
+    }
+
+    // banner coupon but no explicit or banner-ids → NO fallback allowed
+    if (!byBanner.size && !explicit.length) {
+      return new Set();
+    }
+  }
+
+  /* ========== Only non-banner coupons reach here ========== */
+  // Catalog fallback ONLY for non-banner, non-global coupons
   if (typeof computeEligibleItemIdsForCoupon === "function" && scope.couponId) {
     try {
       const via = computeEligibleItemIdsForCoupon(String(scope.couponId));
@@ -1042,6 +1102,7 @@ function resolveEligibilitySet(locked){
       }
     } catch {}
   }
+
 
   // LS coupon→items index (supports code or id)
   try {
@@ -1165,8 +1226,9 @@ function findFirstApplicableCouponForCart(){
       const tmpLock = buildLockFromMeta(String(cid), meta);
 const tmpBanner = isBannerScoped(tmpLock);
 
-// 🚫 Global coupon → completely exclude from FCFS
-if (!tmpBanner) continue;
+// HARD SPLIT: only banner coupons participate in FCFS
+if (isGlobalCoupon(meta)) continue;
+
 
       if (!checkUsageAvailable(meta)) continue;
 
@@ -1340,12 +1402,12 @@ function clearLockIfNoLongerApplicable(){
 function enforceFirstComeLock(){
   const existing = getLock();
 
-  // If a global/manual coupon exists → NEVER auto-apply anything.
-  if (existing && !isBannerScoped(existing)) {
-    // still allow it to clear if totally invalid
-    clearLockIfNoLongerApplicable();
-    return; // hard stop: no FCFS allowed
-  }
+// HARD SPLIT: if global lock exists → stop all auto/FCFS
+if (existing && lockIsGlobal(existing)) {
+  clearLockIfNoLongerApplicable();
+  return;
+}
+
 
   // If there’s a current lock but it’s no longer applicable, clear it first.
   clearLockIfNoLongerApplicable();
@@ -1359,6 +1421,8 @@ function enforceFirstComeLock(){
     // Otherwise fall through to try the next applicable coupon (FCFS among remaining items)
     setLock(null);
   }
+
+   if (existing && lockIsGlobal(existing)) return; // never auto-apply globals
 
   // Pick the first coupon that actually yields a non-zero discount for current cart & mode.
   const fcfs = findFirstApplicableCouponForCart();
@@ -1399,12 +1463,13 @@ if (!elig.size) return { discount:0 };
 // Eligible base subtotal only
 let eligibleBase = 0;
 let eligibleQty  = 0; // NEW: count units across eligible base lines
-const bannerOnly = isBannerScoped(locked); // ← add this once, outside the loop
+const bannerOnly = lockIsBanner(locked);
+const globalOnly = lockIsGlobal(locked);
 for (const [key, it] of entries()){
   if (isAddonKey(key)) continue;
 
-  // Enforce banner-origin only when the coupon is banner-scoped
-  if (bannerOnly && !isKnownBannerOrigin(it?.origin)) continue;
+// banner coupons restrict origin strictly
+if (bannerOnly && !isKnownBannerOrigin(it?.origin)) continue;
 
   const parts = String(key).split(":");
   const itemId  = String(it?.id ?? parts[0]).toLowerCase();
@@ -1823,7 +1888,21 @@ if (R.promoApply && !R.promoApply._wired){
     const fullLock = buildLockFromMeta(found.cid, found.meta);
     const { base } = splitBaseVsAddons();
     const { discount } = computeDiscount(fullLock, base);
-    if (!discount || discount <= 0) { showPromoError("Invalid or Ineligible Coupon Code"); return; }
+    // HARD SPLIT banner vs global
+if (lockIsBanner(fullLock)) {
+  // banner coupon must match banner origin + eligible set
+  if (!discount || discount <= 0) {
+    showPromoError("Eligible only for specific banner items");
+    return;
+  }
+} else {
+  // global coupon requires explicit elig only
+  if (!discount || discount <= 0) {
+    showPromoError("Invalid or Ineligible Coupon Code");
+    return;
+  }
+}
+
 
     // apply (non-stackable FCFS is enforced by render/enforceFirstComeLock)
     fullLock.source = "manual";
