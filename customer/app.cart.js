@@ -1142,37 +1142,84 @@ if (discount > 0) return bound;
 }
 
 
+function clearLockIfNoLongerApplicable(){
+  const lock = getLock();
+  if (!lock) return;
 
+  // Banner-only vs global/manual distinction
+  const bannerOnly = isBannerScoped(lock);
+  const elig       = resolveEligibilitySet(lock);
 
+  // Helper: choose the next banner-origin baseId from the live cart
+  const pickNextBannerBaseId = () => {
+    const bag = window.Cart?.get?.() || {};
+    return (
+      Object.entries(bag)
+        .filter(([k, v]) => !k.includes(":") && isKnownBannerOrigin(v.origin))
+        .map(([k, v]) => String(v.id || k.split(":")[0]).toLowerCase())[0] || null
+    );
+  };
 
-  function clearLockIfNoLongerApplicable(){
-    const lock = getLock();
-    if (!lock) return;
-// If no eligible items for this lock remain, clear it and trigger same-frame recompute.
-const elig = resolveEligibilitySet(lock);
-if (!elig.size){
-  setLock(null);
-  window.dispatchEvent(new CustomEvent("cart:update")); // ← ensures FCFS picks next promo immediately
-  return;
-}
+  // If eligibility set is empty → lock has no more valid bases
+  if (!elig.size){
+    let next = null;
 
-    // If the cart no longer contains any of the eligible IDs as base lines, clear it.
-    let any = false;
-    for (const [key, it] of entries()){
-      if (isAddonKey(key)) continue;
-      const parts = String(key).toLowerCase().split(":");
-      const itemId  = String(it?.id ?? parts[0]);
-      const baseKey = parts.slice(0,2).join(":");
-      if (elig.has(itemId) || elig.has(baseKey) || Array.from(elig).some(x => !x.includes(":") && baseKey.startsWith(x + ":"))){
-        any = true; break;
+    if (bannerOnly) {
+      next = pickNextBannerBaseId();
+      if (next) {
+        try { localStorage.setItem("gufa:nextEligibleItem", next); } catch {}
+      } else {
+        // No banner candidate → ensure breadcrumb is cleared
+        try { localStorage.removeItem("gufa:nextEligibleItem"); } catch {}
       }
+    } else {
+      // Global/manual (non-banner) coupons: do NOT auto-roll to another promo
+      try { localStorage.removeItem("gufa:nextEligibleItem"); } catch {}
     }
-    if (!any) {
-  setLock(null);
-  // trigger instant recompute so FCFS can pick the next coupon in the same frame
-  window.dispatchEvent(new CustomEvent("cart:update"));
+
+    setLock(null);
+    window.dispatchEvent(new CustomEvent("cart:update"));
+    return;
+  }
+
+  // If the cart no longer contains any of the eligible IDs as base lines, clear it.
+  let any = false;
+  for (const [key, it] of entries()){
+    if (isAddonKey(key)) continue;
+    const parts   = String(key).toLowerCase().split(":");
+    const itemId  = String(it?.id ?? parts[0]);
+    const baseKey = parts.slice(0,2).join(":");
+
+    if (
+      elig.has(itemId) ||
+      elig.has(baseKey) ||
+      Array.from(elig).some(x => !String(x).includes(":") && baseKey.startsWith(String(x).toLowerCase() + ":"))
+    ){
+      any = true;
+      break;
+    }
+  }
+
+  if (!any) {
+    let next = null;
+
+    if (bannerOnly) {
+      next = pickNextBannerBaseId();
+      if (next) {
+        try { localStorage.setItem("gufa:nextEligibleItem", next); } catch {}
+      } else {
+        try { localStorage.removeItem("gufa:nextEligibleItem"); } catch {}
+      }
+    } else {
+      // Global/manual lock: clear without setting a new next-eligible banner
+      try { localStorage.removeItem("gufa:nextEligibleItem"); } catch {}
+    }
+
+    setLock(null);
+    window.dispatchEvent(new CustomEvent("cart:update"));
   }
 }
+
 
 function enforceFirstComeLock(){
   // If there’s a current lock but it’s no longer applicable, clear it first.
