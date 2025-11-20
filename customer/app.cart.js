@@ -779,7 +779,11 @@ function buildLockFromMeta(cid, meta) {
   }
 
 return {
-  scope: { couponId: cid, eligibleItemIds: Array.from(eligSet) },
+  scope: { 
+    couponId: cid,
+    bannerId: meta?.bannerId || null,  // ← NEW (critical)
+    eligibleItemIds: Array.from(eligSet)
+  },
   type:  String(meta?.type || "flat").toLowerCase(),
   value: Number(meta?.value || 0),
   minOrder: Number(meta?.minOrder || 0),
@@ -787,10 +791,7 @@ return {
   code: (meta?.code ? String(meta.code).toUpperCase() : undefined),
   meta: meta || null
 };
-
 }
-
-
 
 // Create/find a small error line under the input (single-line, red, compact)
 function ensurePromoErrorHost() {
