@@ -474,19 +474,8 @@ if (bannerId) {
 window.COUPONS.set(String(doc.id), meta);
 added++;
 
-// === NEW: Record banner metadata for coupon linkage ===
-if (!window.BANNERS._meta) window.BANNERS._meta = {};
-const bannerId2 = d.bannerId || d.banner || null;  // ✔ FIXED
-if (bannerId2) {
-  window.BANNERS._meta[bannerId2] = {
-    couponId: d.couponId || String(doc.id),
-    couponCode: d.code || null
-   };
-  }
-
 /* ================================
    UNIFIED PROMOTION HYDRATION
-   (Cart-Side Alignment)
    ================================ */
 try {
   if (window.UNIFIED_PROMOTIONS) {
@@ -496,12 +485,24 @@ try {
     if (window.UNIFIED_PROMOTIONS.banners instanceof Map) {
       window.BANNERS = window.UNIFIED_PROMOTIONS.banners;
     }
+
     if (!window.BANNERS._meta) window.BANNERS._meta = {};
     Object.assign(window.BANNERS._meta, window.UNIFIED_PROMOTIONS.bannerMeta || {});
   }
 } catch (e) {
   console.warn("[CART] unified hydration failed", e);
 }
+
+        
+// === NEW: Record banner metadata for coupon linkage ===
+if (!window.BANNERS._meta) window.BANNERS._meta = {};
+const bannerId2 = d.bannerId || d.banner || null;  // ✔ FIXED
+if (bannerId2) {
+  window.BANNERS._meta[bannerId2] = {
+    couponId: d.couponId || String(doc.id),
+    couponCode: d.code || null
+   };
+  }
 });
  
       if (added > 0) {
