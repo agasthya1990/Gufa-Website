@@ -406,46 +406,6 @@ async function setItemPromotions(itemId, couponIds) {
     updatedAt: serverTimestamp()
   });
 
-/* ======================================================
-   UNIFIED SCHEMA (ADMIN → MENU → CART)
-   Ensures each banner stores:
-   - couponId (primary)
-   - couponCode (uppercase)
-   ====================================================== */
-
-try {
-  const firstCid = ids[0] || null;
-
-  if (firstCid) {
-    const snap = await getDoc(doc(db, "promotions", firstCid));
-    const dat  = snap.exists() ? snap.data() : {};
-
-    await updateDoc(doc(db, "promotions", String(firstCid)), {
-      updatedAt: serverTimestamp()
-    });
-
-    // propagate to all banners where this coupon is linked
-    const bannersQ = query(
-      collection(db, "promotions"),
-      where("kind", "==", "banner"),
-      where("linkedCouponIds", "array-contains", firstCid)
-    );
-
-    const bannersSnap = await getDocs(bannersQ);
-    for (const bDoc of bannersSnap.docs) {
-      const bId = String(bDoc.id);
-
-      await updateDoc(doc(db, "promotions", bId), {
-        couponId: firstCid,
-        couponCode: dat.code ? String(dat.code).toUpperCase() : null
-      });
-    }
-  }
-} catch (e) {
-  console.warn("[admin] unified-banner-meta failed", e);
-}
-
-   
   // === Banner mirroring + coupon writeback ===
   try {
     // Build coupon→banner index once
@@ -866,6 +826,36 @@ addAddonBtn && (addAddonBtn.onclick = async () => {
           );
         }
 
+/* -------------------------------------------
+   UNIFIED SCHEMA: Banner Meta (couponId/code)
+   Safe post-rebuild injection
+   ------------------------------------------- */
+try {
+  const firstCid = linked[0] || null;
+  if (firstCid) {
+    const snapC = await getDoc(doc(db, "promotions", firstCid));
+    const datC  = snapC.exists() ? snapC.data() : {};
+
+    writes.push(
+      updateDoc(doc(db, "promotions", bId), {
+        couponId: firstCid,
+        couponCode: datC.code ? String(datC.code).toUpperCase() : null
+      }).catch(()=>{})
+    );
+  } else {
+    // If banner has no coupons, clear meta
+    writes.push(
+      updateDoc(doc(db, "promotions", bId), {
+        couponId: null,
+        couponCode: null
+      }).catch(()=>{})
+    );
+  }
+} catch (e) {
+  console.warn("[admin] unified banner meta failed", e);
+}
+
+         
         if (writes.length) await Promise.all(writes);
       }
 
