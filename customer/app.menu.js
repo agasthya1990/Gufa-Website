@@ -1463,21 +1463,22 @@ try {
       localStorage.setItem("gufa:COUPONS", JSON.stringify(dump));
     } catch {}
 
-        /* ================================
-       UNIFIED PROMOTIONS HYDRATION
-       ================================ */
-    try {
-      if (window.UNIFIED_PROMOTIONS) {
-        window.COUPONS = window.UNIFIED_PROMOTIONS.coupons;
-        window.BANNERS = window.UNIFIED_PROMOTIONS.banners;
-        if (!window.BANNERS._meta) window.BANNERS._meta = {};
-        Object.assign(window.BANNERS._meta, window.UNIFIED_PROMOTIONS.bannerMeta);
-      }
-    } catch (e) {
-      console.warn("[MENU] unified hydration failed", e);
-    }
+/* ================================
+   UNIFIED PROMOTION HYDRATION
+   ================================ */
+try {
+  if (window.UNIFIED_PROMOTIONS) {
+    window.COUPONS = window.UNIFIED_PROMOTIONS.coupons;
+    window.BANNERS = window.UNIFIED_PROMOTIONS.banners;
 
+    if (!window.BANNERS._meta) window.BANNERS._meta = {};
+    Object.assign(window.BANNERS._meta, window.UNIFIED_PROMOTIONS.bannerMeta || {});
+  }
+} catch (e) {
+  console.warn("[MENU] unified hydration failed", e);
+}
 
+    
     // Backfill lock with meta/code if needed and refresh cart
     
     try {
