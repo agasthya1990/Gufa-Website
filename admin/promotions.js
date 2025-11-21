@@ -1222,3 +1222,72 @@ if (typeof window !== "undefined") {
     });
   }
 }
+
+/* ============================================================
+   UNIFIED PROMOTION EXPORT LAYER (NEW)
+   Ensures Menu + Cart receive a consistent, stable schema
+   ============================================================ */
+
+window.UNIFIED_PROMOTIONS = (async function(){
+  const out = {
+    coupons: new Map(),
+    banners: new Map(),
+    bannerMeta: {}
+  };
+
+  try {
+    // ---- Load coupons ----
+    const qCoupons = query(collection(db, "promotions"), where("kind","==","coupon"));
+    const snapC = await getDocs(qCoupons);
+    snapC.forEach(d => {
+      const v = d.data() || {};
+      out.coupons.set(String(d.id), {
+        id:        String(d.id),
+        code:      String(v.code || ""),
+        type:      String(v.type || ""),
+        value:     Number(v.value || 0),
+        bannerId:  v.bannerId ? String(v.bannerId) : null,
+        eligibleItemIds: Array.isArray(v.itemIds) ? v.itemIds.map(String) : [],
+        channels:  v.channels || v.targets || { delivery:true, dining:true },
+        active:    v.active !== false
+      });
+    });
+
+    // ---- Load banners ----
+    const qBanners = query(collection(db, "promotions"), where("kind","==","banner"));
+    const snapB = await getDocs(qBanners);
+
+    snapB.forEach(d => {
+      const v = d.data() || {};
+      const id = String(d.id);
+
+      const itemIds = Array.isArray(v.itemIds)
+        ? v.itemIds.map(String)
+        : [];
+
+      out.banners.set(id, itemIds);
+
+      // meta for Cart FCFS + Next Eligible
+      const couponId =
+        Array.isArray(v.linkedCouponIds) && v.linkedCouponIds.length
+          ? String(v.linkedCouponIds[0])
+          : null;
+
+      out.bannerMeta[id] = {
+        couponId,
+        couponCode: couponId && out.coupons.has(couponId)
+          ? out.coupons.get(couponId).code
+          : null,
+        channels: v.targets || { delivery:true, dining:true },
+        minOrderOverride: v.minOrderOverride || null
+      };
+    });
+
+    console.log("[UNIFIED] promotions ready:", out);
+    return out;
+
+  } catch (err) {
+    console.error("[UNIFIED] promotions load failed", err);
+    return out;
+  }
+})();
