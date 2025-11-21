@@ -483,8 +483,27 @@ if (bannerId2) {
     couponCode: d.code || null
    };
   }
-});
 
+/* ================================
+   UNIFIED PROMOTION HYDRATION
+   (Cart-Side Alignment)
+   ================================ */
+try {
+  if (window.UNIFIED_PROMOTIONS) {
+    if (window.UNIFIED_PROMOTIONS.coupons instanceof Map) {
+      window.COUPONS = window.UNIFIED_PROMOTIONS.coupons;
+    }
+    if (window.UNIFIED_PROMOTIONS.banners instanceof Map) {
+      window.BANNERS = window.UNIFIED_PROMOTIONS.banners;
+    }
+    if (!window.BANNERS._meta) window.BANNERS._meta = {};
+    Object.assign(window.BANNERS._meta, window.UNIFIED_PROMOTIONS.bannerMeta || {});
+  }
+} catch (e) {
+  console.warn("[CART] unified hydration failed", e);
+}
+});
+ 
       if (added > 0) {
         try {
           localStorage.setItem("gufa:COUPONS", JSON.stringify(Array.from(window.COUPONS.entries())));
