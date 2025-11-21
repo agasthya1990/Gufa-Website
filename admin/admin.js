@@ -374,13 +374,8 @@ async function setItemPromotions(itemId, couponIds) {
       }
     } catch {}
 
-     
-     
-     
-     
-     
-     
-     → resolve to active coupon doc ID
+
+    // resolve to active coupon doc ID
     try {
       const q = query(
         collection(db, "promotions"),
