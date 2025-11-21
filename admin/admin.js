@@ -374,7 +374,13 @@ async function setItemPromotions(itemId, couponIds) {
       }
     } catch {}
 
-    // Pass 2: treat token as a CODE → resolve to active coupon doc ID
+     
+     
+     
+     
+     
+     
+     → resolve to active coupon doc ID
     try {
       const q = query(
         collection(db, "promotions"),
@@ -400,6 +406,46 @@ async function setItemPromotions(itemId, couponIds) {
     updatedAt: serverTimestamp()
   });
 
+/* ======================================================
+   UNIFIED SCHEMA (ADMIN → MENU → CART)
+   Ensures each banner stores:
+   - couponId (primary)
+   - couponCode (uppercase)
+   ====================================================== */
+
+try {
+  const firstCid = ids[0] || null;
+
+  if (firstCid) {
+    const snap = await getDoc(doc(db, "promotions", firstCid));
+    const dat  = snap.exists() ? snap.data() : {};
+
+    await updateDoc(doc(db, "promotions", String(firstCid)), {
+      updatedAt: serverTimestamp()
+    });
+
+    // propagate to all banners where this coupon is linked
+    const bannersQ = query(
+      collection(db, "promotions"),
+      where("kind", "==", "banner"),
+      where("linkedCouponIds", "array-contains", firstCid)
+    );
+
+    const bannersSnap = await getDocs(bannersQ);
+    for (const bDoc of bannersSnap.docs) {
+      const bId = String(bDoc.id);
+
+      await updateDoc(doc(db, "promotions", bId), {
+        couponId: firstCid,
+        couponCode: dat.code ? String(dat.code).toUpperCase() : null
+      });
+    }
+  }
+} catch (e) {
+  console.warn("[admin] unified-banner-meta failed", e);
+}
+
+   
   // === Banner mirroring + coupon writeback ===
   try {
     // Build coupon→banner index once
