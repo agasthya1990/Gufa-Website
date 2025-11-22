@@ -1160,18 +1160,41 @@ function clearLockIfNoLongerApplicable(){
     );
   };
 
-  // If eligibility set is empty → lock has no more valid bases
-  if (!elig.size){
-    let next = null;
+  
+// Rotation Order Fix — execute selection BEFORE any clearing
+if (!elig.size) {
 
-    if (bannerOnly) {
-      next = pickNextBannerBaseId();
-      if (next) {
-        try { localStorage.setItem("gufa:nextEligibleItem", next); } catch {}
-      } else {
-        // No banner candidate → ensure breadcrumb is cleared
-        try { localStorage.removeItem("gufa:nextEligibleItem"); } catch {}
-      }
+  const bag = window.Cart?.get?.() || {};
+  const nextBase = Object.entries(bag)
+    .filter(([k, v]) => !k.includes(":") && isKnownBannerOrigin(v.origin))
+    .map(([k, v]) => String(v.id || k.split(":")[0]).toLowerCase())[0] || null;
+
+  // compute the next eligible coupon using FCFS rotation
+  const nextCoupon = (typeof findFirstApplicableCouponForCart === "function")
+    ? findFirstApplicableCouponForCart()
+    : null;
+
+  // If we have a next coupon OR next base → apply new lock
+  if (nextCoupon || nextBase) {
+    const useCoupon = nextCoupon?.scope?.couponId || lock.scope.couponId;
+    const useBase   = nextCoupon?.baseId || nextBase;
+
+    try {
+      localStorage.setItem(COUPON_KEY, JSON.stringify({
+        scope:{ couponId: useCoupon, baseId: useBase }
+      }));
+    } catch {}
+
+    try { window.dispatchEvent(new CustomEvent("cart:update",{ detail:{ reason:"rotation-applied" }})); } catch {}
+    return;
+  }
+
+  // FINAL FALLBACK: only clear if NOTHING else makes sense
+  localStorage.removeItem(COUPON_KEY);
+  try { window.dispatchEvent(new CustomEvent("cart:update",{ detail:{ reason:"lock-exhausted" }})); } catch {}
+  return;
+}
+
     } else {
       // Global/manual (non-banner) coupons: do NOT auto-roll to another promo
       try { localStorage.removeItem("gufa:nextEligibleItem"); } catch {}
