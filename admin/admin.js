@@ -570,55 +570,64 @@ async function syncBannerLinksForItem(itemId, selectedCouponIds) {
       }, { merge: true });
     }
 
-        // 4) Orphans cleanup — delete stale /bannerLinks and mirror removal on banner.itemIds
-    const existing = await getDocs(collection(itemRef, "bannerLinks"));
-    const keepIds  = new Set(Array.from(buckets.keys(), x => String(x)));    // ✅ robust keep set
+// 4) Orphans cleanup — delete stale /bannerLinks and mirror removal on banner.itemIds
+const existing = await getDocs(collection(itemRef, "bannerLinks"));
+const keepIds  = new Set(Array.from(buckets.keys(), x => String(x))); // robust keep set
 
-    // Collect deletions + banner removals
-    const deletions = [];
-    const bannerRemovals = [];
+// Collect deletions + banner removals
+const deletions = [];
+const bannerRemovals = [];
 
-    existing.forEach(d => {
-      const bid = String(d.id);
-      if (!keepIds.has(bid)) {
-        // remove stale subdoc
-        deletions.push(deleteDoc(d.ref));
-        // mirror: remove this item from the banner's reverse index
-       bannerRemovals.push(
-       updateDoc(doc(db, "promotions", bid), {
-       itemIds: arrayRemove(String(itemId)),   // ⭐ keep data consistent
-      updatedAt: serverTimestamp()
-     })
-   );
- }
+existing.forEach((d) => {
+  const bid = String(d.id);
+  if (!keepIds.has(bid)) {
+    // remove stale subdoc
+    deletions.push(deleteDoc(d.ref));
+    // mirror: remove this item from the banner's reverse index
+    bannerRemovals.push(
+      updateDoc(doc(db, "promotions", bid), {
+        itemIds: arrayRemove(String(itemId)), // keep data consistent
+        updatedAt: serverTimestamp(),
+      })
+    );
+  }
 });
-// ⭐ PATCH: Clean itemIds on banners no longer tied to any selected coupon
-const allBannersSnap = await getDocs(query(collection(db, "promotions"), where("kind", "==", "banner")));
+
+// ⭐ Clean itemIds on banners no longer tied to any selected coupon
+const allBannersSnap = await getDocs(
+  query(collection(db, "promotions"), where("kind", "==", "banner"))
+);
 const staleBanners = [];
 for (const bDoc of allBannersSnap.docs) {
   const bId = String(bDoc.id);
   const b = bDoc.data();
-  const linked = Array.isArray(b.linkedCouponIds) ? b.linkedCouponIds.map(String) : [];
-  const intersection = linked.some(cid => ids.includes(cid));
+  const linked = Array.isArray(b.linkedCouponIds)
+    ? b.linkedCouponIds.map(String)
+    : [];
+  const intersection = linked.some((cid) => ids.includes(cid));
   if (!intersection) {
     staleBanners.push(
       updateDoc(doc(db, "promotions", bId), {
-        itemIds: arrayRemove(String(itemId))
-      }).catch(()=>{})
+        itemIds: arrayRemove(String(itemId)),
+      }).catch(() => {})
     );
   }
 }
-    if (staleBanners.length) await Promise.all(staleBanners);
-    if (deletions.length) await Promise.all(deletions);
-    if (bannerRemovals.length) {
-      try { await Promise.all(bannerRemovals); }
-      catch (e) { console.warn("[admin] banner.itemIds arrayRemove failed", e); }
-    }
 
-   // 🔵 STEP: Create/Sync Banner Menu Instances
+if (staleBanners.length) await Promise.all(staleBanners);
+if (deletions.length) await Promise.all(deletions);
+if (bannerRemovals.length) {
+  try {
+    await Promise.all(bannerRemovals);
+  } catch (e) {
+    console.warn("[admin] banner.itemIds arrayRemove failed", e);
+  }
+}
+
+// 🔵 Create/Sync bannerMenuItems instances per banner
 await handleBannerMenuMirrors(itemId, buckets, bannerMeta);
 
-// 🔵 STEP: Cleanup orphan banner Menu Instances
+// 🔵 Clean orphans in bannerMenuItems for this item
 const allMirrorSnap = await getDocs(
   query(collection(db, "bannerMenuItems"), where("itemId", "==", String(itemId)))
 );
@@ -627,16 +636,15 @@ for (const m of allMirrorSnap.docs) {
   if (!keepIds.has(bid)) {
     await updateDoc(m.ref, {
       isActive: false,
-      updatedAt: serverTimestamp()
-    }).catch(()=>{});
+      updatedAt: serverTimestamp(),
+    }).catch(() => {});
   }
 }
 
-     
-  } catch (err) {
-    console.error("[admin] syncBannerLinksForItem failed", err);
-  }
-} 
+} catch (err) {
+  console.error("[admin] syncBannerLinksForItem failed", err);
+}
+
 
 
 // ===============================================================
