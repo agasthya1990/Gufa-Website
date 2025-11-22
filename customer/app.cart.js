@@ -1191,7 +1191,6 @@ if (!elig.size) {
   localStorage.removeItem(COUPON_KEY);
   try { window.dispatchEvent(new CustomEvent("cart:update",{ detail:{ reason:"lock-exhausted" }})); } catch {}
   return;
-}
 
     setLock(null);
     window.dispatchEvent(new CustomEvent("cart:update"));
