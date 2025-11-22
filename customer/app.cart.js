@@ -407,6 +407,73 @@ function wireApplyCouponUI() {
   });
 }
 
+/******************************************************
+ * CORE CART ENGINE RESTORE (temporary stable engine)
+ ******************************************************/
+
+// Fallback Cart API shim so UI does not crash
+window.Cart = window.Cart || {
+  _data: {},
+  get() { return this._data; },
+  inc(id) {
+    const bag = this._data;
+    if (!bag[id]) bag[id] = { qty:1, price:(window.ITEMS?.find(i=>i.id===id)?.price||0), name:(window.ITEMS?.find(i=>i.id===id)?.name||id) };
+    else bag[id].qty++;
+    emit("cart:changed");
+  },
+  dec(id) {
+    const bag = this._data;
+    if (!bag[id]) return;
+    bag[id].qty--;
+    if (bag[id].qty <= 0) delete bag[id];
+    emit("cart:changed");
+  }
+};
+
+
+// === Eligibility Resolution Engine ===
+function resolveEligibilitySet(lock) {
+  if (!lock || !lock.scope?.eligibleItemIds) return new Set();
+  return new Set(lock.scope.eligibleItemIds.map(String));
+}
+
+
+// === FCFS Finder ===
+// Picks first coupon that generates >0 discount
+function findFirstApplicableCouponForCart() {
+  if (!(window.COUPONS instanceof Map)) return null;
+
+  const { base } = splitBaseVsAddons();
+  let best = null;
+
+  for (const [cid, meta] of window.COUPONS.entries()) {
+    if (!meta) continue;
+    const eligible = meta.eligibleItemIds || [];
+    if (!Array.isArray(eligible) || eligible.length === 0) continue;
+
+    let total = 0;
+    for (const k of Object.keys(base)) {
+      const id = k.split(":")[0];
+      if (eligible.includes(id)) {
+        total += Number(base[k]?.price || 0) * Number(base[k]?.qty || 0);
+      }
+    }
+
+    if (total > 0) {
+      best = {
+        code: meta.code || cid,
+        type: meta.type,
+        value: meta.value,
+        scope: { couponId: cid, eligibleItemIds: eligible.map(String) },
+        origin: meta.origin || null
+      };
+      break;
+    }
+  }
+
+  return best;
+}
+
 
 // -------------- MAIN RENDER -----------------
 function renderCart() {
