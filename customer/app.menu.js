@@ -397,32 +397,52 @@ const eligibleItemIds = catalog
   .filter(it => Array.isArray(it.promotions) && it.promotions.map(String).includes(String(couponId)))
   .map(it => String(it.id));
 
-
-
     if (!eligibleItemIds.includes(String(addedItemId))) return;
 
     const meta = (window.COUPONS instanceof Map) ? window.COUPONS.get(String(couponId)) : null;
     const targets = (meta && meta.targets) ? meta.targets : { delivery: true, dining: true };
 
-    const payload = {
-      code:  (meta?.code || String(couponId)).toUpperCase(),
-      type:  String(meta?.type || ""),
-      value: Number(meta?.value || 0),
-      valid: {
-        delivery: !!targets.delivery,
-        dining:   !!targets.dining
-      },
-      scope: { couponId: String(couponId), eligibleItemIds },
-      lockedAt: Date.now()
-    };
+const payload = {
+  code:  (meta?.code || String(couponId)).toUpperCase(),
+  type:  String(meta?.type || ""),
+  value: Number(meta?.value || 0),
+  valid: {
+    delivery: !!targets.delivery,
+    dining:   !!targets.dining
+  },
+  scope: { couponId: String(couponId), eligibleItemIds },
+  origin: { type: "banner", id: ACTIVE_BANNER_ID },
+  source: "auto:banner",
+  lockedAt: Date.now()
+};
 
     localStorage.setItem("gufa_coupon", JSON.stringify(payload));
     window.dispatchEvent(new CustomEvent("cart:update", { detail: { coupon: payload } }));
   } catch {}
 };
 
-
-
+window.addEventListener("promo:unlocked", () => {
+  try {
+    const [nextCoupon] = ACTIVE_BANNER?.linkedCouponIds || [];
+    if (!nextCoupon) return;
+    const meta = window.COUPONS.get(String(nextCoupon));
+    const eligibleItemIds = activeEligibleItemsForBanner(nextCoupon);
+    const payload = {
+      code: (meta?.code || nextCoupon).toUpperCase(),
+      type: String(meta?.type || ""),
+      value: Number(meta?.value || 0),
+      valid: meta?.valid || {delivery:true, dining:true},
+      scope: { couponId: String(nextCoupon), eligibleItemIds },
+      origin: { type:"banner", id: ACTIVE_BANNER_ID },
+      source: "auto:fcfs",
+      lockedAt: Date.now()
+    };
+    localStorage.setItem("gufa_coupon", JSON.stringify(payload));
+    window.dispatchEvent(new CustomEvent("cart:update", { detail: { coupon: payload } }));
+  } catch {}
+});
+  
+  
   /* ---------- DOM ---------- */
   const vegSwitch = $("#vegSwitch");
   const nonvegSwitch = $("#nonvegSwitch");
