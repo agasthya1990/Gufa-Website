@@ -425,6 +425,7 @@ writes.push(
     bannerId: bId,
     bannerIds: arrayUnion(bId),
     itemIds: arrayUnion(String(itemId)),     // ⭐ NEW: ensures /promotions/{couponId}/itemIds is correct
+    eligibleItemIds: arrayUnion(String(itemId)),
     updatedAt: serverTimestamp()
   })
  );
