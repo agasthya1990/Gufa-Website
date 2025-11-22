@@ -276,8 +276,8 @@ function writeCouponLockFromMeta(couponId, meta){
     valid: { delivery: !!(t.delivery ?? true), dining: !!(t.dining ?? true) },
     scope: { couponId: String(couponId), eligibleItemIds },
     lockedAt: Date.now(),
-    source: payload?.source || "manual",
-    origin: payload?.origin || null,
+    source: meta?.source || "manual",
+    origin: meta?.origin || null,
   };
 
   try { localStorage.setItem("gufa_coupon", JSON.stringify(payload)); } catch {}
