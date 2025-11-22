@@ -291,11 +291,12 @@ function wireApplyCouponUI(){
   const btn   = UI.promoApply;
   if (!btn || !input) return;
 
-  const apply = () => {
+ const apply = async () => {
     const query = input.value;
     await ensureCouponsReady();
     const found = findCouponByCodeOrId(query);
     if (!found || !found.meta || found.meta.active === false) {
+      
       // Minimal UX: reflect error in label line; totals will stay unchanged
       if (UI.promoLbl) UI.promoLbl.textContent = "Promotion (): invalid or inactive";
       return;
