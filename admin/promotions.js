@@ -1195,7 +1195,26 @@ await setDoc(doc(db, "promotions", id), {
   active: true
 });
 
+// 🔵 Mirror banner-linked items into bannerMenuItems
+try {
+  const q = query(
+    collection(db, "menuItems"),
+    where("promotions", "array-contains-any", linkedClean)
+  );
 
+  const snap = await getDocs(q);
+  const ops = [];
+  snap.forEach(it => ops.push(syncBannerLinksForItem(String(it.id), linkedClean)));
+
+  if (ops.length) await Promise.all(ops);
+
+  console.log("🔄 bannerMenuItems mirror sync complete (create banner)");
+} catch (err) {
+  console.error("❌ bannerMenuItems mirror failed (create)", err);
+}
+
+
+    
 // === Seed back-references on the linked coupons (single write per coupon) ===
 if (linkedClean.length) {
   await Promise.all(
