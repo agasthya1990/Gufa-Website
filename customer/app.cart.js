@@ -1278,8 +1278,12 @@ const bannerOnly = isBannerScoped(locked); // ← add this once, outside the loo
 for (const [key, it] of entries()){
   if (isAddonKey(key)) continue;
 
-  // Enforce banner-origin only when the coupon is banner-scoped
-  if (bannerOnly && !isKnownBannerOrigin(it?.origin)) continue;
+// Enforce origin strictness for banner-scoped coupons
+if (bannerOnly) {
+  const isBannerOrigin = it?.origin && String(it.origin).startsWith("banner:");
+  if (!isBannerOrigin) continue;     // non-banner items ignored permanently
+}
+
 
   const parts = String(key).split(":");
   const itemId  = String(it?.id ?? parts[0]).toLowerCase();
