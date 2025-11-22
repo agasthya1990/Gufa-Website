@@ -3,8 +3,6 @@
 // Lean additive rewrite: preserves your original structure & imports; only adds features.
 // Requires firebase.js exports { db, storage }
 
-import { syncBannerLinksForItem, handleBannerMenuMirrors } from "./admin.js";
-
 import { db, storage } from "./firebase.js";
 import {
   collection, doc, getDoc, setDoc, updateDoc, deleteDoc, onSnapshot,
