@@ -1058,6 +1058,7 @@ await updateDoc(ref, {
   linkedCouponIds: idsClean,
   targets,
   minOrderOverride: (Number.isFinite(moo) && moo > 0) ? moo : null,
+  eligibleItemIds: arrayUnion(String(itemId)),
   updatedAt: serverTimestamp()
 });
 
@@ -1099,6 +1100,7 @@ if (added.length) {
  await Promise.all(added.map(cid => 
      updateDoc(doc(db, "promotions", String(cid)), { 
        bannerIds: arrayUnion(id), 
+       eligibleItemIds: arrayUnion(String(itemId)),
        updatedAt: serverTimestamp() 
      }) 
    )); 
