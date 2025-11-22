@@ -1169,12 +1169,10 @@ if (!elig.size) {
     .filter(([k, v]) => !k.includes(":") && isKnownBannerOrigin(v.origin))
     .map(([k, v]) => String(v.id || k.split(":")[0]).toLowerCase())[0] || null;
 
-  // compute the next eligible coupon using FCFS rotation
   const nextCoupon = (typeof findFirstApplicableCouponForCart === "function")
     ? findFirstApplicableCouponForCart()
     : null;
 
-  // If we have a next coupon OR next base → apply new lock
   if (nextCoupon || nextBase) {
     const useCoupon = nextCoupon?.scope?.couponId || lock.scope.couponId;
     const useBase   = nextCoupon?.baseId || nextBase;
@@ -1189,11 +1187,12 @@ if (!elig.size) {
     return;
   }
 
-  // FINAL FALLBACK: only clear if NOTHING else makes sense
+  // Final fallback: nothing left → clear
   localStorage.removeItem(COUPON_KEY);
   try { window.dispatchEvent(new CustomEvent("cart:update",{ detail:{ reason:"lock-exhausted" }})); } catch {}
   return;
 }
+
 
     } else {
       // Global/manual (non-banner) coupons: do NOT auto-roll to another promo
