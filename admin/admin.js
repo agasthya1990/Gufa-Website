@@ -829,7 +829,36 @@ addAddonBtn && (addAddonBtn.onclick = async () => {
     attachMenuSnapshot();
     attachPromotionsSnapshot();
     attachBannersSnapshot();
+   attachBannerMenuItemsSnapshot();
 
+// ======================================================
+// 🔵 Real-time Snapshot for /bannerMenuItems
+// ======================================================
+function attachBannerMenuItemsSnapshot(){
+  try {
+    const ref = collection(db, "bannerMenuItems");
+
+    onSnapshot(ref, (snap) => {
+      console.log("🔵 bannerMenuItems live update", snap.size);
+
+      // Map snapshot to state (optional depending on admin UI needs)
+      const list = [];
+      snap.forEach(d => list.push({ id: d.id, data: d.data() }));
+
+      // TODO: optional UI update hook
+      window.BANNER_MENU_STORE = list;     
+
+      // If you want table/UI auto-refresh, un-comment:
+      // renderTable?.();
+
+    }, (err) => console.error("❌ bannerMenuItems snapshot error:", err));
+
+  } catch (e) {
+    console.error("❌ attachBannerMenuItemsSnapshot failed", e);
+  }
+}
+
+     
 // 🔵 Auto-hydrate bannerMenuItems for ALL items once per admin login
 if (!window.__ranBannerMirrorRepair__) {
   window.__ranBannerMirrorRepair__ = true;
