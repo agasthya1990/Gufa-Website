@@ -644,8 +644,7 @@ for (const m of allMirrorSnap.docs) {
 } catch (err) {
   console.error("[admin] syncBannerLinksForItem failed", err);
 }
-
-
+} 
 
 // ===============================================================
 // 🔵 Banner Menu Instances (mirror of menuItems inside banners)
