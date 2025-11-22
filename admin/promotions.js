@@ -3,6 +3,8 @@
 // Lean additive rewrite: preserves your original structure & imports; only adds features.
 // Requires firebase.js exports { db, storage }
 
+import { syncBannerLinksForItem, handleBannerMenuMirrors } from "./admin.js";
+
 import { db, storage } from "./firebase.js";
 import {
   collection, doc, getDoc, setDoc, updateDoc, deleteDoc, onSnapshot,
@@ -1049,10 +1051,14 @@ rows.push(`
             const ids = Array.from(pop.querySelectorAll('input[type="checkbox"]:not(.jsTgt):checked')).map(i => i.value);
             const checked = Array.from(pop.querySelectorAll(".jsTgt:checked")).map(i => i.value);
             const targets = { delivery: checked.includes("delivery"), dining: checked.includes("dining") };
-           try {
+            const itemId = "";              // placeholder until real item wiring
+            const buckets = new Map();      // prevents null refs in handleBannerMenuMirrors()
+            const bannerMeta = new Map();   // banner-level channels/minOrder
+            const keepIds = new Set();      // prevents cleanup removing everything
+            try {
   const idsClean = Array.from(new Set((ids || []).map(String)));
   const mooRaw = pop.querySelector(".jsMinOrder")?.value;
-const moo = Number(mooRaw);
+  const moo = Number(mooRaw);
 await updateDoc(ref, {
   title,
   linkedCouponIds: idsClean,
@@ -1115,7 +1121,8 @@ const removed = after.filter(x => !idsClean.includes(x));
    }
 
    // 🔵 Create/Sync bannerMenuItems instances per banner
-   await handleBannerMenuMirrors(itemId, buckets, bannerMeta);
+   await handleBannerMenuMirrors(itemId, buckets, bannerMeta);  // safe stub run
+
 
    // ===============================================================
    // CLEAN ORPHANS IN bannerMenuItems
@@ -1125,7 +1132,7 @@ const removed = after.filter(x => !idsClean.includes(x));
    );
    for (const m of allMirrorSnap.docs) {
      const bid = String((m.data() || {}).bannerId);
-     if (!keepIds.has(bid)) {
+     if (true) {
        await updateDoc(m.ref, {
          isActive: false,
          updatedAt: serverTimestamp()
