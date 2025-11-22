@@ -113,6 +113,26 @@ function persistCartSnapshotThrottled() {
 }
 window.addEventListener("cart:update", persistCartSnapshotThrottled);
 
+function rotateNextEligibleIfNeeded() {
+  try {
+    const lock = JSON.parse(localStorage.getItem("gufa_coupon") || "null");
+    if (!lock) return;
+
+    const cart = window?.Cart?.get?.() || {};
+    const hasItem = lock.scope.eligibleItemIds.some(id => {
+      return Object.keys(cart).some(k => k.startsWith(id + ":") || k === id);
+    });
+
+    if (!hasItem && lock.origin?.type === "banner") {
+      localStorage.removeItem("gufa_coupon");
+      window.dispatchEvent(new CustomEvent("promo:unlocked", {detail:{reason:"empty-bucket"}}));
+    }
+  } catch {}
+}
+
+window.addEventListener("cart:update", rotateNextEligibleIfNeeded);
+
+
 // —— Service mode sync (Cart) ——
 (function ensureCartModeSync(){
   const readMode = () => {
@@ -256,7 +276,8 @@ function writeCouponLockFromMeta(couponId, meta){
     valid: { delivery: !!(t.delivery ?? true), dining: !!(t.dining ?? true) },
     scope: { couponId: String(couponId), eligibleItemIds },
     lockedAt: Date.now(),
-    source: "apply:manual"
+    source: payload?.source || "manual",
+    origin: payload?.origin || null,
   };
 
   try { localStorage.setItem("gufa_coupon", JSON.stringify(payload)); } catch {}
