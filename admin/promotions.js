@@ -1096,23 +1096,43 @@ const added   = idsClean.filter(x => !after.includes(x));
 const removed = after.filter(x => !idsClean.includes(x));
  
  
-if (added.length) { 
- await Promise.all(added.map(cid => 
-     updateDoc(doc(db, "promotions", String(cid)), { 
-       bannerIds: arrayUnion(id), 
-       eligibleItemIds: arrayUnion(String(itemId)),
-       updatedAt: serverTimestamp() 
-     }) 
-   )); 
- } 
- if (removed.length) { 
-   await Promise.all(removed.map(cid => 
-     updateDoc(doc(db, "promotions", String(cid)), { 
-       bannerIds: arrayRemove(id), 
-       updatedAt: serverTimestamp() 
-     }) 
-   )); 
- }
+  if (added.length) { 
+     await Promise.all(added.map(cid => 
+         updateDoc(doc(db, "promotions", String(cid)), { 
+           bannerIds: arrayUnion(id), 
+           eligibleItemIds: arrayUnion(String(itemId)),
+           updatedAt: serverTimestamp() 
+         }) 
+       )); 
+   } 
+   if (removed.length) { 
+     await Promise.all(removed.map(cid => 
+         updateDoc(doc(db, "promotions", String(cid)), { 
+           bannerIds: arrayRemove(id), 
+           updatedAt: serverTimestamp() 
+         }) 
+       )); 
+   }
+
+   // 🔵 Create/Sync bannerMenuItems instances per banner
+   await handleBannerMenuMirrors(itemId, buckets, bannerMeta);
+
+   // ===============================================================
+   // CLEAN ORPHANS IN bannerMenuItems
+   // ===============================================================
+   const allMirrorSnap = await getDocs(
+     query(collection(db, "bannerMenuItems"), where("itemId", "==", String(itemId)))
+   );
+   for (const m of allMirrorSnap.docs) {
+     const bid = String((m.data() || {}).bannerId);
+     if (!keepIds.has(bid)) {
+       await updateDoc(m.ref, {
+         isActive: false,
+         updatedAt: serverTimestamp()
+       }).catch(()=>{});
+     }
+   }
+
           
 } catch (e){ console.error(e); alert("Failed to save banner"); }
             pop.classList.remove("show");
