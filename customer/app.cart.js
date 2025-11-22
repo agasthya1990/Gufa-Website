@@ -674,12 +674,22 @@ function isKnownBannerOrigin(origin) {
   return typeof origin === "string" && origin.startsWith("banner:");
 }
 
+// === HYDRATION GATE: prevent premature lock clearing ===
+function promoHydrationGateReady(){
+  if (!(window.COUPONS instanceof Map) || window.COUPONS.size === 0) return false;
+  if (!Array.isArray(window.ITEMS) || window.ITEMS.length === 0) return false;
+  return true;
+}
+
   
 // === STALE LOCK GUARD (FIXED: respect banner vs global on *persisted* lock) ===
 function guardStaleCouponLock(){
   try {
-    const lock = JSON.parse(localStorage.getItem("gufa_coupon") || "null");
-    if (!lock || !lock.scope || !lock.scope.couponId) return;
+if (!promoHydrationGateReady()) return;
+
+const lock = JSON.parse(localStorage.getItem("gufa_coupon") || "null");
+if (!lock || !lock.scope || !lock.scope.couponId) return;
+
 
 // 🚑 Defer stale-clearing until coupons finish hydrating
 const map = (window.COUPONS instanceof Map) ? window.COUPONS : null;
@@ -702,16 +712,9 @@ if (!map || map.size === 0) {
       return;
     }
 
-    const bag = window.Cart?.get?.() || {};
-    
-    // ⛔️ Defer eligibility evaluation until ITEMS are hydrated
-if (!Array.isArray(window.ITEMS) || window.ITEMS.length === 0) {
-  console.warn("[promo] waiting for ITEMS before lock evaluation");
-  return;
-}
-
-const bannerOnly = lockIsBanner(lock);
-const globalOnly = lockIsGlobal(lock);
+     const bag = window.Cart?.get?.() || {};
+     const bannerOnly = lockIsBanner(lock);
+     const globalOnly = lockIsGlobal(lock);
 
 
     // Start with eligibility from the current lock
