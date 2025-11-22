@@ -411,7 +411,7 @@ const payload = {
     dining:   !!targets.dining
   },
   scope: { couponId: String(couponId), eligibleItemIds },
-  origin: { type: "banner", id: ACTIVE_BANNER_ID },
+  origin: `banner:${ACTIVE_BANNER_ID}`,
   source: "auto:banner",
   lockedAt: Date.now()
 };
@@ -433,7 +433,7 @@ window.addEventListener("promo:unlocked", () => {
       value: Number(meta?.value || 0),
       valid: meta?.valid || {delivery:true, dining:true},
       scope: { couponId: String(nextCoupon), eligibleItemIds },
-      origin: { type:"banner", id: ACTIVE_BANNER_ID },
+      origin: `banner:${ACTIVE_BANNER_ID}`,
       source: "auto:fcfs",
       lockedAt: Date.now()
     };
