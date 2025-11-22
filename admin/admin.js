@@ -614,12 +614,83 @@ for (const bDoc of allBannersSnap.docs) {
       try { await Promise.all(bannerRemovals); }
       catch (e) { console.warn("[admin] banner.itemIds arrayRemove failed", e); }
     }
+
+   // 🔵 STEP: Create/Sync Banner Menu Instances
+await handleBannerMenuMirrors(itemId, buckets, bannerMeta);
+
+// 🔵 STEP: Cleanup orphan banner Menu Instances
+const allMirrorSnap = await getDocs(
+  query(collection(db, "bannerMenuItems"), where("itemId", "==", String(itemId)))
+);
+for (const m of allMirrorSnap.docs) {
+  const bid = String((m.data() || {}).bannerId);
+  if (!keepIds.has(bid)) {
+    await updateDoc(m.ref, {
+      isActive: false,
+      updatedAt: serverTimestamp()
+    }).catch(()=>{});
+  }
+}
+
+     
   } catch (err) {
     console.error("[admin] syncBannerLinksForItem failed", err);
   }
-} // ← ✅ closes syncBannerLinksForItem(itemId, selectedCouponIds)
+} 
 
 
+// ===============================================================
+// 🔵 Banner Menu Instances (mirror of menuItems inside banners)
+// ===============================================================
+async function mirrorBannerMenuInstance(itemId, bannerId, bannerCouponIds = [], meta = {}) {
+  try {
+    const itemRef = doc(db, "menuItems", String(itemId));
+    const snap = await getDoc(itemRef);
+    if (!snap.exists()) return;
+
+    const d = snap.data() || {};
+    const instId = `${itemId}__${bannerId}`;
+    const instRef = doc(db, "bannerMenuItems", instId);
+
+    await setDoc(instRef, {
+      itemId: String(itemId),
+      bannerId: String(bannerId),
+      bannerCouponIds,
+      promotions: bannerCouponIds,
+      originKey: instId,
+      isActive: true,
+      name: d.name,
+      description: d.description,
+      category: d.category,
+      foodCourse: d.foodCourse,
+      foodType: d.foodType,
+      imageUrl: d.imageUrl,
+      inStock: d.inStock,
+      qtyType: d.qtyType,
+      itemPrice: d.itemPrice,
+      addons: d.addons,
+      channels: meta.channels || { delivery: true, dining: true },
+      minOrderOverride: meta.minOrderOverride || null,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    }, { merge: true });
+  } catch (err) {
+    console.error("[admin] mirrorBannerMenuInstance failed", err);
+  }
+}
+
+async function handleBannerMenuMirrors(itemId, buckets, bannerMeta) {
+  const entries = Array.from(buckets.entries());
+  for (const [bannerId, setOfCids] of entries) {
+    const meta = bannerMeta.get(bannerId) || {};
+    await mirrorBannerMenuInstance(
+      itemId,
+      bannerId,
+      Array.from(setOfCids),
+      meta
+    );
+  }
+}
 
 
 
