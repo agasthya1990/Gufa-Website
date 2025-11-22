@@ -1193,12 +1193,6 @@ if (!elig.size) {
   return;
 }
 
-
-    } else {
-      // Global/manual (non-banner) coupons: do NOT auto-roll to another promo
-      try { localStorage.removeItem("gufa:nextEligibleItem"); } catch {}
-    }
-
     setLock(null);
     window.dispatchEvent(new CustomEvent("cart:update"));
     return;
