@@ -293,6 +293,7 @@ function wireApplyCouponUI(){
 
   const apply = () => {
     const query = input.value;
+    await ensureCouponsReady();
     const found = findCouponByCodeOrId(query);
     if (!found || !found.meta || found.meta.active === false) {
       // Minimal UX: reflect error in label line; totals will stay unchanged
@@ -680,11 +681,13 @@ function guardStaleCouponLock(){
     const lock = JSON.parse(localStorage.getItem("gufa_coupon") || "null");
     if (!lock || !lock.scope || !lock.scope.couponId) return;
 
-    const map = (window.COUPONS instanceof Map) ? window.COUPONS : null;
-    if (!map || map.size === 0) {
-      localStorage.removeItem("gufa_coupon");
-      return;
-    }
+// 🚑 Defer stale-clearing until coupons finish hydrating
+const map = (window.COUPONS instanceof Map) ? window.COUPONS : null;
+if (!map || map.size === 0) {
+  console.warn("[promo] defer stale-lock check - coupons not ready");
+  return;
+}
+
 
     // resolve meta by id or by code (for fallback eligibility only)
     const cidToken = String(lock.scope.couponId || "").toLowerCase();
@@ -700,8 +703,13 @@ function guardStaleCouponLock(){
     }
 
     const bag = window.Cart?.get?.() || {};
+    
+    // ⛔️ Defer eligibility evaluation until ITEMS are hydrated
+if (!Array.isArray(window.ITEMS) || window.ITEMS.length === 0) {
+  console.warn("[promo] waiting for ITEMS before lock evaluation");
+  return;
+}
 
-    // HARD SPLIT
 const bannerOnly = lockIsBanner(lock);
 const globalOnly = lockIsGlobal(lock);
 
