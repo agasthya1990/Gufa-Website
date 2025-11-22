@@ -828,8 +828,9 @@ addAddonBtn && (addAddonBtn.onclick = async () => {
     // Start snapshots (menuItems + promotions)
     attachMenuSnapshot();
     attachPromotionsSnapshot();
-    attachBannersSnapshot();
    attachBannerMenuItemsSnapshot();
+   attachBannersSnapshot();
+   
 
 // ======================================================
 // 🔵 Real-time Snapshot for /bannerMenuItems
@@ -839,19 +840,21 @@ function attachBannerMenuItemsSnapshot(){
     const ref = collection(db, "bannerMenuItems");
 
     onSnapshot(ref, (snap) => {
-      console.log("🔵 bannerMenuItems live update", snap.size);
+  console.log("🔵 bannerMenuItems live update", snap.size);
 
-      // Map snapshot to state (optional depending on admin UI needs)
-      const list = [];
-      snap.forEach(d => list.push({ id: d.id, data: d.data() }));
+  const list = [];
+  snap.forEach(d => list.push({ id: d.id, data: d.data() }));
 
-      // TODO: optional UI update hook
-      window.BANNER_MENU_STORE = list;     
+  window.BANNER_MENU_STORE = list;
 
-      // If you want table/UI auto-refresh, un-comment:
-      // renderTable?.();
-
-    }, (err) => console.error("❌ bannerMenuItems snapshot error:", err));
+  // 🔵 force UI refresh in admin any time collection updates
+  if (typeof renderTable === "function") {
+    renderTable();
+  }
+  if (typeof updateBulkBar === "function") {
+    updateBulkBar();
+  }
+}, (err) => console.error("❌ bannerMenuItems snapshot error:", err));
 
   } catch (e) {
     console.error("❌ attachBannerMenuItemsSnapshot failed", e);
