@@ -1128,17 +1128,16 @@ const removed = after.filter(x => !idsClean.includes(x));
    const allMirrorSnap = await getDocs(
      query(collection(db, "bannerMenuItems"), where("itemId", "==", String(itemId)))
    );
-   for (const m of allMirrorSnap.docs) {
-     const bid = String((m.data() || {}).bannerId);
-     if (true) {
-       await updateDoc(m.ref, {
-         isActive: false,
-         updatedAt: serverTimestamp()
-       }).catch(()=>{});
-     }
-   }
-
-          
+for (const m of allMirrorSnap.docs) {
+  const bid = String((m.data() || {}).bannerId);
+  if (!buckets.has(bid)) {          // only deactivate real orphans
+    await updateDoc(m.ref, {
+      isActive: false,
+      updatedAt: serverTimestamp()
+    }).catch(()=>{});
+  }
+}
+    
 } catch (e){ console.error(e); alert("Failed to save banner"); }
             pop.classList.remove("show");
           };
