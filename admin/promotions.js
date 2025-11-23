@@ -1038,31 +1038,14 @@ rows.push(`
             </div>
           `;
 
-          const elTitle = pop.querySelector(".jsTitle");
-          const btnSave = pop.querySelector(".jsSave");
+                    const elTitle  = pop.querySelector(".jsTitle");
+          const btnSave  = pop.querySelector(".jsSave");
           const btnCancel = pop.querySelector(".jsCancel");
 
           btnCancel.onclick = () => pop.classList.remove("show");
           btnSave.onclick = async () => {
             const title = (elTitle.value || "").trim();
-            const ids = Array.from(
-              pop.querySelectorAll('input[type="checkbox"]:not(.jsTgt):checked')
-            ).map(i => i.value);
-            const checked = Array.from(
-              pop.querySelectorAll(".jsTgt:checked")
-            ).map(i => i.value);
 
-            const targets = {
-              delivery: checked.includes("delivery"),
-              dining:  checked.includes("dining")
-            };
-
-                  const btnSave = pop.querySelector(".jsSave");
-          const btnCancel = pop.querySelector(".jsCancel");
-
-          btnCancel.onclick = () => pop.classList.remove("show");
-          btnSave.onclick = async () => {
-            const title = (elTitle.value || "").trim();
             const ids = Array.from(
               pop.querySelectorAll('input[type="checkbox"]:not(.jsTgt):checked')
             ).map(i => i.value);
@@ -1083,11 +1066,12 @@ rows.push(`
             const idsClean = Array.from(new Set((ids || []).map(String)));
 
             const minInput = pop.querySelector(".jsMinOrder");
-            const mooRaw = minInput && minInput.value ? minInput.value : "";
-            const moo = Number(mooRaw);
+            const mooRaw   = minInput && minInput.value ? minInput.value : "";
+            const moo      = Number(mooRaw);
             const minOverride = (Number.isFinite(moo) && moo > 0) ? moo : null;
 
             try {
+              // 1) Update banner core fields
               await updateDoc(ref, {
                 title,
                 linkedCouponIds: idsClean,
@@ -1096,9 +1080,7 @@ rows.push(`
                 updatedAt: serverTimestamp()
               });
 
-              /* ---------------------------
-                 SYNC banner.itemIds (canonical)
-                 --------------------------- */
+              // 2) Sync banner.itemIds (canonical: coupon.itemIds union)
               try {
                 const itemSet = new Set();
                 const coupons = await Promise.all(
@@ -1119,8 +1101,8 @@ rows.push(`
                 console.error("Failed to sync banner.itemIds:", err);
               }
 
-              // Back-reference coupons → update bannerIds[]
-              const added = idsClean.filter(x => !before.includes(x));
+              // 3) Back-reference coupons → update bannerIds[]
+              const added   = idsClean.filter(x => !before.includes(x));
               const removed = before.filter(x => !idsClean.includes(x));
 
               if (added.length) {
@@ -1144,14 +1126,14 @@ rows.push(`
                 );
               }
 
-              // 🔵 BM-1: seed bannerMenuItems for this banner after edit
+              // 4) Keep /bannerMenuItems in sync for this banner
               try {
                 await seedBannerMenuInstancesFromBanner(id);
               } catch (err) {
                 console.error("bannerMenuItems seed failed on edit:", err);
               }
 
-              // 🔵 BM-2: repair /menuItems/{itemId}/bannerLinks/{bannerId} after coupon changes
+              // 5) Repair /menuItems/{itemId}/bannerLinks/{bannerId}
               try {
                 await repairBannerLinksForBanner(id, before, idsClean, targets, minOverride);
               } catch (err) {
@@ -1165,6 +1147,7 @@ rows.push(`
 
             pop.classList.remove("show");
           };
+
           toggleAttachedPopover(pop, btn);
         };
       });
@@ -1260,13 +1243,6 @@ try {
   });
 } catch (err) {
   console.error("Failed to seed banner.itemIds on create:", err);
-}
-
-// 🔵 BM-1: seed bannerMenuItems for this newly created banner
-try {
-  await seedBannerMenuInstancesFromBanner(id);
-} catch (err) {
-  console.error("bannerMenuItems seed failed on create:", err);
 }
 
     newBannerForm.reset();
