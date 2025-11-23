@@ -1057,6 +1057,24 @@ rows.push(`
               dining:  checked.includes("dining")
             };
 
+                  const btnSave = pop.querySelector(".jsSave");
+          const btnCancel = pop.querySelector(".jsCancel");
+
+          btnCancel.onclick = () => pop.classList.remove("show");
+          btnSave.onclick = async () => {
+            const title = (elTitle.value || "").trim();
+            const ids = Array.from(
+              pop.querySelectorAll('input[type="checkbox"]:not(.jsTgt):checked')
+            ).map(i => i.value);
+            const checked = Array.from(
+              pop.querySelectorAll(".jsTgt:checked")
+            ).map(i => i.value);
+
+            const targets = {
+              delivery: checked.includes("delivery"),
+              dining:  checked.includes("dining")
+            };
+
             // previous set of linked coupons (before edit)
             const before = Array.isArray(p.linkedCouponIds)
               ? p.linkedCouponIds.map(String)
@@ -1067,13 +1085,14 @@ rows.push(`
             const minInput = pop.querySelector(".jsMinOrder");
             const mooRaw = minInput && minInput.value ? minInput.value : "";
             const moo = Number(mooRaw);
+            const minOverride = (Number.isFinite(moo) && moo > 0) ? moo : null;
 
             try {
               await updateDoc(ref, {
                 title,
                 linkedCouponIds: idsClean,
                 targets,
-                minOrderOverride: (Number.isFinite(moo) && moo > 0) ? moo : null,
+                minOrderOverride: minOverride,
                 updatedAt: serverTimestamp()
               });
 
@@ -1130,6 +1149,13 @@ rows.push(`
                 await seedBannerMenuInstancesFromBanner(id);
               } catch (err) {
                 console.error("bannerMenuItems seed failed on edit:", err);
+              }
+
+              // 🔵 BM-2: repair /menuItems/{itemId}/bannerLinks/{bannerId} after coupon changes
+              try {
+                await repairBannerLinksForBanner(id, before, idsClean, targets, minOverride);
+              } catch (err) {
+                console.error("bannerLinks repair failed on edit:", err);
               }
 
             } catch (e) {
@@ -1260,6 +1286,67 @@ try {
 }
 }
 
+// 🔵 BM-2: Repair /menuItems/{itemId}/bannerLinks/{bannerId} when a banner’s coupons change
+async function repairBannerLinksForBanner(bannerId, beforeIds, afterIds, targets, minOverride) {
+  try {
+    const prev = Array.isArray(beforeIds) ? beforeIds.map(String) : [];
+    const next = Array.isArray(afterIds) ? afterIds.map(String) : [];
+
+    // We only need to touch items that reference any coupon that was
+    // previously or is now linked to this banner.
+    const searchCids = Array.from(new Set([...prev, ...next]));
+    if (!searchCids.length) return;
+
+    const qFix = query(
+      collection(db, "menuItems"),
+      where("promotions", "array-contains-any", searchCids)
+    );
+
+    const snap = await getDocs(qFix);
+    const ops = [];
+
+    snap.forEach(it => {
+      const data = it.data() || {};
+      const promos = Array.isArray(data.promotions)
+        ? data.promotions.map(String)
+        : [];
+
+      // Only coupons that this item still has AND that are now in the banner’s list
+      const bannerCoupons = promos.filter(cid => next.includes(cid));
+      const linkRef = doc(
+        db,
+        "menuItems",
+        String(it.id),
+        "bannerLinks",
+        String(bannerId)
+      );
+
+      if (bannerCoupons.length) {
+        ops.push(
+          setDoc(
+            linkRef,
+            {
+              bannerId: String(bannerId),
+              bannerCouponIds: bannerCoupons,
+              channels: targets || { delivery: true, dining: true },
+              minOrderOverride: minOverride || null
+            },
+            { merge: true }
+          )
+        );
+      } else {
+        // If this item no longer has any coupons from this banner, drop the link doc
+        ops.push(deleteDoc(linkRef));
+      }
+    });
+
+    if (ops.length) await Promise.all(ops);
+  } catch (err) {
+    console.error("[promotions] repairBannerLinksForBanner failed", err);
+  }
+}
+
+  
 // 🔵 BM-1: Optional helper — seed /bannerMenuItems from a banner’s canonical itemIds
 async function seedBannerMenuInstancesFromBanner(bannerId) {
   try {
