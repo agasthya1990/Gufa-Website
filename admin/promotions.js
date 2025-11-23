@@ -1124,6 +1124,14 @@ rows.push(`
                   )
                 );
               }
+
+              // 🔵 BM-1: seed bannerMenuItems for this banner after edit
+              try {
+                await seedBannerMenuInstancesFromBanner(id);
+              } catch (err) {
+                console.error("bannerMenuItems seed failed on edit:", err);
+              }
+
             } catch (e) {
               console.error(e);
               alert("Failed to save banner");
@@ -1131,7 +1139,6 @@ rows.push(`
 
             pop.classList.remove("show");
           };
-
           toggleAttachedPopover(pop, btn);
         };
       });
@@ -1238,6 +1245,13 @@ try {
   console.error("Failed to seed banner.itemIds on create:", err);
 }
 
+// 🔵 BM-1: seed bannerMenuItems for this newly created banner
+try {
+  await seedBannerMenuInstancesFromBanner(id);
+} catch (err) {
+  console.error("bannerMenuItems seed failed on create:", err);
+}
+
     newBannerForm.reset();
     // keep link/targets state visible in previews
     renderNewBannerLinked();
@@ -1246,9 +1260,70 @@ try {
 }
 }
 
+// 🔵 BM-1: Optional helper — seed /bannerMenuItems from a banner’s canonical itemIds
+async function seedBannerMenuInstancesFromBanner(bannerId) {
+  try {
+    const bannerRef = doc(db, "promotions", String(bannerId));
+    const snap = await getDoc(bannerRef);
+    if (!snap.exists()) return;
+    const v = snap.data() || {};
+
+    const itemIds = Array.isArray(v.itemIds) ? v.itemIds.map(String) : [];
+    if (!itemIds.length) return;
+
+    const bannerCouponIds = Array.isArray(v.linkedCouponIds)
+      ? v.linkedCouponIds.map(String)
+      : [];
+
+    const meta = {
+      channels: v.targets || { delivery: true, dining: true },
+      minOrderOverride: v.minOrderOverride || null
+    };
+
+    const writes = [];
+    for (const itemId of itemIds) {
+      const itemSnap = await getDoc(doc(db, "menuItems", String(itemId)));
+      if (!itemSnap.exists()) continue;
+      const d = itemSnap.data() || {};
+      const instId = `${itemId}__${bannerId}`;
+      const instRef = doc(db, "bannerMenuItems", instId);
+
+      writes.push(
+        setDoc(instRef, {
+          itemId: String(itemId),
+          bannerId: String(bannerId),
+          bannerCouponIds,
+          promotions: bannerCouponIds,
+          originKey: instId,
+          isActive: true,
+          name: d.name,
+          description: d.description,
+          category: d.category,
+          foodCourse: d.foodCourse,
+          foodType: d.foodType,
+          imageUrl: d.imageUrl,
+          inStock: d.inStock,
+          qtyType: d.qtyType,
+          itemPrice: d.itemPrice,
+          addons: d.addons,
+          channels: meta.channels,
+          minOrderOverride: meta.minOrderOverride,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        }, { merge: true })
+      );
+    }
+
+    if (writes.length) await Promise.all(writes);
+  } catch (err) {
+    console.error("[promotions] seedBannerMenuInstancesFromBanner failed", err);
+  }
+}
+
 // Boot once (same pattern)
 import { auth } from "./firebase.js";
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+
 if (typeof window !== "undefined") {
   if (!window.__PROMOTIONS_BOOTED__) {
     window.__PROMOTIONS_BOOTED__ = true;
