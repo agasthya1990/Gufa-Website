@@ -1136,7 +1136,7 @@ rows.push(`
                 console.error("Failed to sync banner.itemIds:", err);
               }
 
-              // 3) Back-reference coupons → update bannerIds[]
+              // 3) coupons → update bannerIds[]
               const added   = idsClean.filter(x => !before.includes(x));
               const removed = before.filter(x => !idsClean.includes(x));
 
@@ -1145,6 +1145,9 @@ rows.push(`
                   added.map(cid =>
                     updateDoc(doc(db, "promotions", String(cid)), {
                       bannerIds: arrayUnion(id),
+                      // 🔒 any coupon newly added to a banner becomes banner-only + non-manual
+                      scope: "bannerOnly",
+                      allowManual: false,
                       updatedAt: serverTimestamp()
                     })
                   )
@@ -1160,6 +1163,7 @@ rows.push(`
                   )
                 );
               }
+
 
               // 4) Keep /bannerMenuItems in sync for this banner
               try {
@@ -1244,20 +1248,23 @@ try {
   console.error("❌ bannerMenuItems seed failed (create)", err);
 }
 
-
-
 // === Seed back-references on the linked coupons (single write per coupon) ===
+// Also auto-flag any linked coupon as banner-only + non-manual
 if (linkedClean.length) {
   await Promise.all(
     linkedClean.map(cid =>
       updateDoc(doc(db, "promotions", String(cid)), {
         bannerId: id,
         bannerIds: arrayUnion(id),
+        // 🔒 once a coupon is used in a banner, treat it as banner-only + no manual apply
+        scope: "bannerOnly",
+        allowManual: false,
         updatedAt: serverTimestamp()
       })
     )
   );
 }
+
 
 // === Sync banner.itemIds on CREATE ===
 try {
