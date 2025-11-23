@@ -1231,14 +1231,10 @@ function ensureSelectAllHeader() {
 
 function renderTable() {
   if (!menuBody) return;
-menuBody.innerHTML = "";
+  menuBody.innerHTML = "";
 
-const base = (Array.isArray(window.BANNER_MENU_STORE) && window.BANNER_MENU_STORE.length)
-  ? window.BANNER_MENU_STORE
-  : allItems;
-
-const items = applyFilters(base);
-
+  // Always render from the canonical menuItems snapshot
+  const items = applyFilters(allItems)
 
   items.forEach(({ id, data: d }) => {
     const qty = d.qtyType || {}; const price = qty.type === "Half & Full" ? `Half: ₹${qty.halfPrice} / Full: ₹${qty.fullPrice}` : `₹${qty.itemPrice}`;
