@@ -1331,7 +1331,7 @@ async function seedBannerMenuInstancesFromBanner(bannerId) {
 
     const meta = {
       channels: v.targets || { delivery: true, dining: true },
-      minOrderOverride: v.minOrderOverride || null
+      minOrderOverride: v.minOrderOverride ?? null
     };
 
     // Find all menu items whose promotions contain any of these coupons
@@ -1348,6 +1348,18 @@ async function seedBannerMenuInstancesFromBanner(bannerId) {
       const instId = `${itemId}__${bannerId}`;
       const instRef = doc(db, "bannerMenuItems", instId);
 
+      const safeName        = typeof d.name === "string" ? d.name : "";
+      const safeDescription = typeof d.description === "string" ? d.description : "";
+      const safeCategory    = typeof d.category === "string" ? d.category : "";
+      const safeCourse      = typeof d.foodCourse === "string" ? d.foodCourse : "";
+      const safeFoodType    = typeof d.foodType === "string" ? d.foodType : "";
+      const safeImageUrl    = typeof d.imageUrl === "string" ? d.imageUrl : "";
+      const safeInStock     = typeof d.inStock === "boolean" ? d.inStock : true;
+      const safeQtyType     = d.qtyType ?? null;
+      const priceNum        = Number(d.itemPrice);
+      const safeItemPrice   = Number.isFinite(priceNum) ? priceNum : null;
+      const safeAddons      = Array.isArray(d.addons) ? d.addons : [];
+
       writes.push(
         setDoc(
           instRef,
@@ -1358,16 +1370,16 @@ async function seedBannerMenuInstancesFromBanner(bannerId) {
             promotions: bannerCouponIds,
             originKey: instId,
             isActive: true,
-            name: d.name,
-            description: d.description,
-            category: d.category,
-            foodCourse: d.foodCourse,
-            foodType: d.foodType,
-            imageUrl: d.imageUrl,
-            inStock: d.inStock,
-            qtyType: d.qtyType,
-            itemPrice: d.itemPrice,
-            addons: d.addons,
+            name: safeName,
+            description: safeDescription,
+            category: safeCategory,
+            foodCourse: safeCourse,
+            foodType: safeFoodType,
+            imageUrl: safeImageUrl,
+            inStock: safeInStock,
+            qtyType: safeQtyType,
+            itemPrice: safeItemPrice,
+            addons: safeAddons,
             channels: meta.channels,
             minOrderOverride: meta.minOrderOverride,
             createdAt: serverTimestamp(),
@@ -1383,6 +1395,7 @@ async function seedBannerMenuInstancesFromBanner(bannerId) {
     console.error("[promotions] seedBannerMenuInstancesFromBanner failed", err);
   }
 }
+
 
 
 
