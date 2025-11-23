@@ -659,6 +659,19 @@ async function mirrorBannerMenuInstance(itemId, bannerId, bannerCouponIds = [], 
     const instId = `${itemId}__${bannerId}`;
     const instRef = doc(db, "bannerMenuItems", instId);
 
+    // 🔒 Firestore doesn't allow undefined values; normalise everything
+    const safeName        = typeof d.name === "string" ? d.name : "";
+    const safeDescription = typeof d.description === "string" ? d.description : "";
+    const safeCategory    = typeof d.category === "string" ? d.category : "";
+    const safeCourse      = typeof d.foodCourse === "string" ? d.foodCourse : "";
+    const safeFoodType    = typeof d.foodType === "string" ? d.foodType : "";
+    const safeImageUrl    = typeof d.imageUrl === "string" ? d.imageUrl : "";
+    const safeInStock     = typeof d.inStock === "boolean" ? d.inStock : true;
+    const safeQtyType     = d.qtyType ?? null;
+    const priceNum        = Number(d.itemPrice);
+    const safeItemPrice   = Number.isFinite(priceNum) ? priceNum : null;
+    const safeAddons      = Array.isArray(d.addons) ? d.addons : [];
+
     await setDoc(instRef, {
       itemId: String(itemId),
       bannerId: String(bannerId),
@@ -666,18 +679,18 @@ async function mirrorBannerMenuInstance(itemId, bannerId, bannerCouponIds = [], 
       promotions: bannerCouponIds,
       originKey: instId,
       isActive: true,
-      name: d.name,
-      description: d.description,
-      category: d.category,
-      foodCourse: d.foodCourse,
-      foodType: d.foodType,
-      imageUrl: d.imageUrl,
-      inStock: d.inStock,
-      qtyType: d.qtyType,
-      itemPrice: d.itemPrice,
-      addons: d.addons,
+      name: safeName,
+      description: safeDescription,
+      category: safeCategory,
+      foodCourse: safeCourse,
+      foodType: safeFoodType,
+      imageUrl: safeImageUrl,
+      inStock: safeInStock,
+      qtyType: safeQtyType,
+      itemPrice: safeItemPrice,
+      addons: safeAddons,
       channels: meta.channels || { delivery: true, dining: true },
-      minOrderOverride: meta.minOrderOverride || null,
+      minOrderOverride: meta.minOrderOverride ?? null,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     }, { merge: true });
@@ -685,6 +698,7 @@ async function mirrorBannerMenuInstance(itemId, bannerId, bannerCouponIds = [], 
     console.error("[admin] mirrorBannerMenuInstance failed", err);
   }
 }
+
 
 async function handleBannerMenuMirrors(itemId, buckets, bannerMeta) {
   const entries = Array.from(buckets.entries());
