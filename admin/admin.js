@@ -828,8 +828,9 @@ addAddonBtn && (addAddonBtn.onclick = async () => {
     // Start snapshots (menuItems + promotions)
     attachMenuSnapshot();
     attachPromotionsSnapshot();
-   attachBannerMenuItemsSnapshot();
-   attachBannersSnapshot();
+    attachBannersSnapshot();
+    attachBannerMenuItemsSnapshot();
+   
    
 
 // ======================================================
