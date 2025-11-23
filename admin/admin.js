@@ -871,38 +871,25 @@ if (!window.__ranBannerMirrorRepair__) {
       const itemsSnap = await getDocs(collection(db, "menuItems"));
       for (const itemDoc of itemsSnap.docs) {
         const itemId = String(itemDoc.id);
+        const data   = itemDoc.data() || {};
+        const promos = Array.isArray(data.promotions)
+          ? data.promotions.map(String)
+          : [];
 
-        // Check bannerLinks for each item ↓
-        const blSnap = await getDocs(collection(db, "menuItems", itemId, "bannerLinks"));
-        if (blSnap.empty) continue;
+        if (!promos.length) continue;
 
-        const buckets = new Map();
-        const bannerMeta = new Map();
-
-        for (const d of blSnap.docs) {
-          const bid = String(d.id);
-          const v = d.data() || {};
-          const cids = Array.isArray(v.bannerCouponIds) ? v.bannerCouponIds.map(String) : [];
-
-          buckets.set(bid, new Set(cids));
-          bannerMeta.set(bid, {
-            channels: v.channels || { delivery: true, dining: true },
-            minOrderOverride: v.minOrderOverride || null
-          });
-        }
-
-        // Create/update bannerMenuItems instances
-        await handleBannerMenuMirrors(itemId, buckets, bannerMeta);
+        // Use the same canonical pipeline as per-item save:
+        // menuItems.promotions → syncBannerLinksForItem → bannerLinks + bannerMenuItems
+        await syncBannerLinksForItem(String(itemId), promos);
       }
 
-      console.log("🔄 bannerMenuItems: auto-hydrate complete");
+      console.log("🔄 bannerMenuItems: auto-hydrate complete via promotions");
     } catch (e) {
       console.error("❌ bannerMenuItems hydrate failed", e);
     }
   })();
 }
 
-     
     // ==== Promotion Index Repair: recompute itemIds from menuItems (runs once per load) ====
     if (!window.__ranPromotionIndexRepair__) {
       window.__ranPromotionIndexRepair__ = true;
