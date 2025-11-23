@@ -270,15 +270,26 @@ function wireApplyCouponUI(){
   const btn   = UI.promoApply;
   if (!btn || !input) return;
 
-  const apply = () => {
-    const query = input.value;
-    const found = findCouponByCodeOrId(query);
-    if (!found || !found.meta || found.meta.active === false) {
-      // Minimal UX: reflect error in label line; totals will stay unchanged
-      if (UI.promoLbl) UI.promoLbl.textContent = "Promotion (): invalid or inactive";
-      return;
-    }
-    const ok = writeCouponLockFromMeta(found.id, found.meta);
+const apply = () => {
+  const query = input.value;
+  const found = findCouponByCodeOrId(query);
+  if (!found || !found.meta || found.meta.active === false) {
+    if (UI.promoLbl) UI.promoLbl.textContent = "Promotion (): invalid or inactive";
+    return;
+  }
+
+  // 🔒 manual-apply guard based on coupon meta
+  const meta  = found.meta || {};
+  const scope = (typeof meta.scope === "string") ? meta.scope : "global";
+  const explicitAllow = (typeof meta.allowManual === "boolean") ? meta.allowManual : undefined;
+  const allowManual = (explicitAllow !== undefined) ? explicitAllow : (scope === "global");
+
+  if (!allowManual || scope === "bannerOnly") {
+    if (UI.promoLbl) UI.promoLbl.textContent = "Promotion (): not valid for manual apply";
+    return;
+  }
+
+  const ok = writeCouponLockFromMeta(found.id, found.meta);
 
     // If nothing in cart qualifies yet, stash a hint for Menu to highlight next eligible item
     try {
@@ -453,21 +464,24 @@ function activeMode(){
         if (kind !== "coupon") return;
 
         const targetsRaw = d.channels || d.targets || {};
-        const meta = {
-          code:      d.code ? String(d.code) : undefined,
-          type:      String(d.type || "flat").toLowerCase(), // 'percent' | 'flat'
-          value:     Number(d.value || 0),
-          minOrder:  Number(d.minOrder || 0),
-          targets:   { delivery: !!targetsRaw.delivery, dining: !!targetsRaw.dining },
-          // optional fields if you later add them
-          eligibleItemIds: Array.isArray(d.eligibleItemIds) ? d.eligibleItemIds : undefined,
-          usageLimit: d.usageLimit ?? undefined,
-          usedCount:  d.usedCount  ?? undefined
-        };
+const meta = {
+  code:      d.code ? String(d.code) : undefined,
+  type:      String(d.type || "flat").toLowerCase(), // 'percent' | 'flat'
+  value:     Number(d.value || 0),
+  minOrder:  Number(d.minOrder || 0),
+  targets:   { delivery: !!targetsRaw.delivery, dining: !!targetsRaw.dining },
+  // optional fields if you later add them
+  eligibleItemIds: Array.isArray(d.eligibleItemIds) ? d.eligibleItemIds : undefined,
+  usageLimit: d.usageLimit ?? undefined,
+  usedCount:  d.usedCount  ?? undefined,
+  // 🔒 manual vs banner scope from coupon docs
+  allowManual: (typeof d.allowManual === "boolean") ? d.allowManual : undefined,
+  scope:       (typeof d.scope === "string") ? d.scope : undefined
+};
 
-        window.COUPONS.set(String(doc.id), meta);
-        added++;
-      });
+   window.COUPONS.set(String(doc.id), meta);
+  added++;
+ });
 
       if (added > 0) {
         try {
@@ -1709,15 +1723,29 @@ if (R.promoApply && !R.promoApply._wired){
       return;
     }
 
-    // resolve by ID or CODE
+        // resolve by ID or CODE
     const found = findCouponByIdOrCode(needle) || findCouponByCode(needle);
     if (!found) { showPromoError("Invalid or Ineligible Coupon Code"); return; }
+
+    // 🔒 manual-apply guard using allowManual + scope
+    (function(){
+      const meta  = found.meta || {};
+      const scope = (typeof meta.scope === "string") ? meta.scope : "global";
+      const explicitAllow = (typeof meta.allowManual === "boolean") ? meta.allowManual : undefined;
+      const allowManual = (explicitAllow !== undefined) ? explicitAllow : (scope === "global");
+
+      if (!allowManual || scope === "bannerOnly") {
+        showPromoError("This coupon cannot be applied manually.");
+        throw new Error("manual-blocked"); // short-circuit handler
+      }
+    })();
 
     // construct lock & validate against current cart
     const fullLock = buildLockFromMeta(found.cid, found.meta);
     const { base } = splitBaseVsAddons();
     const { discount } = computeDiscount(fullLock, base);
     if (!discount || discount <= 0) { showPromoError("Invalid or Ineligible Coupon Code"); return; }
+
 
     // apply (non-stackable FCFS is enforced by render/enforceFirstComeLock)
     fullLock.source = "manual";
