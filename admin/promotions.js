@@ -257,10 +257,9 @@ export function initPromotions() {
 <h3>Coupons</h3>
 <form id="newCouponForm" class="adm-grid adm-grid-coupons" style="margin-bottom:8px">
   <div><input id="couponCode" class="adm-input" placeholder="Code (e.g. WELCOME20)" /></div>
- <div id="couponChannelsCell">
+  <div id="couponChannelsCell">
     <button type="button" class="adm-btn chip-btn jsCouponChannels">Channel</button>
   </div>
-</div>
 
   <div>
     <div style="display:flex; gap:8px; align-items:center;">
@@ -273,7 +272,7 @@ export function initPromotions() {
   </div>
   <div id="couponUsageLimitCell"></div>
   <div class="adm-actions">
-  <button type="submit" class="adm-btn adm-btn--primary">Add</button>
+    <button type="submit" class="adm-btn adm-btn--primary">Add</button>
   </div>
 </form>
 <div id="couponsList" style="margin-bottom:12px"></div>
@@ -1046,99 +1045,90 @@ rows.push(`
           btnCancel.onclick = () => pop.classList.remove("show");
           btnSave.onclick = async () => {
             const title = (elTitle.value || "").trim();
-            const ids = Array.from(pop.querySelectorAll('input[type="checkbox"]:not(.jsTgt):checked')).map(i => i.value);
-            const checked = Array.from(pop.querySelectorAll(".jsTgt:checked")).map(i => i.value);
-            const targets = { delivery: checked.includes("delivery"), dining: checked.includes("dining") };
-            const itemId = "";              // placeholder until real item wiring
-            const buckets = new Map();      // prevents null refs in handleBannerMenuMirrors()
-            const bannerMeta = new Map();   // banner-level channels/minOrder
-            const keepIds = new Set();      // prevents cleanup removing everything
+            const ids = Array.from(
+              pop.querySelectorAll('input[type="checkbox"]:not(.jsTgt):checked')
+            ).map(i => i.value);
+            const checked = Array.from(
+              pop.querySelectorAll(".jsTgt:checked")
+            ).map(i => i.value);
+
+            const targets = {
+              delivery: checked.includes("delivery"),
+              dining:  checked.includes("dining")
+            };
+
+            // previous set of linked coupons (before edit)
+            const before = Array.isArray(p.linkedCouponIds)
+              ? p.linkedCouponIds.map(String)
+              : [];
+
+            const idsClean = Array.from(new Set((ids || []).map(String)));
+
+            const minInput = pop.querySelector(".jsMinOrder");
+            const mooRaw = minInput && minInput.value ? minInput.value : "";
+            const moo = Number(mooRaw);
+
             try {
-  const idsClean = Array.from(new Set((ids || []).map(String)));
-  const mooRaw = pop.querySelector(".jsMinOrder")?.value;
-  const moo = Number(mooRaw);
-await updateDoc(ref, {
-  title,
-  linkedCouponIds: idsClean,
-  targets,
-  minOrderOverride: (Number.isFinite(moo) && moo > 0) ? moo : null,
-  eligibleItemIds: arrayUnion(String(itemId)),
-  updatedAt: serverTimestamp()
-});
+              await updateDoc(ref, {
+                title,
+                linkedCouponIds: idsClean,
+                targets,
+                minOrderOverride: (Number.isFinite(moo) && moo > 0) ? moo : null,
+                updatedAt: serverTimestamp()
+              });
 
-/* ---------------------------
-   SYNC banner.itemIds (canonical)
-   --------------------------- */
-try {
-  // gather itemIds from all linked coupons
-  const itemSet = new Set();
-  const coupons = await Promise.all(idsClean.map(cid =>
-    getDoc(doc(db, "promotions", String(cid)))
-  ));
+              /* ---------------------------
+                 SYNC banner.itemIds (canonical)
+                 --------------------------- */
+              try {
+                const itemSet = new Set();
+                const coupons = await Promise.all(
+                  idsClean.map(cid => getDoc(doc(db, "promotions", String(cid))))
+                );
 
-  coupons.forEach(s => {
-    const dat = s.data() || {};
-    const arr = Array.isArray(dat.itemIds) ? dat.itemIds : [];
-    arr.forEach(it => itemSet.add(String(it)));
-  });
+                coupons.forEach(s => {
+                  const dat = s.data() || {};
+                  const arr = Array.isArray(dat.itemIds) ? dat.itemIds : [];
+                  arr.forEach(it => itemSet.add(String(it)));
+                });
 
-  await updateDoc(ref, {
-    itemIds: Array.from(itemSet),
-    updatedAt: serverTimestamp()
-  });
-} catch (err) {
-  console.error("Failed to sync banner.itemIds:", err);
-}
-           
-// Back-reference coupons → update bannerIds[] (idempotent, matches backend)
-const snapNow = await getDoc(ref);
-const after = Array.isArray(snapNow.data()?.linkedCouponIds)
-  ? snapNow.data().linkedCouponIds.map(String)
-  : [];
+                await updateDoc(ref, {
+                  itemIds: Array.from(itemSet),
+                  updatedAt: serverTimestamp()
+                });
+              } catch (err) {
+                console.error("Failed to sync banner.itemIds:", err);
+              }
 
-const added   = idsClean.filter(x => !after.includes(x));
-const removed = after.filter(x => !idsClean.includes(x));
- 
- 
-  if (added.length) { 
-     await Promise.all(added.map(cid => 
-         updateDoc(doc(db, "promotions", String(cid)), { 
-           bannerIds: arrayUnion(id), 
-           eligibleItemIds: arrayUnion(String(itemId)),
-           updatedAt: serverTimestamp() 
-         }) 
-       )); 
-   } 
-   if (removed.length) { 
-     await Promise.all(removed.map(cid => 
-         updateDoc(doc(db, "promotions", String(cid)), { 
-           bannerIds: arrayRemove(id), 
-           updatedAt: serverTimestamp() 
-         }) 
-       )); 
-   }
+              // Back-reference coupons → update bannerIds[]
+              const added = idsClean.filter(x => !before.includes(x));
+              const removed = before.filter(x => !idsClean.includes(x));
 
-   // 🔵 Create/Sync bannerMenuItems instances per banner
-   await handleBannerMenuMirrors(itemId, buckets, bannerMeta);  // safe stub run
+              if (added.length) {
+                await Promise.all(
+                  added.map(cid =>
+                    updateDoc(doc(db, "promotions", String(cid)), {
+                      bannerIds: arrayUnion(id),
+                      updatedAt: serverTimestamp()
+                    })
+                  )
+                );
+              }
+              if (removed.length) {
+                await Promise.all(
+                  removed.map(cid =>
+                    updateDoc(doc(db, "promotions", String(cid)), {
+                      bannerIds: arrayRemove(id),
+                      updatedAt: serverTimestamp()
+                    })
+                  )
+                );
+              }
+            } catch (e) {
+              console.error(e);
+              alert("Failed to save banner");
+            }
 
-
-   // ===============================================================
-   // CLEAN ORPHANS IN bannerMenuItems
-   // ===============================================================
-   const allMirrorSnap = await getDocs(
-     query(collection(db, "bannerMenuItems"), where("itemId", "==", String(itemId)))
-   );
-for (const m of allMirrorSnap.docs) {
-  const bid = String((m.data() || {}).bannerId);
-  if (!buckets.has(bid)) {          // only deactivate real orphans
-    await updateDoc(m.ref, {
-      isActive: false,
-      updatedAt: serverTimestamp()
-    }).catch(()=>{});
-  }
-}
-    
-} catch (e){ console.error(e); alert("Failed to save banner"); }
             pop.classList.remove("show");
           };
 
