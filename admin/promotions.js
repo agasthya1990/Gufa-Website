@@ -617,13 +617,18 @@ couponsList.querySelectorAll(".jsEditCoupon").forEach(btn => {
 
     const chDel = !!p?.channels?.delivery || p?.channel === "delivery" || p?.channel === "both";
     const chDin = !!p?.channels?.dining   || p?.channel === "dining"   || p?.channel === "both";
+    const currScope = (typeof p.scope === "string") ? p.scope : "global";
+    const currAllowManual = (typeof p.allowManual === "boolean")
+      ? p.allowManual
+      : (currScope === "global");
+
     const pop = document.createElement("div");
     pop.className = "adm-pop";
     pop.innerHTML = `
       <div style="font-weight:600;margin-bottom:6px">Edit Coupon</div>
       <div style="display:grid;grid-template-columns:120px 1fr;gap:8px;align-items:center">
         <label>Code</label>
-         <input class="adm-input jsCode" style="width:4cm" value="${(p.code || "")}">
+        <input class="adm-input jsCode" style="width:4cm" value="${(p.code || "")}">
         <label>Channels</label>
         <div>
           <label style="display:inline-flex;align-items:center;gap:6px;margin-right:10px">
@@ -643,15 +648,29 @@ couponsList.querySelectorAll(".jsEditCoupon").forEach(btn => {
         </select>
         <label>Value</label>
         <input class="adm-input jsValue" type="number" style="width:2cm" value="${p.value ?? ""}">
-<label>Usage Limit</label>
-<input class="adm-input jsLimit" type="number" style="width:2cm" value="${p.usageLimit ?? ""}" placeholder="(optional)">
-<label>Min Order (₹)</label>
-<input class="adm-input jsMin" type="number" style="width:2cm" value="${p.minOrderValue ?? ""}" placeholder="(optional)">
-</div>
-<div class="actions" style="margin-top:10px">
-  <button class="adm-btn adm-btn--primary jsSave">Save</button>
-  <button class="adm-btn jsCancel">Cancel</button>
-</div>
+        <label>Usage Limit</label>
+        <input class="adm-input jsLimit" type="number" style="width:2cm" value="${p.usageLimit ?? ""}" placeholder="(optional)">
+        <label>Min Order (₹)</label>
+        <input class="adm-input jsMin" type="number" style="width:2cm" value="${p.minOrderValue ?? ""}" placeholder="(optional)">
+
+        <label>Manual Apply</label>
+        <div>
+          <label style="display:inline-flex;align-items:center;gap:6px">
+            <input type="checkbox" class="jsAllowManual" ${currAllowManual ? "checked":""}>
+            <span>Allow manual apply</span>
+          </label>
+        </div>
+
+        <label>Scope</label>
+        <select class="adm-select jsScope" style="inline-size:4cm;max-inline-size:4cm;">
+          <option value="global" ${currScope === "global" ? "selected":""}>Global (cart-wide)</option>
+          <option value="bannerOnly" ${currScope === "bannerOnly" ? "selected":""}>Banner-only</option>
+        </select>
+      </div>
+      <div class="actions" style="margin-top:10px">
+        <button class="adm-btn adm-btn--primary jsSave">Save</button>
+        <button class="adm-btn jsCancel">Cancel</button>
+      </div>
     `;
 
     const elCode  = pop.querySelector(".jsCode");
@@ -660,33 +679,46 @@ couponsList.querySelectorAll(".jsEditCoupon").forEach(btn => {
     const elType  = pop.querySelector(".jsType");
     const elValue = pop.querySelector(".jsValue");
     const elLimit = pop.querySelector(".jsLimit");
+    const elMin   = pop.querySelector(".jsMin");
+    const elAllow = pop.querySelector(".jsAllowManual");
+    const elScope = pop.querySelector(".jsScope");
     const btnSave = pop.querySelector(".jsSave");
     const btnCancel = pop.querySelector(".jsCancel");
 
+
     btnCancel.onclick = () => pop.classList.remove("show");
     btnSave.onclick = async () => {
-  const code = (elCode.value || "").trim();
-  const v = Number(elValue.value || 0);
-  const lim = elLimit.value ? Number(elLimit.value) : null;
-  const elMin = pop.querySelector(".jsMin");
-  const mov = elMin && elMin.value ? Number(elMin.value) : null;
+      const code = (elCode.value || "").trim();
+      const v = Number(elValue.value || 0);
+      const lim = elLimit.value ? Number(elLimit.value) : null;
+      const mov = elMin && elMin.value ? Number(elMin.value) : null;
 
-  const d = !!elDel.checked, g = !!elDin.checked;
-  if (!code || !(v>0) || (!d && !g)) { alert("Fill code, positive value, and at least one channel"); return; }
-  const legacy = d && g ? "both" : (g ? "dining" : "delivery");
-  try {
-    await updateDoc(ref, {
-      code,
-      channel: legacy,
-      channels: { delivery: d, dining: g },
-      type: elType.value || "percent",
-      value: v,
-      usageLimit: lim,
-      minOrderValue: (Number.isFinite(mov) && mov > 0) ? mov : null,
-      updatedAt: serverTimestamp()
-    });
-  } catch (e){ console.error(e); alert("Failed to save coupon"); }
-  pop.classList.remove("show");
+      const d = !!elDel.checked, g = !!elDin.checked;
+      if (!code || !(v>0) || (!d && !g)) {
+        alert("Fill code, positive value, and at least one channel");
+        return;
+      }
+      const legacy = d && g ? "both" : (g ? "dining" : "delivery");
+
+      const scopeRaw = (elScope && elScope.value === "bannerOnly") ? "bannerOnly" : "global";
+      const allowManualRaw = !!(elAllow && elAllow.checked);
+      const finalAllowManual = scopeRaw === "bannerOnly" ? false : allowManualRaw;
+
+      try {
+        await updateDoc(ref, {
+          code,
+          channel: legacy,
+          channels: { delivery: d, dining: g },
+          type: elType.value || "percent",
+          value: v,
+          usageLimit: lim,
+          minOrderValue: (Number.isFinite(mov) && mov > 0) ? mov : null,
+          allowManual: finalAllowManual,
+          scope: scopeRaw,
+          updatedAt: serverTimestamp()
+        });
+      } catch (e){ console.error(e); alert("Failed to save coupon"); }
+      pop.classList.remove("show");
 };
 
 
@@ -728,20 +760,23 @@ if (!code || !(value > 0) || (!del && !din)) {
 // legacy single 'channel' string for backward compatibility
 const legacyChannel = del && din ? "both" : (din ? "dining" : "delivery");
 
-const id = crypto.randomUUID();
-await setDoc(doc(db, "promotions", id), {
-  kind: "coupon",
-  code,
-  bannerIds: [],                                // coupons are banner-agnostic at creation
-  channel: legacyChannel,                       // legacy (old UI paths)
-  channels: { delivery: del, dining: din },     // new checklist source of truth
-  type,
-  value,
-  usageLimit: Number(document.getElementById("couponUsageLimit")?.value || "") || null,
-  minOrderValue: Number(document.getElementById("couponMinOrderValue")?.value || "") || null,
-  createdAt: serverTimestamp(),
-  active: true
-});
+      const id = crypto.randomUUID();
+      await setDoc(doc(db, "promotions", id), {
+        kind: "coupon",
+        code,
+        bannerIds: [],                                // coupons are banner-agnostic at creation
+        channel: legacyChannel,                       // legacy (old UI paths)
+        channels: { delivery: del, dining: din },     // new checklist source of truth
+        type,
+        value,
+        usageLimit: Number(document.getElementById("couponUsageLimit")?.value || "") || null,
+        minOrderValue: Number(document.getElementById("couponMinOrderValue")?.value || "") || null,
+        // manual vs banner scope defaults
+        allowManual: true,
+        scope: "global",
+        createdAt: serverTimestamp(),
+        active: true
+      });
 
 
 newCouponForm.reset();
