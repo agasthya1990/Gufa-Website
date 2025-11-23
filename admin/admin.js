@@ -1223,6 +1223,16 @@ function attachBannersSnapshot() {
   });
 }
 
+function attachBannerMenuItemsSnapshot() {
+  onSnapshot(collection(db, "bannerMenuItems"), (snap) => {
+    const list = [];
+    snap.forEach(d => list.push({ id: d.id, data: d.data() }));
+    window.BANNER_MENU_STORE = list;
+    renderTable();
+  }, (err) => console.error("bannerMenuItems snapshot", err));
+}
+
+
 /* =========================
    Table render + row handlers
    ========================= */
