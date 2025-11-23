@@ -1218,13 +1218,14 @@ await setDoc(doc(db, "promotions", id), {
 });
 
 // 🔵 Mirror banner-linked items into bannerMenuItems
-// BM-1 helper does the real work based on linked coupons + menuItems.promotions
+// Delegate to BM-1 helper in this file
 try {
   await seedBannerMenuInstancesFromBanner(id);
   console.log("🔄 bannerMenuItems seed complete (create banner)");
 } catch (err) {
   console.error("❌ bannerMenuItems seed failed (create)", err);
 }
+
 
 
 // === Seed back-references on the linked coupons (single write per coupon) ===
@@ -1406,6 +1407,7 @@ async function seedBannerMenuInstancesFromBanner(bannerId) {
     console.error("[promotions] seedBannerMenuInstancesFromBanner failed", err);
   }
 }
+
 
 
 // Boot once (same pattern)
