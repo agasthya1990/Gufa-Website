@@ -1218,25 +1218,15 @@ await setDoc(doc(db, "promotions", id), {
 });
 
 // 🔵 Mirror banner-linked items into bannerMenuItems
+// BM-1 helper does the real work based on linked coupons + menuItems.promotions
 try {
-  const q = query(
-    collection(db, "menuItems"),
-    where("promotions", "array-contains-any", linkedClean)
-  );
-
-  const snap = await getDocs(q);
-  const ops = [];
-  snap.forEach(it => ops.push(syncBannerLinksForItem(String(it.id), linkedClean)));
-
-  if (ops.length) await Promise.all(ops);
-
-  console.log("🔄 bannerMenuItems mirror sync complete (create banner)");
+  await seedBannerMenuInstancesFromBanner(id);
+  console.log("🔄 bannerMenuItems seed complete (create banner)");
 } catch (err) {
-  console.error("❌ bannerMenuItems mirror failed (create)", err);
+  console.error("❌ bannerMenuItems seed failed (create)", err);
 }
 
 
-    
 // === Seed back-references on the linked coupons (single write per coupon) ===
 if (linkedClean.length) {
   await Promise.all(
@@ -1347,65 +1337,76 @@ async function repairBannerLinksForBanner(bannerId, beforeIds, afterIds, targets
 }
 
   
-// 🔵 BM-1: Optional helper — seed /bannerMenuItems from a banner’s canonical itemIds
+// 🔵 BM-1: seed /bannerMenuItems directly from banner.linkedCouponIds + menuItems.promotions
 async function seedBannerMenuInstancesFromBanner(bannerId) {
   try {
     const bannerRef = doc(db, "promotions", String(bannerId));
     const snap = await getDoc(bannerRef);
     if (!snap.exists()) return;
+
     const v = snap.data() || {};
 
-    const itemIds = Array.isArray(v.itemIds) ? v.itemIds.map(String) : [];
-    if (!itemIds.length) return;
-
+    // Coupons this banner is linked to
     const bannerCouponIds = Array.isArray(v.linkedCouponIds)
       ? v.linkedCouponIds.map(String)
       : [];
+    if (!bannerCouponIds.length) return;
 
     const meta = {
       channels: v.targets || { delivery: true, dining: true },
       minOrderOverride: v.minOrderOverride || null
     };
 
+    // Find all menu items whose promotions contain any of these coupons
+    const qItems = query(
+      collection(db, "menuItems"),
+      where("promotions", "array-contains-any", bannerCouponIds)
+    );
+    const itemsSnap = await getDocs(qItems);
+
     const writes = [];
-    for (const itemId of itemIds) {
-      const itemSnap = await getDoc(doc(db, "menuItems", String(itemId)));
-      if (!itemSnap.exists()) continue;
-      const d = itemSnap.data() || {};
+    itemsSnap.forEach((it) => {
+      const itemId = String(it.id);
+      const d = it.data() || {};
       const instId = `${itemId}__${bannerId}`;
       const instRef = doc(db, "bannerMenuItems", instId);
 
       writes.push(
-        setDoc(instRef, {
-          itemId: String(itemId),
-          bannerId: String(bannerId),
-          bannerCouponIds,
-          promotions: bannerCouponIds,
-          originKey: instId,
-          isActive: true,
-          name: d.name,
-          description: d.description,
-          category: d.category,
-          foodCourse: d.foodCourse,
-          foodType: d.foodType,
-          imageUrl: d.imageUrl,
-          inStock: d.inStock,
-          qtyType: d.qtyType,
-          itemPrice: d.itemPrice,
-          addons: d.addons,
-          channels: meta.channels,
-          minOrderOverride: meta.minOrderOverride,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp()
-        }, { merge: true })
+        setDoc(
+          instRef,
+          {
+            itemId,
+            bannerId: String(bannerId),
+            bannerCouponIds,
+            promotions: bannerCouponIds,
+            originKey: instId,
+            isActive: true,
+            name: d.name,
+            description: d.description,
+            category: d.category,
+            foodCourse: d.foodCourse,
+            foodType: d.foodType,
+            imageUrl: d.imageUrl,
+            inStock: d.inStock,
+            qtyType: d.qtyType,
+            itemPrice: d.itemPrice,
+            addons: d.addons,
+            channels: meta.channels,
+            minOrderOverride: meta.minOrderOverride,
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp()
+          },
+          { merge: true }
+        )
       );
-    }
+    });
 
     if (writes.length) await Promise.all(writes);
   } catch (err) {
     console.error("[promotions] seedBannerMenuInstancesFromBanner failed", err);
   }
 }
+
 
 // Boot once (same pattern)
 import { auth } from "./firebase.js";
