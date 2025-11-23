@@ -1155,14 +1155,32 @@ rows.push(`
               }
               if (removed.length) {
                 await Promise.all(
-                  removed.map(cid =>
-                    updateDoc(doc(db, "promotions", String(cid)), {
+                  removed.map(async (cid) => {
+                    const couponRef = doc(db, "promotions", String(cid));
+                    const snap = await getDoc(couponRef);
+                    if (!snap.exists()) return;
+
+                    const data = snap.data() || {};
+                    const beforeArr = Array.isArray(data.bannerIds) ? data.bannerIds : [];
+                    const afterArr = beforeArr.filter(bid => bid !== id);
+
+                    const payload = {
                       bannerIds: arrayRemove(id),
                       updatedAt: serverTimestamp()
-                    })
-                  )
+                    };
+
+                    // 🔁 If this coupon is no longer attached to any banner,
+                    // revert it to a global, manual-apply coupon.
+                    if (afterArr.length === 0) {
+                      payload.scope = "global";
+                      payload.allowManual = true;
+                    }
+
+                    await updateDoc(couponRef, payload);
+                  })
                 );
               }
+
 
 
               // 4) Keep /bannerMenuItems in sync for this banner
