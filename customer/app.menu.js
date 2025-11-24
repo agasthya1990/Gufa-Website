@@ -331,6 +331,8 @@ document.addEventListener("DOMContentLoaded", () => {
   let ITEMS = [];
   let COURSES = [];
   let CATEGORIES = [];
+  let BANNER_MENU = new Map();   // bannerId -> Set(itemId) via /bannerMenuItems
+
 
   let vegOn = false;
   let nonvegOn = false;
@@ -977,9 +979,24 @@ function itemsForList(){
     } else if (listKind === "category") {
       const c = CATEGORIES.find(x=>x.id===listId) || {id:listId, label:listId};
       arr = arr.filter(it=>categoryMatch(it, c));
-    } else if (listKind === "banner") {
+        } else if (listKind === "banner") {
       const hasActiveBanner = (typeof ACTIVE_BANNER !== "undefined" && ACTIVE_BANNER);
-      if (typeof itemMatchesBanner === "function" && hasActiveBanner) {
+
+      // Prefer strict membership via bannerMenuItems → BANNER_MENU
+      if (hasActiveBanner && (BANNER_MENU instanceof Map)) {
+        const key = String(ACTIVE_BANNER.id || "").trim();
+        const set = key ? BANNER_MENU.get(key) : null;
+
+        if (set && set.size) {
+          const ids = new Set(Array.from(set).map(s => String(s).toLowerCase()));
+          arr = arr.filter(it => ids.has(String(it.id).toLowerCase()));
+        } else if (typeof itemMatchesBanner === "function") {
+          // Fallback: coupon-based banner match if index is empty
+          arr = arr.filter(it => itemMatchesBanner(it, ACTIVE_BANNER));
+        } else {
+          arr = [];
+        }
+      } else if (typeof itemMatchesBanner === "function" && hasActiveBanner) {
         arr = arr.filter(it => itemMatchesBanner(it, ACTIVE_BANNER));
       } else {
         arr = []; // fallback if helpers not ready
@@ -1019,9 +1036,10 @@ function itemsForList(){
   });
 }
                          
-  function showHome(){
+function showHome(){
   view = "home"; listKind=""; listId=""; listLabel="";
   globalResults.classList.add("hidden");
+  globalResults.removeAttribute("data-banner-id");
   coursesSection.classList.remove("hidden");
   categoriesSection.classList.remove("hidden");
   primaryBar?.classList.remove("hidden");
@@ -1174,6 +1192,42 @@ function itemMatchesBanner(item, banner){
   });
 }
 
+// Resolve active, eligible item ids for the current banner + coupon
+function activeEligibleItemsForBanner(couponId){
+  try {
+    const banner = ACTIVE_BANNER || null;
+    if (!banner || !banner.id) return [];
+
+    // 1️⃣ Prefer the strict /bannerMenuItems index
+    if (BANNER_MENU instanceof Map) {
+      const key = String(banner.id || "").trim();
+      const set = key ? BANNER_MENU.get(key) : null;
+      if (set && set.size) {
+        return Array.from(set).map(s => String(s));
+      }
+    }
+
+    // 2️⃣ Fallback: infer from items that both match the banner AND link this coupon
+    const catalog = (ITEMS && ITEMS.length ? ITEMS : (window.ITEMS || []));
+    if (!catalog || !catalog.length) return [];
+
+    const cid = String(couponId || "").trim();
+    return catalog
+      .filter((it) => {
+        if (!itemMatchesBanner(it, banner)) return false;
+
+        const rawIds = Array.isArray(it.couponIds) ? it.couponIds
+                     : Array.isArray(it.coupons)    ? it.coupons
+                     : Array.isArray(it.promotions) ? it.promotions
+                     : [];
+        const norm = rawIds.map(String).map(s => s.trim()).filter(Boolean);
+        return cid ? norm.includes(cid) : true;
+      })
+      .map(it => String(it.id));
+  } catch {
+    return [];
+  }
+}
 
 /** Switch to list view showing only items matching the clicked banner */
 function openBannerList(banner){
@@ -1185,14 +1239,19 @@ function openBannerList(banner){
   listId = banner.id;
   listLabel = banner.title || "Today’s Deals";
 
-  // hide tiles, show list
-  document.getElementById("coursesSection")?.classList.add("hidden");
+    document.getElementById("coursesSection")?.classList.add("hidden");
   document.getElementById("categoriesSection")?.classList.add("hidden");
   document.getElementById("primaryBar")?.classList.add("hidden");
-  document.getElementById("globalResults")?.classList.remove("hidden");
+
+  const host = document.getElementById("globalResults");
+  if (host) {
+    host.classList.remove("hidden");
+    host.setAttribute("data-banner-id", String(banner.id || ""));
+  }
 
   // use the standard renderer so cards look exactly the same
   renderContentView();
+
 
   // Smooth-scroll to the banner heading (or first menu card) after render,
   // and briefly highlight the destination for better visual navigation.
@@ -1443,10 +1502,32 @@ function decorateBannerDealBadges(){
     };
     try {
       const qLive = query(baseCol, orderBy("createdAt","desc"));
-      onSnapshot(qLive, snap => renderFrom(snap.docs), () => onSnapshot(baseCol, snap => renderFrom(snap.docs)));
+      onSnapshot(
+        qLive,
+        snap => renderFrom(snap.docs),
+        ()   => onSnapshot(baseCol, snap => renderFrom(snap.docs))
+      );
     } catch {
       onSnapshot(baseCol, snap => renderFrom(snap.docs));
     }
+
+    // Banner-menu instances: build bannerId -> Set(itemId) index from /bannerMenuItems
+    try {
+      onSnapshot(collection(db, "bannerMenuItems"), (snap) => {
+        const map = new Map();
+        snap.forEach((d) => {
+          const x = d.data() || {};
+          const bannerId = String(x.bannerId || "").trim();
+          const itemId   = String(x.itemId   || "").trim();
+          if (!bannerId || !itemId) return;
+          if (!map.has(bannerId)) map.set(bannerId, new Set());
+          map.get(bannerId).add(itemId);
+        });
+        BANNER_MENU = map;
+        try { window.BANNER_MENU = BANNER_MENU; } catch {}
+      });
+    } catch {}
+
  // Coupons (for later D2 label text; stored now)
     
 try {
