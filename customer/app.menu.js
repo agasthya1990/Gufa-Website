@@ -1128,20 +1128,24 @@ function itemsForList(){
     } else if (listKind === "category") {
       const c = CATEGORIES.find(x=>x.id===listId) || {id:listId, label:listId};
       arr = arr.filter(it=>categoryMatch(it, c));
-    } else if (listKind === "banner") {
+       } else if (listKind === "banner") {
       const hasActiveBanner = (typeof ACTIVE_BANNER !== "undefined" && ACTIVE_BANNER);
 
-      // ✅ STRICT: banner lists are driven only by /bannerMenuItems
       if (hasActiveBanner && (BANNER_MENU instanceof Map)) {
         const key = String(ACTIVE_BANNER.id || "").trim();
         const set = key ? BANNER_MENU.get(key) : null;
 
         if (set && set.size) {
           const ids = new Set(Array.from(set).map(s => String(s).toLowerCase()));
+          // 1️⃣ First pass: only items that are explicitly mapped to this banner
           arr = arr.filter(it => ids.has(String(it.id).toLowerCase()));
+
+          // 2️⃣ Second pass: require coupon alignment as well, *if* coupon meta is ready
+          if (window.COUPONS instanceof Map && window.COUPONS.size > 0) {
+            arr = arr.filter(it => itemMatchesBanner(it, ACTIVE_BANNER));
+          }
         } else {
-          // No mapped items for this banner → show empty list instead of
-          // inferring via coupons to avoid "ghost" matches.
+          // No mapped items for this banner → show empty list
           arr = [];
         }
       } else {
@@ -1749,17 +1753,17 @@ try {
       const locked = JSON.parse(localStorage.getItem("gufa_coupon") || "null");
       if (locked && locked.scope?.couponId) {
         const meta = m.get(String(locked.scope.couponId));
-        if (meta && meta.active !== false) {
-          const next = { ...locked };
-          if (!next.code)  next.code  = meta.code || String(locked.scope.couponId).toUpperCase();
-          if (!next.type)  next.type  = String(meta.type || "");
-          if (!next.value) next.value = Number(meta.value || 0);
-          if (next.code !== locked.code || next.type !== locked.type || next.value !== locked.value) {
-            localStorage.setItem("gufa_coupon", JSON.stringify(next));
-            window.dispatchEvent(new Event("cart:update"));
-          }
-        }
-      }
+if (meta && meta.active !== false) {
+  const next = { ...locked };
+  if (!next.code)  next.code  = meta.code || String(locked.scope.couponId).toUpperCase();
+  if (!next.type)  next.type  = String(meta.type || "");
+  if (!next.value) next.value = Number(meta.value || 0);
+  if (next.code !== locked.code || next.type !== locked.type || next.value !== locked.value) {
+    localStorage.setItem("gufa_coupon", JSON.stringify(next));
+    window.dispatchEvent(new Event("cart:update"));
+   }
+ }
+}
     } catch {}
 
     // If currently viewing a banner list, (re)decorate badges now that coupons are hydrated
