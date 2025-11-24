@@ -73,25 +73,25 @@
 
       const prev = bag[key] || {};
 
-bag[key] = {
-  id:       meta?.id       ?? prev.id       ?? "",
-  name:     meta?.name     ?? prev.name     ?? "",
-  variant:  meta?.variant  ?? prev.variant  ?? "",
-  price:    Number(meta?.price ?? prev.price ?? 0),
-  thumb:    meta?.thumb    ?? prev.thumb    ?? "",
-  qty:      next,
-  bannerId: meta?.bannerId ?? prev.bannerId ?? "",
- origin: (
-  meta?.origin?.trim()
-  || (meta?.bannerId ? `banner:${meta.bannerId}` : "")
-  || prev.origin
-  || ""
-)
+      bag[key] = {
+        id:       meta?.id       ?? prev.id       ?? "",
+        name:     meta?.name     ?? prev.name     ?? "",
+        variant:  meta?.variant  ?? prev.variant  ?? "",
+        price:    Number(meta?.price ?? prev.price ?? 0),
+        thumb:    meta?.thumb    ?? prev.thumb    ?? "",
+        qty:      next,
+        bannerId: meta?.bannerId ?? prev.bannerId ?? "",
+        origin: (
+          (typeof meta?.origin === "string" ? meta.origin.trim() : "")
+          || (meta?.bannerId ? `banner:${meta.bannerId}` : "")
+          || (typeof prev.origin === "string" ? prev.origin.trim() : "")
+          || ""
+        )
+      };
 
-};
-      
-  writeBag(bag);
+      writeBag(bag);
     },
+
 
     clear() { writeBag({}); },
 
