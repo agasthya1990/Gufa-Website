@@ -3,18 +3,46 @@
 ;(function () {
   const LS_KEY = "gufa_cart";
 
+
   // ---- helpers ----
   function readBag() {
     try {
       const raw = localStorage.getItem(LS_KEY);
       const parsed = raw ? JSON.parse(raw) : {};
+
       // accept flat or {items:{...}} then normalize to flat
+      let flat = {};
       if (parsed && typeof parsed === "object") {
-        return (parsed.items && typeof parsed.items === "object") ? parsed.items : parsed;
+        flat = (parsed.items && typeof parsed.items === "object") ? parsed.items : parsed;
       }
+      if (!flat || typeof flat !== "object") return {};
+
+      // Normalize each line and guarantee a stable origin
+      const out = {};
+      for (const [k, v] of Object.entries(flat)) {
+        if (!v || typeof v !== "object") {
+          out[k] = v;
+          continue;
+        }
+
+        const prev     = v;
+        const bannerId = prev.bannerId || "";
+        const rawOrigin = typeof prev.origin === "string" ? prev.origin.trim() : "";
+        let origin = rawOrigin;
+
+        if (!origin) {
+          origin = bannerId ? `banner:${bannerId}` : "non-banner";
+        }
+
+        out[k] = Object.assign({}, prev, { origin });
+      }
+
+      return out;
+    } catch {
       return {};
-    } catch { return {}; }
+    }
   }
+
 
   function writeBag(bag) {
     try { localStorage.setItem(LS_KEY, JSON.stringify(bag || {})); } catch {}
