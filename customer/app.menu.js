@@ -376,74 +376,223 @@ window.addEventListener("serviceMode:changed", () => {
   } catch {}
 });
 
+  // Auto-lock a banner coupon whenever a banner-origin item enters the cart
+  // Uses Cart origin metadata so it works from any view (Today’s Deals, search, etc.)
+  window.lockCouponForActiveBannerIfNeeded = function (addedItemId) {
+    try {
+      // Skip if another coupon is already locked (banner or global)
+      const existing = JSON.parse(localStorage.getItem("gufa_coupon") || "null");
+      if (existing && existing.code) return;
 
+      const bag = (window.Cart && typeof window.Cart.get === "function") ? window.Cart.get() : {};
+      if (!bag || typeof bag !== "object") return;
 
-   window.lockCouponForActiveBannerIfNeeded = function (addedItemId) {
-  try {
-    if (!(view === "list" && listKind === "banner")) return;
+      const targetId = String(addedItemId);
 
-    // Skip if another coupon is already locked
-    const existing = JSON.parse(localStorage.getItem("gufa_coupon") || "null");
-    if (existing && existing.code) return;
+      // Base lines in bag for this item (ignore add-ons)
+      const baseEntries = Object.entries(bag).filter(([key, line]) => {
+        const parts = String(key).split(":");
+        if (parts.length < 2) return false; // ignore malformed keys
+        const baseId = String(line?.id || parts[0]);
+        if (baseId !== targetId) return false;
+        const qty = Number(line?.qty || 0);
+        return qty > 0;
+      });
 
-    const ACTIVE_BANNER_ID = String(listId || "");
-    const ACTIVE_BANNER = (window.BANNERS || []).find(b => String(b.id) === ACTIVE_BANNER_ID);
-    if (!ACTIVE_BANNER) return;
+      if (!baseEntries.length) return;
 
-const [couponId] = Array.isArray(ACTIVE_BANNER.linkedCouponIds) ? ACTIVE_BANNER.linkedCouponIds : [];
-if (!couponId) return;
+      // Prefer an explicit banner origin
+      let origin = "";
+      let bannerId = "";
+      for (const [, line] of baseEntries) {
+        const o = String(line?.origin || "");
+        if (o.startsWith("banner:")) {
+          origin = o;
+          bannerId = o.slice("banner:".length);
+          break;
+        }
+      }
 
-const catalog = (ITEMS && ITEMS.length ? ITEMS : (window.ITEMS || []));
+      // Fallback: derive bannerId from bannerId field if present
+      if (!bannerId) {
+        const withBanner = baseEntries.find(([, line]) => line && line.bannerId);
+        if (withBanner && withBanner[1].bannerId) {
+          bannerId = String(withBanner[1].bannerId);
+          origin = `banner:${bannerId}`;
+        }
+      }
 
-const eligibleItemIds = catalog
-  .filter(it => Array.isArray(it.promotions) && it.promotions.map(String).includes(String(couponId)))
-  .map(it => String(it.id));
+      // Non-banner items should not auto-lock coupons; they remain manual
+      if (!bannerId) return;
 
-    if (!eligibleItemIds.includes(String(addedItemId))) return;
+      const banners = Array.isArray(window.BANNERS)
+        ? window.BANNERS
+        : (typeof BANNERS !== "undefined" ? BANNERS : []);
+      const ACTIVE_BANNER_ID = String(bannerId);
+      const ACTIVE_BANNER = banners.find(b => String(b.id) === ACTIVE_BANNER_ID);
+      if (!ACTIVE_BANNER) return;
 
-    const meta = (window.COUPONS instanceof Map) ? window.COUPONS.get(String(couponId)) : null;
-    const targets = (meta && meta.targets) ? meta.targets : { delivery: true, dining: true };
+      // Resolve catalog + concrete item
+      const catalog = (typeof ITEMS !== "undefined" && Array.isArray(ITEMS) && ITEMS.length)
+        ? ITEMS
+        : (Array.isArray(window.ITEMS) ? window.ITEMS : []);
+      const item = catalog.find(x => String(x.id) === targetId);
+      if (!item) return;
 
-const payload = {
-  code:  (meta?.code || String(couponId)).toUpperCase(),
-  type:  String(meta?.type || ""),
-  value: Number(meta?.value || 0),
-  valid: {
-    delivery: !!targets.delivery,
-    dining:   !!targets.dining
-  },
-  scope: { couponId: String(couponId), eligibleItemIds },
-  origin: `banner:${ACTIVE_BANNER_ID}`,
-  source: "auto:banner",
-  lockedAt: Date.now()
-};
+      // Optional: if helper exists, ensure the item still belongs to this banner
+      try {
+        if (typeof itemMatchesBanner === "function" && !itemMatchesBanner(item, ACTIVE_BANNER)) return;
+      } catch {}
 
-    localStorage.setItem("gufa_coupon", JSON.stringify(payload));
-    window.dispatchEvent(new CustomEvent("cart:update", { detail: { coupon: payload } }));
-  } catch {}
-};
+      // Determine the best coupon candidate for this item + banner
+      let chosen = null;
+      try {
+        if (typeof pickCouponForItem === "function") {
+          chosen = pickCouponForItem(item, ACTIVE_BANNER);
+        }
+      } catch {}
 
-window.addEventListener("promo:unlocked", () => {
-  try {
-    const [nextCoupon] = ACTIVE_BANNER?.linkedCouponIds || [];
-    if (!nextCoupon) return;
-    const meta = window.COUPONS.get(String(nextCoupon));
-    const eligibleItemIds = activeEligibleItemsForBanner(nextCoupon);
-    const payload = {
-      code: (meta?.code || nextCoupon).toUpperCase(),
-      type: String(meta?.type || ""),
-      value: Number(meta?.value || 0),
-      valid: meta?.valid || {delivery:true, dining:true},
-      scope: { couponId: String(nextCoupon), eligibleItemIds },
-      origin: `banner:${ACTIVE_BANNER_ID}`,
-      source: "auto:fcfs",
-      lockedAt: Date.now()
-    };
-    localStorage.setItem("gufa_coupon", JSON.stringify(payload));
-    window.dispatchEvent(new CustomEvent("cart:update", { detail: { coupon: payload } }));
-  } catch {}
-});
-  
+      const rawItemIds = Array.isArray(item.couponIds) ? item.couponIds
+                      : Array.isArray(item.coupons)    ? item.coupons
+                      : Array.isArray(item.promotions) ? item.promotions
+                      : [];
+      const itemIds   = rawItemIds.map(String).map(s => s.trim()).filter(Boolean);
+      const bannerIds = (ACTIVE_BANNER.linkedCouponIds || []).map(String).map(s => s.trim()).filter(Boolean);
+      const firstIntersectId = bannerIds.find(cid => itemIds.includes(cid)) || "";
+
+      const chosenId = (chosen?.id || firstIntersectId || "").toString();
+      if (!chosenId) return;
+
+      const chosenMeta = (window.COUPONS instanceof Map) ? window.COUPONS.get(chosenId) : null;
+
+      // Compute eligible item ids (prefer BANNER_MENU, then fallback to catalog)
+      const eligibleItemIds = (function () {
+        try {
+          if (window.BANNER_MENU instanceof Map) {
+            const set = window.BANNER_MENU.get(ACTIVE_BANNER_ID);
+            if (set && set.size) return Array.from(set).map(String);
+          }
+        } catch {}
+
+        try {
+          // If we are currently viewing this banner list, reuse its view helper
+          if (typeof itemsForList === "function" &&
+              typeof view !== "undefined" &&
+              view === "list" &&
+              listKind === "banner" &&
+              String(listId) === ACTIVE_BANNER_ID) {
+            return itemsForList().map(it => String(it.id));
+          }
+        } catch {}
+
+        try {
+          // Fallback: any catalog item that carries this coupon id
+          return (catalog || []).filter(it => {
+            const ids = Array.isArray(it.couponIds) ? it.couponIds
+                      : Array.isArray(it.coupons)    ? it.coupons
+                      : Array.isArray(it.promotions) ? it.promotions
+                      : [];
+            return ids.map(String).map(s => s.trim()).includes(chosenId);
+          }).map(it => String(it.id));
+        } catch {
+          return [];
+        }
+      })();
+
+      const t = chosenMeta?.targets || {};
+      const payload = {
+        code: String((chosen?.code || chosenMeta?.code || chosenId || ACTIVE_BANNER.id)).toUpperCase(),
+        type: String(chosen?.type ?? chosenMeta?.type ?? ""),
+        value: Number(chosen?.value ?? chosenMeta?.value ?? 0),
+        valid: {
+          delivery: ("delivery" in t) ? !!t.delivery : true,
+          dining:   ("dining"   in t) ? !!t.dining   : true
+        },
+        scope: { bannerId: ACTIVE_BANNER.id, couponId: chosenId, eligibleItemIds },
+        lockedAt: Date.now(),
+        source: `banner:${ACTIVE_BANNER_ID}`
+      };
+
+      // Persist minimal coupon maps to help checkout resolve ids/codes
+      try {
+        if (window.COUPONS instanceof Map && window.COUPONS.size > 0) {
+          const dump = Array.from(window.COUPONS.entries());
+          localStorage.setItem("gufa:COUPONS", JSON.stringify(dump));
+        }
+      } catch {}
+
+      try {
+        const idx = {};
+        for (const it of catalog) {
+          const itemId = String(it?.id ?? "").toLowerCase();
+          if (!itemId) continue;
+          const raw = Array.isArray(it.couponIds) ? it.couponIds
+                    : Array.isArray(it.coupons)    ? it.coupons
+                    : Array.isArray(it.promotions) ? it.promotions
+                    : [];
+          for (const cid of raw.map(s => String(s).trim()).filter(Boolean)) {
+            const key = cid.toLowerCase();
+            if (!idx[key]) idx[key] = new Set();
+            idx[key].add(itemId);
+          }
+        }
+        const out = Object.fromEntries(
+          Object.entries(idx).map(([k, v]) => [k, Array.from(v)])
+        );
+        localStorage.setItem("gufa:COUPON_INDEX", JSON.stringify(out));
+      } catch {}
+
+      localStorage.setItem("gufa_coupon", JSON.stringify(payload));
+      window.dispatchEvent(new CustomEvent("cart:update", { detail: { coupon: payload } }));
+    } catch {}
+  };
+
+  // When Cart clears a stale banner lock, promote the next eligible banner (if any)
+  ["promo:unlocked", "promo:fcfs:trigger"].forEach((evtName) => {
+    window.addEventListener(evtName, () => {
+      try {
+        const bag = window?.Cart?.get?.() || {};
+
+        // 1) Prefer explicit breadcrumb from FCFS (gufa:nextEligibleItem)
+        let targetId = null;
+        try { targetId = localStorage.getItem("gufa:nextEligibleItem"); } catch {}
+        let candidateId = null;
+
+        if (targetId) {
+          const hasBase = Object.entries(bag).some(([key, it]) => {
+            const parts = String(key).split(":");
+            if (parts.length < 2) return false;
+            const baseId = String(it?.id || parts[0]).toLowerCase();
+            if (baseId !== String(targetId).toLowerCase()) return false;
+            return Number(it?.qty || 0) > 0;
+          });
+          if (hasBase) {
+            candidateId = String(targetId);
+          }
+        }
+
+        // 2) Fallback: first banner-origin base still present
+        if (!candidateId) {
+          for (const [key, it] of Object.entries(bag)) {
+            const parts = String(key).split(":");
+            if (parts.length < 2) continue;
+            const origin = String(it?.origin || "");
+            if (!origin.startsWith("banner:")) continue;
+            if (Number(it?.qty || 0) <= 0) continue;
+            const baseId = String(it?.id || parts[0]);
+            candidateId = baseId;
+            break;
+          }
+        }
+
+        if (!candidateId) return;
+
+        try { localStorage.removeItem("gufa:nextEligibleItem"); } catch {}
+        window.lockCouponForActiveBannerIfNeeded?.(candidateId);
+      } catch {}
+    });
+  });
+
   
   /* ---------- DOM ---------- */
   const vegSwitch = $("#vegSwitch");
