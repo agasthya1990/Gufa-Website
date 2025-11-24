@@ -635,23 +635,25 @@ function guardStaleCouponLock(){
 
     const elig = (typeof resolveEligibilitySet === "function") ? resolveEligibilitySet(baseLock) : new Set();
 
- const bannerOnly = isBannerScoped(baseLock); // ← NEW
+    const bannerOnly = isBannerScoped(baseLock); // ← NEW
 
-const ok = Object.keys(bag)
-  .filter(k => k.split(":").length < 3)
-  .some(k => {
-    const id = k.split(":")[0].toLowerCase();
-    const origin = String(bag[k]?.origin || "");
-    if (bannerOnly && !isKnownBannerOrigin(origin)) return false;
-    return elig.has(id);
-  });
+    const ok = Object.keys(bag)
+      .filter(k => k.split(":").length < 3)
+      .some(k => {
+        const id = k.split(":")[0].toLowerCase();
+        const origin = String(bag[k]?.origin || "");
+        if (bannerOnly && !isKnownBannerOrigin(origin)) return false;
+        return elig.has(id);
+      });
 
-if (!ok) {
-  localStorage.removeItem("gufa_coupon");
-  try {
-    window.dispatchEvent(new CustomEvent("cart:update", { detail:{ reason:"stale-lock-cleared" } }));
-    // Let Menu know the previous lock died so it can promote the next eligible banner coupon
-    window.dispatchEvent(new CustomEvent("promo:unlocked", { detail:{ from:"guardStaleCouponLock" } }));
+    if (!ok) {
+      localStorage.removeItem("gufa_coupon");
+      try {
+        window.dispatchEvent(new CustomEvent("cart:update", { detail:{ reason:"stale-lock-cleared" } }));
+        // Let Menu know the previous lock died so it can promote the next eligible banner coupon
+        window.dispatchEvent(new CustomEvent("promo:unlocked", { detail:{ from:"guardStaleCouponLock" } }));
+      } catch {}
+    }
   } catch {}
 }
 
@@ -663,6 +665,7 @@ try {
   window.addEventListener("mode:change",          guardStaleCouponLock);
   window.addEventListener("serviceMode:changed",  guardStaleCouponLock);
 } catch {}
+
 
 
 
