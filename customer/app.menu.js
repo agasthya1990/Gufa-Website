@@ -1128,10 +1128,10 @@ function itemsForList(){
     } else if (listKind === "category") {
       const c = CATEGORIES.find(x=>x.id===listId) || {id:listId, label:listId};
       arr = arr.filter(it=>categoryMatch(it, c));
-        } else if (listKind === "banner") {
+    } else if (listKind === "banner") {
       const hasActiveBanner = (typeof ACTIVE_BANNER !== "undefined" && ACTIVE_BANNER);
 
-      // Prefer strict membership via bannerMenuItems → BANNER_MENU
+      // ✅ STRICT: banner lists are driven only by /bannerMenuItems
       if (hasActiveBanner && (BANNER_MENU instanceof Map)) {
         const key = String(ACTIVE_BANNER.id || "").trim();
         const set = key ? BANNER_MENU.get(key) : null;
@@ -1139,16 +1139,14 @@ function itemsForList(){
         if (set && set.size) {
           const ids = new Set(Array.from(set).map(s => String(s).toLowerCase()));
           arr = arr.filter(it => ids.has(String(it.id).toLowerCase()));
-        } else if (typeof itemMatchesBanner === "function") {
-          // Fallback: coupon-based banner match if index is empty
-          arr = arr.filter(it => itemMatchesBanner(it, ACTIVE_BANNER));
         } else {
+          // No mapped items for this banner → show empty list instead of
+          // inferring via coupons to avoid "ghost" matches.
           arr = [];
         }
-      } else if (typeof itemMatchesBanner === "function" && hasActiveBanner) {
-        arr = arr.filter(it => itemMatchesBanner(it, ACTIVE_BANNER));
       } else {
-        arr = []; // fallback if helpers not ready
+        // No active banner or no index yet → no items
+        arr = [];
       }
     }
   }
@@ -1328,12 +1326,12 @@ function itemMatchesBanner(item, banner){
   //  - is active (if meta present)
   //  - has targets allowing the current mode (delivery/dining)
   
-  return itemIds.some(cid => {
+   return itemIds.some(cid => {
     if (!bannerIds.includes(cid)) return false;
     const meta = (window.COUPONS instanceof Map) ? window.COUPONS.get(String(cid)) : null;
 
-    // Before coupons map hydrates, allow temporarily to avoid flashing empty lists.
-    if (!meta) return !(COUPONS instanceof Map) || COUPONS.size === 0;
+    // Do not infer eligibility without actual coupon meta
+    if (!meta) return false;
 
     if (meta.active === false) return false;
     const t = meta.targets || {};
@@ -1660,7 +1658,7 @@ function decorateBannerDealBadges(){
       onSnapshot(baseCol, snap => renderFrom(snap.docs));
     }
 
-    // Banner-menu instances: build bannerId -> Set(itemId) index from /bannerMenuItems
+       // Banner-menu instances: build bannerId -> Set(itemId) index from /bannerMenuItems
     try {
       onSnapshot(collection(db, "bannerMenuItems"), (snap) => {
         const map = new Map();
@@ -1674,6 +1672,11 @@ function decorateBannerDealBadges(){
         });
         BANNER_MENU = map;
         try { window.BANNER_MENU = BANNER_MENU; } catch {}
+
+        // If user is currently viewing a banner list, re-render it with the new index
+        if (view === "list" && listKind === "banner" && ACTIVE_BANNER) {
+          try { renderContentView(); } catch {}
+        }
       });
     } catch {}
 
@@ -1718,9 +1721,20 @@ try {
    ================================ */
 try {
   if (window.UNIFIED_PROMOTIONS) {
-    window.COUPONS = window.UNIFIED_PROMOTIONS.coupons;
-    window.BANNERS = window.UNIFIED_PROMOTIONS.banners;
+    // 1) Only fall back to inline coupons if Firestore map is still empty
+    if (!(window.COUPONS instanceof Map) || window.COUPONS.size === 0) {
+      if (window.UNIFIED_PROMOTIONS.coupons) {
+        window.COUPONS = window.UNIFIED_PROMOTIONS.coupons;
+      }
+    }
 
+    // 2) Never overwrite the live Firestore banners; only fall back if there is nothing yet
+    const haveLiveBanners = Array.isArray(window.BANNERS) && window.BANNERS.length > 0;
+    if (!haveLiveBanners && Array.isArray(window.UNIFIED_PROMOTIONS.banners)) {
+      window.BANNERS = window.UNIFIED_PROMOTIONS.banners;
+    }
+
+    // 3) Always enrich _meta
     if (!window.BANNERS._meta) window.BANNERS._meta = {};
     Object.assign(window.BANNERS._meta, window.UNIFIED_PROMOTIONS.bannerMeta || {});
   }
