@@ -270,26 +270,15 @@ function wireApplyCouponUI(){
   const btn   = UI.promoApply;
   if (!btn || !input) return;
 
-const apply = () => {
-  const query = input.value;
-  const found = findCouponByCodeOrId(query);
-  if (!found || !found.meta || found.meta.active === false) {
-    if (UI.promoLbl) UI.promoLbl.textContent = "Promotion (): invalid or inactive";
-    return;
-  }
-
-  // 🔒 manual-apply guard based on coupon meta
-  const meta  = found.meta || {};
-  const scope = (typeof meta.scope === "string") ? meta.scope : "global";
-  const explicitAllow = (typeof meta.allowManual === "boolean") ? meta.allowManual : undefined;
-  const allowManual = (explicitAllow !== undefined) ? explicitAllow : (scope === "global");
-
-  if (!allowManual || scope === "bannerOnly") {
-    if (UI.promoLbl) UI.promoLbl.textContent = "Promotion (): not valid for manual apply";
-    return;
-  }
-
-  const ok = writeCouponLockFromMeta(found.id, found.meta);
+  const apply = () => {
+    const query = input.value;
+    const found = findCouponByCodeOrId(query);
+    if (!found || !found.meta || found.meta.active === false) {
+      // Minimal UX: reflect error in label line; totals will stay unchanged
+      if (UI.promoLbl) UI.promoLbl.textContent = "Promotion (): invalid or inactive";
+      return;
+    }
+    const ok = writeCouponLockFromMeta(found.id, found.meta);
 
     // If nothing in cart qualifies yet, stash a hint for Menu to highlight next eligible item
     try {
@@ -464,24 +453,21 @@ function activeMode(){
         if (kind !== "coupon") return;
 
         const targetsRaw = d.channels || d.targets || {};
-const meta = {
-  code:      d.code ? String(d.code) : undefined,
-  type:      String(d.type || "flat").toLowerCase(), // 'percent' | 'flat'
-  value:     Number(d.value || 0),
-  minOrder:  Number(d.minOrder || 0),
-  targets:   { delivery: !!targetsRaw.delivery, dining: !!targetsRaw.dining },
-  // optional fields if you later add them
-  eligibleItemIds: Array.isArray(d.eligibleItemIds) ? d.eligibleItemIds : undefined,
-  usageLimit: d.usageLimit ?? undefined,
-  usedCount:  d.usedCount  ?? undefined,
-  // 🔒 manual vs banner scope from coupon docs
-  allowManual: (typeof d.allowManual === "boolean") ? d.allowManual : undefined,
-  scope:       (typeof d.scope === "string") ? d.scope : undefined
-};
+        const meta = {
+          code:      d.code ? String(d.code) : undefined,
+          type:      String(d.type || "flat").toLowerCase(), // 'percent' | 'flat'
+          value:     Number(d.value || 0),
+          minOrder:  Number(d.minOrder || 0),
+          targets:   { delivery: !!targetsRaw.delivery, dining: !!targetsRaw.dining },
+          // optional fields if you later add them
+          eligibleItemIds: Array.isArray(d.eligibleItemIds) ? d.eligibleItemIds : undefined,
+          usageLimit: d.usageLimit ?? undefined,
+          usedCount:  d.usedCount  ?? undefined
+        };
 
-   window.COUPONS.set(String(doc.id), meta);
-  added++;
- });
+        window.COUPONS.set(String(doc.id), meta);
+        added++;
+      });
 
       if (added > 0) {
         try {
@@ -635,26 +621,23 @@ function guardStaleCouponLock(){
 
     const elig = (typeof resolveEligibilitySet === "function") ? resolveEligibilitySet(baseLock) : new Set();
 
-    const bannerOnly = isBannerScoped(baseLock); // ← NEW
+ const bannerOnly = isBannerScoped(baseLock); // ← NEW
 
-    const ok = Object.keys(bag)
-      .filter(k => k.split(":").length < 3)
-      .some(k => {
-        const id = k.split(":")[0].toLowerCase();
-        const origin = String(bag[k]?.origin || "");
-        if (bannerOnly && !isKnownBannerOrigin(origin)) return false;
-        return elig.has(id);
-      });
+const ok = Object.keys(bag)
+  .filter(k => k.split(":").length < 3)
+  .some(k => {
+    const id = k.split(":")[0].toLowerCase();
+    const origin = String(bag[k]?.origin || "");
+    if (bannerOnly && !isKnownBannerOrigin(origin)) return false;
+    return elig.has(id);
+  });
 
-      if (!ok) {
-      localStorage.removeItem("gufa_coupon");
-      try {
-        window.dispatchEvent(new CustomEvent("cart:update", { detail:{ reason:"stale-lock-cleared" } }));
-        // Let Menu know the previous lock died so it can promote the next eligible banner coupon
-        window.dispatchEvent(new CustomEvent("promo:unlocked",     { detail:{ from:"guardStaleCouponLock" } }));
-        window.dispatchEvent(new CustomEvent("promo:fcfs:trigger", { detail:{ from:"guardStaleCouponLock" } }));
-      } catch {}
-    }
+if (!ok) {
+  localStorage.removeItem("gufa_coupon");
+  try { window.dispatchEvent(new CustomEvent("cart:update", { detail:{ reason:"stale-lock-cleared" } })); } catch {}
+}
+  } catch {}
+}
 
 // run once now…
 guardStaleCouponLock();
@@ -664,7 +647,6 @@ try {
   window.addEventListener("mode:change",          guardStaleCouponLock);
   window.addEventListener("serviceMode:changed",  guardStaleCouponLock);
 } catch {}
-
 
 
 
@@ -1178,37 +1160,22 @@ function clearLockIfNoLongerApplicable(){
     );
   };
 
-  
-// Rotation Order Fix — execute selection BEFORE any clearing
-if (!elig.size) {
+  // If eligibility set is empty → lock has no more valid bases
+  if (!elig.size){
+    let next = null;
 
-  const bag = window.Cart?.get?.() || {};
-  const nextBase = Object.entries(bag)
-    .filter(([k, v]) => !k.includes(":") && isKnownBannerOrigin(v.origin))
-    .map(([k, v]) => String(v.id || k.split(":")[0]).toLowerCase())[0] || null;
-
-  const nextCoupon = (typeof findFirstApplicableCouponForCart === "function")
-    ? findFirstApplicableCouponForCart()
-    : null;
-
-  if (nextCoupon || nextBase) {
-    const useCoupon = nextCoupon?.scope?.couponId || lock.scope.couponId;
-    const useBase   = nextCoupon?.baseId || nextBase;
-
-    try {
-      localStorage.setItem(COUPON_KEY, JSON.stringify({
-        scope:{ couponId: useCoupon, baseId: useBase }
-      }));
-    } catch {}
-
-    try { window.dispatchEvent(new CustomEvent("cart:update",{ detail:{ reason:"rotation-applied" }})); } catch {}
-    return;
-  }
-
-  // Final fallback: nothing left → clear
-  localStorage.removeItem(COUPON_KEY);
-  try { window.dispatchEvent(new CustomEvent("cart:update",{ detail:{ reason:"lock-exhausted" }})); } catch {}
-  return;
+    if (bannerOnly) {
+      next = pickNextBannerBaseId();
+      if (next) {
+        try { localStorage.setItem("gufa:nextEligibleItem", next); } catch {}
+      } else {
+        // No banner candidate → ensure breadcrumb is cleared
+        try { localStorage.removeItem("gufa:nextEligibleItem"); } catch {}
+      }
+    } else {
+      // Global/manual (non-banner) coupons: do NOT auto-roll to another promo
+      try { localStorage.removeItem("gufa:nextEligibleItem"); } catch {}
+    }
 
     setLock(null);
     window.dispatchEvent(new CustomEvent("cart:update"));
@@ -1311,12 +1278,8 @@ const bannerOnly = isBannerScoped(locked); // ← add this once, outside the loo
 for (const [key, it] of entries()){
   if (isAddonKey(key)) continue;
 
-// Enforce origin strictness for banner-scoped coupons
-if (bannerOnly) {
-  const isBannerOrigin = it?.origin && String(it.origin).startsWith("banner:");
-  if (!isBannerOrigin) continue;     // non-banner items ignored permanently
-}
-
+  // Enforce banner-origin only when the coupon is banner-scoped
+  if (bannerOnly && !isKnownBannerOrigin(it?.origin)) continue;
 
   const parts = String(key).split(":");
   const itemId  = String(it?.id ?? parts[0]).toLowerCase();
@@ -1414,15 +1377,14 @@ return { discount: Math.max(0, Math.round(d)) };
       window.dispatchEvent(new CustomEvent("cart:update"));
     });
 
- minus.addEventListener("click", () => {
-  const cur = Number(window.Cart?.get?.()[key]?.qty || 0);
-  const next = Math.max(0, cur - 1);
-  window.Cart.setQty(key, next, it);
-  out.textContent = String(next);
-  lineSub.textContent = computeLine();
-  window.dispatchEvent(new CustomEvent("cart:update"));
-});
-
+    minus.addEventListener("click", () => {
+      const cur = Number(window.Cart?.get?.()[key]?.qty || 0);
+      const next = Math.max(0, cur - 1);
+      window.Cart.setQty(key, next, it);
+      out.textContent = String(next);
+      lineSub.textContent = computeLine();
+      window.dispatchEvent(new CustomEvent("cart:update"));
+    });
 
     right.append(stepper, lineSub);
     row.append(label, right);
@@ -1728,29 +1690,15 @@ if (R.promoApply && !R.promoApply._wired){
       return;
     }
 
-        // resolve by ID or CODE
+    // resolve by ID or CODE
     const found = findCouponByIdOrCode(needle) || findCouponByCode(needle);
     if (!found) { showPromoError("Invalid or Ineligible Coupon Code"); return; }
-
-    // 🔒 manual-apply guard using allowManual + scope
-    (function(){
-      const meta  = found.meta || {};
-      const scope = (typeof meta.scope === "string") ? meta.scope : "global";
-      const explicitAllow = (typeof meta.allowManual === "boolean") ? meta.allowManual : undefined;
-      const allowManual = (explicitAllow !== undefined) ? explicitAllow : (scope === "global");
-
-      if (!allowManual || scope === "bannerOnly") {
-        showPromoError("This coupon cannot be applied manually.");
-        throw new Error("manual-blocked"); // short-circuit handler
-      }
-    })();
 
     // construct lock & validate against current cart
     const fullLock = buildLockFromMeta(found.cid, found.meta);
     const { base } = splitBaseVsAddons();
     const { discount } = computeDiscount(fullLock, base);
     if (!discount || discount <= 0) { showPromoError("Invalid or Ineligible Coupon Code"); return; }
-
 
     // apply (non-stackable FCFS is enforced by render/enforceFirstComeLock)
     fullLock.source = "manual";
