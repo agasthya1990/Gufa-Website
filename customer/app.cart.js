@@ -646,16 +646,15 @@ function guardStaleCouponLock(){
         return elig.has(id);
       });
 
-    if (!ok) {
+      if (!ok) {
       localStorage.removeItem("gufa_coupon");
       try {
         window.dispatchEvent(new CustomEvent("cart:update", { detail:{ reason:"stale-lock-cleared" } }));
         // Let Menu know the previous lock died so it can promote the next eligible banner coupon
-        window.dispatchEvent(new CustomEvent("promo:unlocked", { detail:{ from:"guardStaleCouponLock" } }));
+        window.dispatchEvent(new CustomEvent("promo:unlocked",     { detail:{ from:"guardStaleCouponLock" } }));
+        window.dispatchEvent(new CustomEvent("promo:fcfs:trigger", { detail:{ from:"guardStaleCouponLock" } }));
       } catch {}
     }
-  } catch {}
-}
 
 // run once now…
 guardStaleCouponLock();
