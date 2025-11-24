@@ -49,9 +49,17 @@
     dispatch();
   }
 
-  function dispatch() {
-    try { window.dispatchEvent(new CustomEvent("cart:update")); } catch {}
+let __dispatching__ = false;
+function dispatch() {
+  if (__dispatching__) return;
+  __dispatching__ = true;
+  try { 
+    window.dispatchEvent(new CustomEvent("cart:update")); 
+  } catch (e) { 
+    console.warn("dispatch failed", e);
   }
+  setTimeout(() => { __dispatching__ = false; }, 50); // debounce burst
+}
 
   // ---- public API ----
   
