@@ -1414,14 +1414,15 @@ return { discount: Math.max(0, Math.round(d)) };
       window.dispatchEvent(new CustomEvent("cart:update"));
     });
 
-    minus.addEventListener("click", () => {
-      const cur = Number(window.Cart?.get?.()[key]?.qty || 0);
-      const next = Math.max(0, cur - 1);
-      window.Cart.setQty(key, next, it);
-      out.textContent = String(next);
-      lineSub.textContent = computeLine();
-      window.dispatchEvent(new CustomEvent("cart:update"));
-    });
+ minus.addEventListener("click", () => {
+  const cur = Number(window.Cart?.get?.()[key]?.qty || 0);
+  const next = Math.max(0, cur - 1);
+  window.Cart.setQty(key, next, it);
+  out.textContent = String(next);
+  lineSub.textContent = computeLine();
+  window.dispatchEvent(new CustomEvent("cart:update"));
+});
+
 
     right.append(stepper, lineSub);
     row.append(label, right);
