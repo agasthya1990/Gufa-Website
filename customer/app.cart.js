@@ -128,19 +128,17 @@ window.addEventListener("cart:update", persistCartSnapshotThrottled);
   try { localStorage.setItem("gufa_mode", modeNow); } catch {}
   try { localStorage.setItem("gufa:serviceMode", modeNow); } catch {}
 
-// When Menu flips the mode, Cart re-evaluates discount lock + render
+// When Menu flips the mode, Cart mirrors the mode keys and lets the FCFS guard
+// decide whether to keep or clear any existing lock. No new coupon is auto-picked here.
 window.addEventListener("serviceMode:changed", () => {
   const m = readMode();
   // Keep BOTH keys in sync so older/newer listeners agree
   try { localStorage.setItem("gufa_mode", m); } catch {}
   try { localStorage.setItem("gufa:serviceMode", m); } catch {}
 
-  // If your FCFS helper exists, re-pick; else just re-render.
+  // Just re-validate current lock; don't pick a new coupon.
   try {
-    if (typeof findFirstApplicableCouponForCart === "function") {
-      const pick = findFirstApplicableCouponForCart();
-      if (pick) localStorage.setItem("gufa_coupon", JSON.stringify(pick));
-    }
+    if (typeof enforceFirstComeLock === "function") enforceFirstComeLock();
   } catch {}
 
   // Repaint immediately (prefer render(), fall back to renderCart())
@@ -152,7 +150,6 @@ window.addEventListener("serviceMode:changed", () => {
   // Emit so any cart:update listeners (totals, badges, etc.) sync instantly
   window.dispatchEvent(new CustomEvent("cart:update", { detail: { source: "mode-change" }}));
 });
-
 })();
 
 
@@ -1278,13 +1275,13 @@ function enforceFirstComeLock(){
   // First, prune any lock that is no longer applicable (mode / qty / eligibility).
   clearLockIfNoLongerApplicable();
 
-  const { base } = splitBaseVsAddons();
   const kept = getLock();
+  const { base } = splitBaseVsAddons();
 
   if (!kept) {
     // IMPORTANT:
     // No auto-pick / fallback here.
-    // Banner auto-locks are driven strictly by menu (Today's Deals),
+    // Banner auto-locks are driven strictly by Menu (Today's Deals),
     // and global/manual coupons are applied only via the "Apply Coupon" UI.
     return;
   }
@@ -1300,8 +1297,10 @@ function enforceFirstComeLock(){
     return;
   }
 
+  // Lock exists but no longer useful AND not banner/manual → drop it.
   setLock(null);
 }
+
 
 /* ===================== Discount computation ===================== */
 function computeDiscount(locked, baseSubtotal){
