@@ -1215,8 +1215,15 @@ function clearLockIfNoLongerApplicable(){
 
     setLock(null);
     window.dispatchEvent(new CustomEvent("cart:update"));
+    // 🔔 Tell Menu that the promo lock was cleared so it can use nextEligibleItem
+    try {
+      window.dispatchEvent(new CustomEvent("promo:unlocked", {
+        detail: { source: "cart", reason: "eligibility-exhausted" }
+      }));
+    } catch {}
     return;
   }
+
 
   // If the cart no longer contains any of the eligible IDs as base lines, clear it.
   let any = false;
@@ -1268,8 +1275,15 @@ function clearLockIfNoLongerApplicable(){
 
     setLock(null);
     window.dispatchEvent(new CustomEvent("cart:update"));
+    // 🔔 Tell Menu that the promo lock was cleared so it can use nextEligibleItem
+    try {
+      window.dispatchEvent(new CustomEvent("promo:unlocked", {
+        detail: { source: "cart", reason: "eligibility-exhausted" }
+      }));
+    } catch {}
   }
 }
+
 
 function enforceFirstComeLock(){
   // First, prune any lock that is no longer applicable (mode / qty / eligibility).
