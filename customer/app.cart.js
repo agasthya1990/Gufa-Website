@@ -1389,17 +1389,38 @@ function lockNextEligibleBannerIfAny(){
     if (!(elig instanceof Set) || !elig.size) continue;
     if (!elig.has(nextBaseId)) continue;
 
+        // Infer the bannerId for this baseId from BANNER_MENU if the lock doesn't already carry one.
+    const inferredBannerId = (function inferBannerIdForBase(id){
+      try {
+        if (!(window.BANNER_MENU instanceof Map)) return "";
+        const needle = String(id || "").toLowerCase();
+        for (const [bid, arr] of window.BANNER_MENU.entries()) {
+          const list = Array.isArray(arr)
+            ? arr
+            : (arr instanceof Set ? Array.from(arr) : []);
+          if (list.some(x => String(x).toLowerCase() === needle)) {
+            return String(bid);
+          }
+        }
+      } catch {}
+      return "";
+    })(nextBaseId);
+
     const forced = Object.assign({}, lock, {
       baseId: nextBaseId,
       scope: Object.assign({}, lock.scope || {}, {
         baseId: nextBaseId,
-        eligibleItemIds: Array.from(elig)
+        eligibleItemIds: Array.from(elig),
+        // carry existing bannerId if present; otherwise use inferred one
+        bannerId: (lock.scope && lock.scope.bannerId) || inferredBannerId || undefined
       })
     });
 
     const { discount } = computeDiscount(forced, base);
     const bannerish = isBannerScoped(forced);
 
+    // For banner-style coupons, allow the lock even if discount is 0 right now
+    // (e.g., minOrder not reached yet). Non-banner coupons still require discount > 0.
     if (discount > 0 || bannerish) {
       setLock(forced);
       try {
