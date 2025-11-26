@@ -403,9 +403,6 @@ window.addEventListener("serviceMode:changed", () => {
       const bag = (window.Cart && typeof window.Cart.get === "function") ? window.Cart.get() : {};
       if (!bag || typeof bag !== "object") return;
 
-      const bag = (window.Cart && typeof window.Cart.get === "function") ? window.Cart.get() : {};
-      if (!bag || typeof bag !== "object") return;
-
       const targetId = String(addedItemId);
 
       // Base lines in bag for this item (ignore add-ons)
@@ -484,26 +481,24 @@ window.addEventListener("serviceMode:changed", () => {
 
       const chosenMeta = (window.COUPONS instanceof Map) ? window.COUPONS.get(chosenId) : null;
 
-      // Compute eligible item ids STRICTLY from bannerMenuItems (BANNER_MENU)
-      const eligibleItemIds = (function () {
-        try {
-          if (window.BANNER_MENU instanceof Map) {
-            const raw = window.BANNER_MENU.get(ACTIVE_BANNER_ID);
-            if (!raw) return [];
-            // Values can be Set or Array → normalise to array of strings
-            if (raw instanceof Set) {
-              return Array.from(raw).map(String);
-            }
-            if (Array.isArray(raw)) {
-              return raw.map(String);
-            }
-          }
-        } catch {}
-        // If we don’t have a BANNER_MENU entry, we treat the coupon as
-        // having no auto-eligible items (no fallback to catalog or view).
-        return [];
-      })();
-
+     // Compute eligible item ids STRICTLY from bannerMenuItems (BANNER_MENU)
+const eligibleItemIds = (function () {
+  try {
+    if (window.BANNER_MENU instanceof Map) {
+      const raw = window.BANNER_MENU.get(ACTIVE_BANNER_ID);
+      if (!raw) return [];
+      // values can be Set or Array → normalise to array of strings
+      if (raw instanceof Set) {
+        return Array.from(raw).map(String);
+      }
+      if (Array.isArray(raw)) {
+        return raw.map(String);
+      }
+    }
+  } catch {}
+  // No BANNER_MENU entry → treat as no auto-eligible items
+  return [];
+})();
 
       const t = chosenMeta?.targets || {};
       const payload = {
