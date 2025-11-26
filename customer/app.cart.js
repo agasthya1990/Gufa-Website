@@ -649,8 +649,13 @@ const ok = Object.keys(bag)
 
 if (!ok) {
   localStorage.removeItem("gufa_coupon");
-  try { window.dispatchEvent(new CustomEvent("cart:update", { detail:{ reason:"stale-lock-cleared" } })); } catch {}
+  try {
+    window.dispatchEvent(new CustomEvent("cart:update", { detail:{ reason:"stale-lock-cleared" } }));
+    // 🔔 Notify menu side to attempt next eligible banner auto-lock
+    window.dispatchEvent(new CustomEvent("promo:unlocked", { detail:{ reason:"stale-lock-cleared" } }));
+  } catch {}
 }
+
   } catch {}
 }
 
@@ -1173,13 +1178,9 @@ const bound = Object.assign({}, L, {
 });
 const { discount } = computeDiscount(bound, base);
 if (discount > 0) return bound;
-}
-
-
-
-
   }
-  return null;
+}
+ return null;
 }
 
 
@@ -1193,7 +1194,6 @@ function clearLockIfNoLongerApplicable(){
   const lockedBannerId = bannerOnly
     ? String(lock?.scope?.bannerId || "").toLowerCase()
     : "";
-
 
   // Helper: choose the next banner-origin baseId from the live cart (order-aware)
   const pickNextBannerBaseId = () => {
@@ -1994,8 +1994,31 @@ if (!ok) {
   // 3) First paint — Apply & FCFS are deterministic now
   render();
 
+   // 3) First paint — Apply & FCFS are deterministic now
+  render();
+
   // Normal reactive paints
   window.addEventListener("cart:update", () => { try { enforceFirstComeLock(); } catch {} render(); }, false);
+
+  // If a banner-origin item remains but there is no active lock,
+  // trigger the next-eligible banner FCFS auto-lock.
+  window.addEventListener("cart:update", () => {
+    try {
+      const lock = JSON.parse(localStorage.getItem("gufa_coupon") || "null");
+      const bag  = window?.Cart?.get?.() || {};
+      if (!lock && Object.keys(bag).length > 0) {
+        // If banner-origin item still exists but no active coupon, re-trigger next eligible
+        const hasBannerBase = Object.values(bag).some(it =>
+          String(it.origin || "").startsWith("banner:") && Number(it.qty || 0) > 0
+        );
+        if (hasBannerBase) {
+          window.dispatchEvent(
+            new CustomEvent("promo:fcfs:trigger", { detail: { reason: "no-active-lock" } })
+          );
+        }
+      }
+    } catch {}
+  }, false);
 
   // Mode flips must also re-evaluate lock (targets/minOrder/mode-gates can change)
   window.addEventListener("serviceMode:changed", () => {
