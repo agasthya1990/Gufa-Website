@@ -1674,15 +1674,25 @@ function decorateBannerDealBadges(){
           if (!map.has(bannerId)) map.set(bannerId, new Set());
           map.get(bannerId).add(itemId);
         });
-        BANNER_MENU = map;
-        try { window.BANNER_MENU = BANNER_MENU; } catch {}
+        
+BANNER_MENU = map;
+try { window.BANNER_MENU = BANNER_MENU; } catch {}
 
-        // If user is currently viewing a banner list, re-render it with the new index
-        if (view === "list" && listKind === "banner" && ACTIVE_BANNER) {
-          try { renderContentView(); } catch {}
-        }
-      });
-    } catch {}
+// NEW: persist a simple bannerId -> [itemIds] snapshot for checkout/cart
+try {
+  const plain = {};
+  for (const [bid, set] of BANNER_MENU) {
+    plain[String(bid)] = Array.from(set || []);
+  }
+  localStorage.setItem("gufa:BANNER_MENU", JSON.stringify(plain));
+} catch {}
+
+// If user is currently viewing a banner list, re-render it with 
+if (view === "list" && listKind === "banner" && ACTIVE_BANNER) {
+  try { renderContentView(); } catch {}
+ }
+});
+} catch {}
 
  // Coupons (for later D2 label text; stored now)
     
