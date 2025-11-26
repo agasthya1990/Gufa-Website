@@ -806,54 +806,28 @@ function __findMetaByIdOrCode__(idOrCode){
 }
 
 function eligibleIdsFromBanners(scope){
+  // Strict: only trust bannerMenuItems → BANNER_MENU
   try {
     const out = new Set();
+    if (!(window.BANNER_MENU instanceof Map)) return out;
 
-    // 1️⃣ Prefer strict bannerMenuItems index if present
-    if (window.BANNER_MENU instanceof Map) {
-      const bid = String(scope?.bannerId || "").trim();
-      if (bid) {
-        const arr = window.BANNER_MENU.get(bid);
-        if (Array.isArray(arr)) {
-          arr.forEach(v => out.add(String(v).toLowerCase()));
-        }
-        if (out.size) return out;
-      }
+    const bid = String(scope?.bannerId || "").trim();
+    if (!bid) return out;
+
+    const raw = window.BANNER_MENU.get(bid);
+    if (!raw) return out;
+
+    if (raw instanceof Set) {
+      for (const v of raw) out.add(String(v).toLowerCase());
+    } else if (Array.isArray(raw)) {
+      for (const v of raw) out.add(String(v).toLowerCase());
     }
-
-    // 2️⃣ Legacy: fall back to window.BANNERS shapes if needed
-    if (!window.BANNERS) return out;
-
-    const couponId = String(scope?.couponId || "").trim();
-    const { meta, cid, code } = __findMetaByIdOrCode__(couponId || scope?.code || "");
-    const codeU = String(code || meta?.code || "").toUpperCase();
-
-    const addAll = (arr) => {
-      if (Array.isArray(arr)) arr.forEach(v => out.add(String(v).toLowerCase()));
-    };
-
-    if (window.BANNERS instanceof Map) {
-      if (scope?.bannerId) addAll(window.BANNERS.get(String(scope.bannerId)));
-      if (!out.size && cid)  addAll(window.BANNERS.get(`coupon:${cid}`));
-      if (!out.size && codeU) addAll(
-        window.BANNERS.get(`couponCode:${codeU}`) ||
-        window.BANNERS.get(`couponCode:${codeU.toUpperCase()}`)
-      );
-    } else if (Array.isArray(window.BANNERS)) {
-      // Array form: [{ id, itemIds, couponId, couponCode }]
-      for (const b of window.BANNERS) {
-        const bid = String(b?.id || "");
-        const arr = Array.isArray(b?.itemIds) ? b.itemIds : [];
-        if (scope?.bannerId && bid === String(scope.bannerId)) addAll(arr);
-        if (!out.size && cid   && String(b?.couponId||"")   === cid)   addAll(arr);
-        if (!out.size && codeU && String(b?.couponCode||"").toUpperCase() === codeU) addAll(arr);
-        if (out.size) break;
-      }
-    }
-
     return out;
-  } catch { return new Set(); }
+  } catch {
+    return new Set();
+  }
 }
+
 
 // A coupon is “banner-scoped” only if tied to a specific banner (id/keys) or came from a banner source
 function isBannerScoped(locked){
@@ -1182,15 +1156,45 @@ function clearLockIfNoLongerApplicable(){
   // Banner-only vs global/manual distinction
   const bannerOnly = isBannerScoped(lock);
   const elig       = resolveEligibilitySet(lock);
+  const lockedBannerId = bannerOnly
+    ? String(lock?.scope?.bannerId || "").toLowerCase()
+    : "";
 
-  // Helper: choose the next banner-origin baseId from the live cart
+
+  // Helper: choose the next banner-origin baseId from the live cart (order-aware)
   const pickNextBannerBaseId = () => {
     const bag = window.Cart?.get?.() || {};
-    return (
-      Object.entries(bag)
-        .filter(([k, v]) => !k.includes(":") && isKnownBannerOrigin(v.origin))
-        .map(([k, v]) => String(v.id || k.split(":")[0]).toLowerCase())[0] || null
-    );
+    const candidates = new Set();
+
+    // Collect all banner-origin baseIds that still have qty > 0
+    for (const [key, v] of Object.entries(bag)) {
+      if (isAddonKey(key)) continue;
+      const origin = String(v?.origin || "");
+      if (!origin.startsWith("banner:")) continue;
+      if (Number(v?.qty || 0) <= 0) continue;
+
+      const parts  = String(key).split(":");
+      const baseId = String(v?.id || parts[0]).toLowerCase();
+      candidates.add(baseId);
+    }
+    if (!candidates.size) return null;
+
+    // Prefer preserved base-order (FCFS)
+    let order = [];
+    try {
+      order = readBaseOrder(); // already defined above using ORDER_KEY = "gufa:baseOrder"
+    } catch { order = []; }
+
+    if (Array.isArray(order) && order.length) {
+      for (const baseKey of order) {
+        const idOnly = String(baseKey).split(":")[0].toLowerCase();
+        if (candidates.has(idOnly)) return idOnly;
+      }
+    }
+
+    // Fallback: first candidate in insertion order
+    for (const id of candidates) return id;
+    return null;
   };
 
   // If eligibility set is empty → lock has no more valid bases
@@ -1219,14 +1223,29 @@ function clearLockIfNoLongerApplicable(){
   let any = false;
   for (const [key, it] of entries()){
     if (isAddonKey(key)) continue;
-    const parts   = String(key).toLowerCase().split(":");
-    const itemId  = String(it?.id ?? parts[0]);
-    const baseKey = parts.slice(0,2).join(":");
+
+    const parts   = String(key).split(":");
+    const itemId  = String(it?.id ?? parts[0]).toLowerCase();
+    const baseKey = parts.slice(0,2).join(":").toLowerCase();
+    const origin  = String(it?.origin || "");
+    const qty     = Number(it?.qty || 0) || 0;
+    if (qty <= 0) continue;
+
+    // Banner-scoped lock: only consider bases from the same banner
+    if (bannerOnly) {
+      const o = origin.toLowerCase();
+      if (!o.startsWith("banner:")) continue;
+      const oId = o.slice("banner:".length);
+      if (!lockedBannerId || oId !== lockedBannerId) continue;
+    }
 
     if (
       elig.has(itemId) ||
       elig.has(baseKey) ||
-      Array.from(elig).some(x => !String(x).includes(":") && baseKey.startsWith(String(x).toLowerCase() + ":"))
+      Array.from(elig).some(x =>
+        !String(x).includes(":") &&
+        baseKey.startsWith(String(x).toLowerCase() + ":")
+      )
     ){
       any = true;
       break;
@@ -1253,7 +1272,6 @@ function clearLockIfNoLongerApplicable(){
   }
 }
 
-
 function enforceFirstComeLock(){
   // If there’s a current lock but it’s no longer applicable, clear it first.
   clearLockIfNoLongerApplicable();
@@ -1278,7 +1296,6 @@ function enforceFirstComeLock(){
 /* ===================== Discount computation ===================== */
 function computeDiscount(locked, baseSubtotal){
 
-
     if (!locked) return { discount:0 };
 
     // Mode gate
@@ -1300,28 +1317,42 @@ if (!elig || elig.size === 0) {
   if (merged.length) elig = new Set(merged);
 }
 
-
 if (!elig.size) return { discount:0 };
-
 
 // Eligible base subtotal only
 let eligibleBase = 0;
-let eligibleQty  = 0; // NEW: count units across eligible base lines
-const bannerOnly = isBannerScoped(locked); // ← add this once, outside the loop
+let eligibleQty  = 0; // count units across eligible base lines
+const bannerOnly = isBannerScoped(locked);
+
+// NEW: if banner-scoped, remember which bannerId this lock belongs to
+const lockedBannerId = bannerOnly
+  ? String(locked?.scope?.bannerId || "").toLowerCase()
+  : "";
+
 for (const [key, it] of entries()){
   if (isAddonKey(key)) continue;
 
-  // Enforce banner-origin only when the coupon is banner-scoped
-  if (bannerOnly && !isKnownBannerOrigin(it?.origin)) continue;
-
-  const parts = String(key).split(":");
+  const parts   = String(key).split(":");
   const itemId  = String(it?.id ?? parts[0]).toLowerCase();
   const baseKey = parts.slice(0,2).join(":").toLowerCase();
+  const origin  = String(it?.origin || "");
 
-  if (elig.has(itemId) || elig.has(baseKey) || Array.from(elig).some(x => !x.includes(":") && baseKey.startsWith(x + ":"))){
+  // Banner-scoped coupons: only lines from the SAME bannerId are eligible
+  if (bannerOnly) {
+    const o = origin.toLowerCase();
+    if (!o.startsWith("banner:")) continue;
+    const oId = o.slice("banner:".length);
+    if (!lockedBannerId || oId !== lockedBannerId) continue;
+  }
+
+  if (
+    elig.has(itemId) ||
+    elig.has(baseKey) ||
+    Array.from(elig).some(x => !x.includes(":") && baseKey.startsWith(x + ":"))
+  ){
     const q = clamp0(it.qty);
     eligibleBase += clamp0(it.price) * q;
-    eligibleQty  += q; // count quantity
+    eligibleQty  += q;
   }
 }
 
