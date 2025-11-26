@@ -1441,8 +1441,8 @@ function openBannerList(banner){
 // --- PROMO LOCK: persist coupon to localStorage on first eligible add ---
 function lockCouponForActiveBannerIfNeeded(addedItemId) {
   if (!(view === "list" && listKind === "banner" && ACTIVE_BANNER)) return;
-    // If there is already a banner-scoped or manual lock, respect it.
-  // But if the current lock is auto/global, allow this banner lock to override.
+
+  // Respect existing banner/manual locks, but allow overriding auto/global locks.
   try {
     const existing = JSON.parse(localStorage.getItem("gufa_coupon") || "null");
     if (existing && existing.code) {
@@ -1453,18 +1453,18 @@ function lockCouponForActiveBannerIfNeeded(addedItemId) {
       const isManual  = src === "manual";
 
       if (hasBanner || isManual) {
-        // Already locked to a banner or manual code → do NOT override
+        // Already locked to a banner or manual coupon → do not override.
         return;
       }
-      // If we reach here, existing lock is auto/global → allow override
+      // Otherwise: existing is auto/global → we intentionally override it.
     }
-  } catch {}
+  } catch (e) {
+    console.warn("[GUFA] banner lock parse error", e);
+  }
 
-
-const catalog = (ITEMS && ITEMS.length ? ITEMS : (window.ITEMS || []));
-const item = catalog.find(x => String(x.id) === String(addedItemId));
-if (!item) return;
-
+  const catalog = (ITEMS && ITEMS.length ? ITEMS : (window.ITEMS || []));
+  const item = catalog.find(x => String(x.id) === String(addedItemId));
+  if (!item) return;
 
   // Item must currently match the open banner
   if (!itemMatchesBanner(item, ACTIVE_BANNER)) return;
