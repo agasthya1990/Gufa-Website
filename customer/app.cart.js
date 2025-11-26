@@ -1275,24 +1275,32 @@ function clearLockIfNoLongerApplicable(){
 }
 
 function enforceFirstComeLock(){
-  // If there’s a current lock but it’s no longer applicable, clear it first.
+  // First, prune any lock that is no longer applicable (mode / qty / eligibility).
   clearLockIfNoLongerApplicable();
 
-  // If we still have a lock, keep it only if it actually produces a discount now.
-  const kept = getLock();
   const { base } = splitBaseVsAddons();
-  if (kept) {
-    const { discount } = computeDiscount(kept, base);
-    if (discount > 0) return;         // keep current non-stackable lock
-    // Otherwise fall through to try the next applicable coupon (FCFS among remaining items)
-    setLock(null);
+  const kept = getLock();
+
+  if (!kept) {
+    // IMPORTANT:
+    // No auto-pick / fallback here.
+    // Banner auto-locks are driven strictly by menu (Today's Deals),
+    // and global/manual coupons are applied only via the "Apply Coupon" UI.
+    return;
   }
 
-  // Pick the first coupon that actually yields a non-zero discount for current cart & mode.
-  const fcfs = findFirstApplicableCouponForCart();
-  if (!fcfs) return;
-  const test = computeDiscount(fcfs, base);
-  if (test.discount > 0) setLock(fcfs);
+  // If we do have a lock, respect it as long as it still gives a discount
+  // OR it is banner-scoped / manual. We do NOT replace it with "better" coupons.
+  const { discount } = computeDiscount(kept, base);
+  const bannerOrManual =
+    isBannerScoped(kept) || String(kept.source || "") === "manual";
+
+  if (discount > 0 || bannerOrManual) {
+    // Keep the current non-stackable lock; nothing to auto-change.
+    return;
+  }
+
+  setLock(null);
 }
 
 /* ===================== Discount computation ===================== */
