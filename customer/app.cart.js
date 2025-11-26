@@ -1421,7 +1421,7 @@ function lockNextEligibleBannerIfAny(){
       return "";
     })(nextBaseId);
 
-    const forced = Object.assign({}, lock, {
+      const forced = Object.assign({}, lock, {
       baseId: nextBaseId,
       scope: Object.assign({}, lock.scope || {}, {
         baseId: nextBaseId,
@@ -1434,35 +1434,41 @@ function lockNextEligibleBannerIfAny(){
     const { discount } = computeDiscount(forced, base);
     const bannerish = isBannerScoped(forced);
 
-    // For banner-style coupons, allow the lock even if discount is 0 right now
-    // only apply if bannerId truly matches the nextBaseId's banner origin
-const bagOrigin = (() => {
-  try {
-    const bag = window.Cart?.get?.() || {};
-    for (const [k,v] of Object.entries(bag)) {
-      if (!v) continue;
-      const id = String(v.id || "").toLowerCase();
-      if (id === nextBaseId && String(v.origin || "").startsWith("banner:"))
-        return String(v.origin).slice("banner:".length).toLowerCase();
+    // double-check: nextBaseId must match a live banner base and same bannerId
+    const liveBannerOrigin = (() => {
+      try {
+        const bag = window.Cart?.get?.() || {};
+        for (const [k, v] of Object.entries(bag)) {
+          const id = String(v?.id || "").toLowerCase();
+          if (id === nextBaseId && String(v?.origin || "").startsWith("banner:")) {
+            return String(v.origin).slice("banner:".length).toLowerCase();
+          }
+        }
+      } catch {}
+      return "";
+    })();
+
+    const sameBanner =
+      liveBannerOrigin &&
+      forced?.scope?.bannerId &&
+      String(forced.scope.bannerId).toLowerCase() === liveBannerOrigin;
+
+    // reject if no live banner match
+    if (!sameBanner) return null;
+
+    // ok to lock only if discount positive OR bannerish style
+    if (discount > 0 || bannerish) {
+      setLock(forced);
+      try {
+        localStorage.setItem("gufa_coupon", JSON.stringify(forced));
+        localStorage.removeItem("gufa:nextEligibleItem");
+      } catch {}
+      return forced;
     }
-  } catch {}
-  return "";
-})();
-
-const sameBanner = bagOrigin && forced?.scope?.bannerId &&
-                   String(forced.scope.bannerId).toLowerCase() === bagOrigin;
-
-if ((discount > 0 || bannerish) && sameBanner) {
-  setLock(forced);
-  try {
-    localStorage.setItem("gufa_coupon", JSON.stringify(forced));
-    localStorage.removeItem("gufa:nextEligibleItem");
-  } catch {}
-  return forced;
-   }
   }
   return null;
 }
+
 
 function enforceFirstComeLock(){
   // First, prune any lock that is no longer applicable (mode / qty / eligibility).
