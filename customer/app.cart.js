@@ -1284,23 +1284,123 @@ function clearLockIfNoLongerApplicable(){
   }
 }
 
+// === Next-Eligible Banner Auto-Lock (Cart-side, banner-only) ===
+function readNextEligibleBaseId(){
+  try {
+    const v = localStorage.getItem("gufa:nextEligibleItem");
+    return v ? String(v).toLowerCase() : null;
+  } catch {
+    return null;
+  }
+}
+
+function lockNextEligibleBannerIfAny(){
+  const nextBaseId = readNextEligibleBaseId();
+  if (!nextBaseId) return null;
+
+  // We only auto-roll between banner coupons, never global/manual.
+  ensureCouponsReady();
+  const coupons = window.COUPONS;
+  if (!(coupons instanceof Map)) return null;
+
+  const bag = (window.Cart && typeof window.Cart.get === "function")
+    ? window.Cart.get()
+    : {};
+
+  // Determine which banner this baseId actually came from in the live cart.
+  // (Same item can belong to multiple banners in theory; we honour the real origin.)
+  let bannerId = null;
+  for (const [key, v] of Object.entries(bag)) {
+    if (isAddonKey(key)) continue;
+
+    const parts   = String(key).split(":");
+    const itemId  = String(v?.id ?? parts[0]).toLowerCase();
+    if (itemId !== nextBaseId) continue;
+
+    const origin = String(v?.origin || "").toLowerCase();
+    if (!origin.startsWith("banner:")) continue;
+
+    bannerId = origin.slice("banner:".length);
+    break;
+  }
+
+  if (!bannerId) {
+    // Next-eligible base is no longer from a banner → nothing to roll.
+    return null;
+  }
+
+  const { base } = splitBaseVsAddons();
+
+  // Scan coupons: only banner-scoped coupons for this bannerId can participate.
+  for (const [cid, meta] of coupons) {
+    if (!meta) continue;
+
+    const scope = meta.scope || {};
+    const scopedBannerId = String(scope.bannerId || "").toLowerCase();
+
+    const bannerScoped =
+      String(scope.scope || "").toLowerCase() === "banneronly" ||
+      meta.kind === "banner" ||
+      !!scopedBannerId;
+
+    if (!bannerScoped) continue;
+    if (!scopedBannerId || scopedBannerId !== bannerId) continue;
+
+    // Build a normalized lock (same shape as normal auto-locks)
+    const lock = buildLockFromMeta(String(cid), meta);
+    if (!lock) continue;
+
+    // Ensure eligibility really covers this baseId
+    const elig = resolveEligibilitySet(lock);
+    if (!(elig instanceof Set) || !elig.size) continue;
+    if (!elig.has(nextBaseId)) continue;
+
+    const forced = Object.assign({}, lock, {
+      baseId: nextBaseId,
+      scope: Object.assign({}, lock.scope || {}, {
+        baseId: nextBaseId,
+        eligibleItemIds: Array.from(elig)
+      })
+    });
+
+    const { discount } = computeDiscount(forced, base);
+    if (discount > 0) {
+      setLock(forced);
+      try {
+        localStorage.setItem("gufa_coupon", JSON.stringify(forced));
+        localStorage.removeItem("gufa:nextEligibleItem");
+      } catch {}
+      return forced;
+    }
+  }
+
+  return null;
+}
+  
 
 function enforceFirstComeLock(){
   // First, prune any lock that is no longer applicable (mode / qty / eligibility).
   clearLockIfNoLongerApplicable();
 
-  const kept = getLock();
+  let kept = getLock();
   const { base } = splitBaseVsAddons();
 
+  // Case 1: no current lock after pruning
   if (!kept) {
-    // IMPORTANT:
-    // No auto-pick / fallback here.
-    // Banner auto-locks are driven strictly by Menu (Today's Deals),
-    // and global/manual coupons are applied only via the "Apply Coupon" UI.
+    // We only allow ONE kind of auto-pick here:
+    // roll from Banner A → Banner B using the nextEligible breadcrumb.
+    const rolled = lockNextEligibleBannerIfAny();
+    if (!rolled) {
+      // No next-eligible banner coupon could be applied → stay unlocked.
+      return;
+    }
+
+    // We successfully installed a new banner lock; nothing else to change.
     return;
   }
 
-  // If we do have a lock, respect it as long as it still gives a discount
+  // Case 2: we do have a lock:
+  // respect it as long as it still gives a discount
   // OR it is banner-scoped / manual. We do NOT replace it with "better" coupons.
   const { discount } = computeDiscount(kept, base);
   const bannerOrManual =
@@ -1311,7 +1411,7 @@ function enforceFirstComeLock(){
     return;
   }
 
-  // Lock exists but no longer useful AND not banner/manual → drop it.
+  // Case 3: lock exists but no longer useful AND not banner/manual → drop it.
   setLock(null);
 }
 
