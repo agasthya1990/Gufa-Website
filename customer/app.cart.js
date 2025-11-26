@@ -1235,15 +1235,30 @@ function clearLockIfNoLongerApplicable(){
   if (!elig.size){
     let next = null;
 
-    if (bannerOnly) {
-      next = pickNextBannerBaseId();
-      if (next) {
-        try { localStorage.setItem("gufa:nextEligibleItem", next); } catch {}
-      } else {
-        // No banner candidate → ensure breadcrumb is cleared
-        try { localStorage.removeItem("gufa:nextEligibleItem"); } catch {}
-      }
+if (bannerOnly) {
+  // pick next banner base from *different* banner than the one just cleared
+  const clearedBannerId = String(lock?.scope?.bannerId || "").toLowerCase();
+  next = pickNextBannerBaseId();
+  if (next) {
+    // confirm that next actually belongs to a different banner origin
+    let allow = false;
+    const bag = window.Cart?.get?.() || {};
+    for (const [k, v] of Object.entries(bag)) {
+      if (!v || !String(v.origin || "").toLowerCase().startsWith("banner:")) continue;
+      const oId = String(v.origin).slice("banner:".length).toLowerCase();
+      const itemId = String(v.id || "").toLowerCase();
+      if (itemId === next && oId !== clearedBannerId) { allow = true; break; }
+    }
+    if (allow) {
+      try { localStorage.setItem("gufa:nextEligibleItem", next); } catch {}
     } else {
+      try { localStorage.removeItem("gufa:nextEligibleItem"); } catch {}
+    }
+  } else {
+    try { localStorage.removeItem("gufa:nextEligibleItem"); } catch {}
+  }
+} else {
+
       // Global/manual (non-banner) coupons: do NOT auto-roll to another promo
       try { localStorage.removeItem("gufa:nextEligibleItem"); } catch {}
     }
@@ -1420,17 +1435,32 @@ function lockNextEligibleBannerIfAny(){
     const bannerish = isBannerScoped(forced);
 
     // For banner-style coupons, allow the lock even if discount is 0 right now
-    // (e.g., minOrder not reached yet). Non-banner coupons still require discount > 0.
-    if (discount > 0 || bannerish) {
-      setLock(forced);
-      try {
-        localStorage.setItem("gufa_coupon", JSON.stringify(forced));
-        localStorage.removeItem("gufa:nextEligibleItem");
-      } catch {}
-      return forced;
+    // only apply if bannerId truly matches the nextBaseId's banner origin
+const bagOrigin = (() => {
+  try {
+    const bag = window.Cart?.get?.() || {};
+    for (const [k,v] of Object.entries(bag)) {
+      if (!v) continue;
+      const id = String(v.id || "").toLowerCase();
+      if (id === nextBaseId && String(v.origin || "").startsWith("banner:"))
+        return String(v.origin).slice("banner:".length).toLowerCase();
     }
-  }
+  } catch {}
+  return "";
+})();
 
+const sameBanner = bagOrigin && forced?.scope?.bannerId &&
+                   String(forced.scope.bannerId).toLowerCase() === bagOrigin;
+
+if ((discount > 0 || bannerish) && sameBanner) {
+  setLock(forced);
+  try {
+    localStorage.setItem("gufa_coupon", JSON.stringify(forced));
+    localStorage.removeItem("gufa:nextEligibleItem");
+  } catch {}
+  return forced;
+   }
+  }
   return null;
 }
 
