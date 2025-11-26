@@ -1877,32 +1877,71 @@ if (!ok) {
 
  /* ===================== Debug helper ===================== */
 window.CartDebug = window.CartDebug || {};
-    window.CartDebug.eval = function(){
-    const lock = getLock();
-    const { base, add } = splitBaseVsAddons();
-    const elig = Array.from(lock ? resolveEligibilitySet(lock) : new Set());
-    const { discount } = computeDiscount(lock, base);
-    return { lock, mode:activeMode(), base, add, elig, discount };
-  };
+window.CartDebug.eval = function(){
+  const lock = getLock();
+  const { base, add } = splitBaseVsAddons();
+  const elig = Array.from(lock ? resolveEligibilitySet(lock) : new Set());
+  const { discount } = computeDiscount(lock, base);
+  return { lock, mode:activeMode(), base, add, elig, discount };
+};
 
-  // === expose core helpers for console/tests (no behavior change) ===
+// === DEBUG: banner FCFS state snapshot (no logic change) ===
+window.GUFA_DEBUG = window.GUFA_DEBUG || {};
+window.GUFA_DEBUG.bannerState = function bannerStateSnapshot(){
   try {
-    // primary globals (what your console scripts expect)
-    window.computeDiscount = computeDiscount;
-    window.resolveEligibilitySet = resolveEligibilitySet;
-    window.buildLockFromMeta = buildLockFromMeta;
-    window.findFirstApplicableCouponForCart = findFirstApplicableCouponForCart;
-    window.findCouponByCode = window.findCouponByCode || findCouponByCode;
-    window.findCouponByIdOrCode = window.findCouponByIdOrCode || findCouponByIdOrCode;
+    const bag   = (window.Cart && typeof window.Cart.get === "function")
+      ? window.Cart.get()
+      : {};
+    const lock  = JSON.parse(localStorage.getItem("gufa_coupon") || "null");
+    const baseOrder = (function(){
+      try { return JSON.parse(localStorage.getItem("gufa:baseOrder") || "[]"); }
+      catch { return []; }
+    })();
+    const nextEligible = localStorage.getItem("gufa:nextEligibleItem") || null;
 
-    // optional namespaced mirror (handy for future)
-    window.CartAPI = Object.assign(window.CartAPI || {}, {
-      computeDiscount,
-      resolveEligibilitySet,
-      buildLockFromMeta,
-      findFirstApplicableCouponForCart,
-      findCouponByCode,
-      findCouponByIdOrCode
-    });
-  } catch {}
+    // BANNER_MENU + BANNERS shapes
+    let bannerMenuDump = null;
+    if (window.BANNER_MENU instanceof Map) {
+      bannerMenuDump = Array.from(window.BANNER_MENU.entries());
+    }
+
+    let bannersDump = null;
+    if (window.BANNERS instanceof Map) {
+      bannersDump = Array.from(window.BANNERS.entries());
+    } else if (Array.isArray(window.BANNERS)) {
+      bannersDump = window.BANNERS;
+    }
+
+    console.log("[GUFA DEBUG] --- Banner FCFS snapshot ---");
+    console.log("Bag:", bag);
+    console.log("Lock (gufa_coupon):", lock);
+    console.log("baseOrder (gufa:baseOrder):", baseOrder);
+    console.log("nextEligible (gufa:nextEligibleItem):", nextEligible);
+    console.log("BANNER_MENU (Map dump):", bannerMenuDump);
+    console.log("BANNERS (legacy):", bannersDump);
+  } catch (e) {
+    console.error("[GUFA DEBUG] bannerStateSnapshot error", e);
+  }
+};
+
+// === expose core helpers for console/tests (no behavior change) ===
+try {
+  // primary globals (what your console scripts expect)
+  window.computeDiscount = computeDiscount;
+  window.resolveEligibilitySet = resolveEligibilitySet;
+  window.buildLockFromMeta = buildLockFromMeta;
+  window.findFirstApplicableCouponForCart = findFirstApplicableCouponForCart;
+  window.findCouponByCode = window.findCouponByCode || findCouponByCode;
+  window.findCouponByIdOrCode = window.findCouponByIdOrCode || findCouponByIdOrCode;
+
+  // optional namespaced mirror (handy for future)
+  window.CartAPI = Object.assign(window.CartAPI || {}, {
+    computeDiscount,
+    resolveEligibilitySet,
+    buildLockFromMeta,
+    findFirstApplicableCouponForCart,
+    findCouponByCode,
+    findCouponByIdOrCode
+  });
+} catch {}
 })();
