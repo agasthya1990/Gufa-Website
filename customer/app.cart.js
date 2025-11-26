@@ -1398,7 +1398,9 @@ function lockNextEligibleBannerIfAny(){
     });
 
     const { discount } = computeDiscount(forced, base);
-    if (discount > 0) {
+    const bannerish = isBannerScoped(forced);
+
+    if (discount > 0 || bannerish) {
       setLock(forced);
       try {
         localStorage.setItem("gufa_coupon", JSON.stringify(forced));
