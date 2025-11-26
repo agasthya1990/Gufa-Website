@@ -378,11 +378,30 @@ window.addEventListener("serviceMode:changed", () => {
 
   // Auto-lock a banner coupon whenever a banner-origin item enters the cart
   // Uses Cart origin metadata so it works from any view (Today’s Deals, search, etc.)
-  window.lockCouponForActiveBannerIfNeeded = function (addedItemId) {
+   window.lockCouponForActiveBannerIfNeeded = function (addedItemId) {
     try {
-      // Skip if another coupon is already locked (banner or global)
-      const existing = JSON.parse(localStorage.getItem("gufa_coupon") || "null");
-      if (existing && existing.code) return;
+      // Respect existing banner/manual locks; allow overriding auto/global ones
+      let existing = null;
+      try {
+        existing = JSON.parse(localStorage.getItem("gufa_coupon") || "null");
+      } catch {}
+
+      if (existing && existing.code) {
+        const src   = String(existing.source || "");
+        const scope = existing.scope || {};
+
+        const hasBanner = !!String(scope.bannerId || "").trim() || src.startsWith("banner:");
+        const isManual  = src === "manual";
+
+        if (hasBanner || isManual) {
+          // Already locked to a banner or manual code → do NOT override
+          return;
+        }
+        // else: existing is auto/global → we intentionally override it
+      }
+
+      const bag = (window.Cart && typeof window.Cart.get === "function") ? window.Cart.get() : {};
+      if (!bag || typeof bag !== "object") return;
 
       const bag = (window.Cart && typeof window.Cart.get === "function") ? window.Cart.get() : {};
       if (!bag || typeof bag !== "object") return;
