@@ -826,20 +826,55 @@ function eligibleIdsFromBanners(scope){
 }
 
 
-// A coupon is “banner-scoped” only if tied to a specific banner (id/keys) or came from a banner source
+// A coupon is “banner-scoped” if:
+// - it has an explicit bannerId,
+// - or banner-derived eligibility exists,
+// - or it was sourced from a banner,
+// - or (heuristic) any eligible base in the *current cart* came from a banner.
 function isBannerScoped(locked){
   try {
     const scope = locked?.scope || {};
+
+    // 1) Explicit bannerId on the lock/scope
     if (String(scope.bannerId || "").trim()) return true;
 
-    // If banners explicitly list eligible ids for this coupon id/code, treat as banner-scoped
+    // 2) If banners explicitly list eligible ids for this banner scope, treat as banner-scoped
     const via = eligibleIdsFromBanners(scope);
     if (via && via.size) return true;
 
+    // 3) Source explicitly marked as banner
     if (String(locked?.source || "").startsWith("banner:")) return true;
-  } catch {}
+
+    // 4) Heuristic:
+    // If any eligible base currently in the cart comes from a banner origin,
+    // treat this lock as banner-scoped for FCFS + next-eligible behaviour.
+    const bag = (window.Cart && typeof window.Cart.get === "function")
+      ? window.Cart.get()
+      : {};
+
+    const elig = (typeof resolveEligibilitySet === "function")
+      ? resolveEligibilitySet(locked)
+      : new Set();
+
+    if (!(elig instanceof Set) || !elig.size) return false;
+
+    for (const [key, v] of Object.entries(bag)) {
+      if (isAddonKey(key)) continue;
+
+      const origin = String(v?.origin || "");
+      if (!origin.toLowerCase().startsWith("banner:")) continue;
+
+      const baseId = String(key).split(":")[0].toLowerCase();
+      if (elig.has(baseId)) {
+        return true;
+      }
+    }
+  } catch {
+    // fall through to false
+  }
   return false;
 }
+
 
   // Hooks for future admin fields:
   // - minOrder: number  (already supported)
@@ -1285,20 +1320,11 @@ function clearLockIfNoLongerApplicable(){
 }
 
 // === Next-Eligible Banner Auto-Lock (Cart-side, banner-only) ===
-function readNextEligibleBaseId(){
-  try {
-    const v = localStorage.getItem("gufa:nextEligibleItem");
-    return v ? String(v).toLowerCase() : null;
-  } catch {
-    return null;
-  }
-}
-
 function lockNextEligibleBannerIfAny(){
   const nextBaseId = readNextEligibleBaseId();
   if (!nextBaseId) return null;
 
-  // We only auto-roll between banner coupons, never global/manual.
+  // We only auto-roll between banner-style coupons, never for “no breadcrumb”.
   ensureCouponsReady();
   const coupons = window.COUPONS;
   if (!(coupons instanceof Map)) return null;
@@ -1307,9 +1333,8 @@ function lockNextEligibleBannerIfAny(){
     ? window.Cart.get()
     : {};
 
-  // Determine which banner this baseId actually came from in the live cart.
-  // (Same item can belong to multiple banners in theory; we honour the real origin.)
-  let bannerId = null;
+  // Confirm that the next-eligible base is still in the cart and originated from a banner.
+  let hasBannerBase = false;
   for (const [key, v] of Object.entries(bag)) {
     if (isAddonKey(key)) continue;
 
@@ -1320,38 +1345,38 @@ function lockNextEligibleBannerIfAny(){
     const origin = String(v?.origin || "").toLowerCase();
     if (!origin.startsWith("banner:")) continue;
 
-    bannerId = origin.slice("banner:".length);
+    const qty = Number(v?.qty || 0) || 0;
+    if (qty <= 0) continue;
+
+    hasBannerBase = true;
     break;
   }
 
-  if (!bannerId) {
-    // Next-eligible base is no longer from a banner → nothing to roll.
+  if (!hasBannerBase) {
+    // Next-eligible base not present as a live banner-origin item → nothing to roll.
     return null;
   }
 
   const { base } = splitBaseVsAddons();
 
-  // Scan coupons: only banner-scoped coupons for this bannerId can participate.
+  // Scan coupons: any coupon that is banner-scoped (by heuristic) and
+  // actually discounts this baseId can be the new lock.
   for (const [cid, meta] of coupons) {
     if (!meta) continue;
+    if (!checkUsageAvailable(meta)) continue;
 
-    const scope = meta.scope || {};
-    const scopedBannerId = String(scope.bannerId || "").toLowerCase();
-
-    const bannerScoped =
-      String(scope.scope || "").toLowerCase() === "banneronly" ||
-      meta.kind === "banner" ||
-      !!scopedBannerId;
-
-    if (!bannerScoped) continue;
-    if (!scopedBannerId || scopedBannerId !== bannerId) continue;
-
-    // Build a normalized lock (same shape as normal auto-locks)
     const lock = buildLockFromMeta(String(cid), meta);
     if (!lock) continue;
 
-    // Ensure eligibility really covers this baseId
-    const elig = resolveEligibilitySet(lock);
+    // Mark this as a rolled auto-lock (for telemetry / future checks)
+    if (!lock.source) lock.source = "auto:roll";
+
+    // Only consider coupons that behave as banner-style in the current cart
+    if (!isBannerScoped(lock)) continue;
+
+    const elig = (typeof resolveEligibilitySet === "function")
+      ? resolveEligibilitySet(lock)
+      : new Set();
     if (!(elig instanceof Set) || !elig.size) continue;
     if (!elig.has(nextBaseId)) continue;
 
@@ -1376,7 +1401,6 @@ function lockNextEligibleBannerIfAny(){
 
   return null;
 }
-  
 
 function enforceFirstComeLock(){
   // First, prune any lock that is no longer applicable (mode / qty / eligibility).
