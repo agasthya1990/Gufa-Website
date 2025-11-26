@@ -869,23 +869,25 @@ function isBannerScoped(locked){
     return true;
   }
 
-// --- Banner origin validation (strict) ---
-function isKnownBannerOrigin(origin) {
+// Treat an origin as “known banner” only if it comes from the new
+// Firestore-driven bannerMenuItems → BANNER_MENU index.
+function isKnownBannerOrigin(origin){
   const s = String(origin || "");
   if (!s.startsWith("banner:")) return false;
+
   const key = s.slice("banner:".length).trim();
   if (!key) return false;
 
-  // Allow only keys that exist in the current banner catalog
-  if (window.BANNERS instanceof Map) {
-    return window.BANNERS.has(key);
+  // New world: bannerMenuItems → window.BANNER_MENU (Map: bannerId -> [itemIds])
+  if (window.BANNER_MENU instanceof Map) {
+    return window.BANNER_MENU.has(key);
   }
-  if (Array.isArray(window.BANNERS)) {
-    // array form [{id, ...}]
-    return window.BANNERS.some(b => String(b?.id || "") === key);
-  }
+
+  // If BANNER_MENU is not hydrated yet, be conservative:
+  // origin is not trusted for auto banner coupons.
   return false;
 }
+
 
 // Remove any unknown/stale banner origins (e.g., "banner:test-only")
 function scrubUnknownBannerOrigins() {
