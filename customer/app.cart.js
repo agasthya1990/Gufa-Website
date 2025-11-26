@@ -1440,6 +1440,25 @@ function lockNextEligibleBannerIfAny(){
   return null;
 }
 
+// === AUTO-LOCK LISTENER (next-eligible trigger) ===
+// When the previous coupon unlocks, immediately evaluate next-eligible banner.
+window.addEventListener("promo:unlocked", (e) => {
+  try {
+    const detail = e?.detail || {};
+    if (detail?.reason === "eligibility-exhausted" || detail?.reason === "removed") {
+      const next = lockNextEligibleBannerIfAny();
+      if (next) {
+        console.info("[AUTO-LOCK] next-eligible coupon applied →", next.code || next.scope?.couponId);
+      } else {
+        console.info("[AUTO-LOCK] no eligible next banner found.");
+      }
+    }
+  } catch (err) {
+    console.warn("[AUTO-LOCK] failed:", err);
+  }
+}, false);
+
+  
 function enforceFirstComeLock(){
   // First, prune any lock that is no longer applicable (mode / qty / eligibility).
   clearLockIfNoLongerApplicable();
