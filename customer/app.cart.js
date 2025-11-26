@@ -1320,6 +1320,15 @@ function clearLockIfNoLongerApplicable(){
 }
 
 // === Next-Eligible Banner Auto-Lock (Cart-side, banner-only) ===
+
+ function readNextEligibleBaseId(){
+  try {
+    const v = localStorage.getItem("gufa:nextEligibleItem");
+    return v ? String(v).toLowerCase() : null;
+  } catch {
+    return null;
+  }
+} 
 function lockNextEligibleBannerIfAny(){
   const nextBaseId = readNextEligibleBaseId();
   if (!nextBaseId) return null;
