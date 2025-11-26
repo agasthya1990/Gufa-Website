@@ -1422,7 +1422,25 @@ function openBannerList(banner){
 // --- PROMO LOCK: persist coupon to localStorage on first eligible add ---
 function lockCouponForActiveBannerIfNeeded(addedItemId) {
   if (!(view === "list" && listKind === "banner" && ACTIVE_BANNER)) return;
-  if (localStorage.getItem("gufa_coupon")) return;
+    // If there is already a banner-scoped or manual lock, respect it.
+  // But if the current lock is auto/global, allow this banner lock to override.
+  try {
+    const existing = JSON.parse(localStorage.getItem("gufa_coupon") || "null");
+    if (existing && existing.code) {
+      const src   = String(existing.source || "");
+      const scope = existing.scope || {};
+
+      const hasBanner = !!String(scope.bannerId || "").trim() || src.startsWith("banner:");
+      const isManual  = src === "manual";
+
+      if (hasBanner || isManual) {
+        // Already locked to a banner or manual code → do NOT override
+        return;
+      }
+      // If we reach here, existing lock is auto/global → allow override
+    }
+  } catch {}
+
 
 const catalog = (ITEMS && ITEMS.length ? ITEMS : (window.ITEMS || []));
 const item = catalog.find(x => String(x.id) === String(addedItemId));
