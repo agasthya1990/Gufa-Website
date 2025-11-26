@@ -1431,7 +1431,7 @@ function lockNextEligibleBannerIfAny(){
       })
     });
 
-    const { discount } = computeDiscount(forced, base);
+        const { discount } = computeDiscount(forced, base);
     const bannerish = isBannerScoped(forced);
 
     // double-check: nextBaseId must match a live banner base and same bannerId
@@ -1453,8 +1453,9 @@ function lockNextEligibleBannerIfAny(){
       forced?.scope?.bannerId &&
       String(forced.scope.bannerId).toLowerCase() === liveBannerOrigin;
 
-    // reject if no live banner match
-    if (!sameBanner) return null;
+    // If this coupon's bannerId doesn't match the live banner for nextBaseId,
+    // skip it and continue checking other coupons.
+    if (!sameBanner) continue;
 
     // ok to lock only if discount positive OR bannerish style
     if (discount > 0 || bannerish) {
