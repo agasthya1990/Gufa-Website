@@ -465,39 +465,26 @@ window.addEventListener("serviceMode:changed", () => {
 
       const chosenMeta = (window.COUPONS instanceof Map) ? window.COUPONS.get(chosenId) : null;
 
-      // Compute eligible item ids (prefer BANNER_MENU, then fallback to catalog)
+      // Compute eligible item ids STRICTLY from bannerMenuItems (BANNER_MENU)
       const eligibleItemIds = (function () {
         try {
           if (window.BANNER_MENU instanceof Map) {
-            const set = window.BANNER_MENU.get(ACTIVE_BANNER_ID);
-            if (set && set.size) return Array.from(set).map(String);
+            const raw = window.BANNER_MENU.get(ACTIVE_BANNER_ID);
+            if (!raw) return [];
+            // Values can be Set or Array → normalise to array of strings
+            if (raw instanceof Set) {
+              return Array.from(raw).map(String);
+            }
+            if (Array.isArray(raw)) {
+              return raw.map(String);
+            }
           }
         } catch {}
-
-        try {
-          // If we are currently viewing this banner list, reuse its view helper
-          if (typeof itemsForList === "function" &&
-              typeof view !== "undefined" &&
-              view === "list" &&
-              listKind === "banner" &&
-              String(listId) === ACTIVE_BANNER_ID) {
-            return itemsForList().map(it => String(it.id));
-          }
-        } catch {}
-
-        try {
-          // Fallback: any catalog item that carries this coupon id
-          return (catalog || []).filter(it => {
-            const ids = Array.isArray(it.couponIds) ? it.couponIds
-                      : Array.isArray(it.coupons)    ? it.coupons
-                      : Array.isArray(it.promotions) ? it.promotions
-                      : [];
-            return ids.map(String).map(s => s.trim()).includes(chosenId);
-          }).map(it => String(it.id));
-        } catch {
-          return [];
-        }
+        // If we don’t have a BANNER_MENU entry, we treat the coupon as
+        // having no auto-eligible items (no fallback to catalog or view).
+        return [];
       })();
+
 
       const t = chosenMeta?.targets || {};
       const payload = {
