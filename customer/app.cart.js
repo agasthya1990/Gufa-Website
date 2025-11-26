@@ -424,10 +424,28 @@ function activeMode(){
     return { base, add };
   }
 
-    /* ===================== Global Catalogs ===================== */
-  if (!(window.COUPONS instanceof Map)) window.COUPONS = new Map();
-  if (!window.BANNERS) window.BANNERS = new Map(); // Map preferred; Array tolerated
+   /* ===================== Global Catalogs ===================== */
+if (!(window.COUPONS instanceof Map)) window.COUPONS = new Map();
+if (!window.BANNERS) window.BANNERS = new Map(); // Map preferred; Array tolerated
 
+// NEW: strict banner -> itemIds index, hydrated from Menu’s LS snapshot
+if (!(window.BANNER_MENU instanceof Map)) window.BANNER_MENU = new Map();
+
+(function hydrateBannerMenuFromLocalStorage(){
+  try {
+    const raw = localStorage.getItem("gufa:BANNER_MENU");
+    if (!raw) return;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return;
+
+    const map = new Map();
+    for (const [bid, arr] of Object.entries(parsed)) {
+      if (!bid || !Array.isArray(arr)) continue;
+      map.set(String(bid), arr.map(s => String(s)));
+    }
+    window.BANNER_MENU = map;
+  } catch {}
+})();
 
   /* ===== INSERT: read-only Firestore hydrate for promotions ===== */
   async function hydrateCouponsFromFirestoreOnce() {
@@ -787,17 +805,29 @@ function __findMetaByIdOrCode__(idOrCode){
   return { cid:null, meta:null, code:"" };
 }
 
-// Build a Set of itemIds this coupon can touch from banners (Map or Array)
 function eligibleIdsFromBanners(scope){
   try {
     const out = new Set();
+
+    // 1️⃣ Prefer strict bannerMenuItems index if present
+    if (window.BANNER_MENU instanceof Map) {
+      const bid = String(scope?.bannerId || "").trim();
+      if (bid) {
+        const arr = window.BANNER_MENU.get(bid);
+        if (Array.isArray(arr)) {
+          arr.forEach(v => out.add(String(v).toLowerCase()));
+        }
+        if (out.size) return out;
+      }
+    }
+
+    // 2️⃣ Legacy: fall back to window.BANNERS shapes if needed
     if (!window.BANNERS) return out;
 
     const couponId = String(scope?.couponId || "").trim();
     const { meta, cid, code } = __findMetaByIdOrCode__(couponId || scope?.code || "");
     const codeU = String(code || meta?.code || "").toUpperCase();
 
-    // Helper to add all ids from a banner key
     const addAll = (arr) => {
       if (Array.isArray(arr)) arr.forEach(v => out.add(String(v).toLowerCase()));
     };
@@ -805,7 +835,10 @@ function eligibleIdsFromBanners(scope){
     if (window.BANNERS instanceof Map) {
       if (scope?.bannerId) addAll(window.BANNERS.get(String(scope.bannerId)));
       if (!out.size && cid)  addAll(window.BANNERS.get(`coupon:${cid}`));
-      if (!out.size && codeU) addAll(window.BANNERS.get(`couponCode:${codeU}`) || window.BANNERS.get(`couponCode:${codeU.toUpperCase()}`));
+      if (!out.size && codeU) addAll(
+        window.BANNERS.get(`couponCode:${codeU}`) ||
+        window.BANNERS.get(`couponCode:${codeU.toUpperCase()}`)
+      );
     } else if (Array.isArray(window.BANNERS)) {
       // Array form: [{ id, itemIds, couponId, couponCode }]
       for (const b of window.BANNERS) {
@@ -817,10 +850,10 @@ function eligibleIdsFromBanners(scope){
         if (out.size) break;
       }
     }
+
     return out;
   } catch { return new Set(); }
 }
-
 
 // A coupon is “banner-scoped” only if tied to a specific banner (id/keys) or came from a banner source
 function isBannerScoped(locked){
