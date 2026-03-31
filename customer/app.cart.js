@@ -731,6 +731,24 @@ function buildLockFromMeta(cid, meta) {
   // 3) Else derive from product catalog (ITEMS) by couponId → promotions/coupons/couponIds
   if (!eligSet.size && typeof computeEligibleItemIdsForCoupon === "function") {
     try {
+function buildLockFromMeta(cid, meta) {
+  const bannerId = String(meta?.bannerId || "");
+
+  // 1) Prefer explicit meta eligibility if present
+  const explicit = Array.isArray(meta?.eligibleItemIds) ? meta.eligibleItemIds
+                 : Array.isArray(meta?.eligibleIds)     ? meta.eligibleIds
+                 : Array.isArray(meta?.itemIds)         ? meta.itemIds
+                 : [];
+  let eligSet = new Set(explicit.map(s => String(s).toLowerCase()));
+
+  // 2) Else derive from banners using bannerId (strict)
+  if (!eligSet.size && bannerId) {
+    eligSet = eligibleIdsFromBanners({ bannerId });
+  }
+
+  // 3) Else derive from product catalog (only when no banner scope)
+  if (!eligSet.size && !bannerId && typeof computeEligibleItemIdsForCoupon === "function") {
+    try {
       const viaItems = computeEligibleItemIdsForCoupon(cid);
       if (Array.isArray(viaItems) && viaItems.length) {
         eligSet = new Set(viaItems.map(s => String(s).toLowerCase()));
@@ -738,16 +756,22 @@ function buildLockFromMeta(cid, meta) {
     } catch {}
   }
 
-return {
-  scope: { couponId: cid, eligibleItemIds: Array.from(eligSet) },
-  type:  String(meta?.type || "flat").toLowerCase(),
-  value: Number(meta?.value || 0),
-  minOrder: Number(meta?.minOrder || 0),
-  valid: meta?.targets ? { delivery: !!meta.targets.delivery, dining: !!meta.targets.dining } : undefined,
-  code: (meta?.code ? String(meta.code).toUpperCase() : undefined),
-  meta: meta || null
-};
-
+  return {
+    scope: {
+      couponId: String(cid),
+      bannerId,
+      eligibleItemIds: Array.from(eligSet)
+    },
+    type:  String(meta?.type || "flat").toLowerCase(),
+    value: Number(meta?.value || 0),
+    minOrder: Number(meta?.minOrder || 0),
+    valid: meta?.targets ? {
+      delivery: !!meta.targets.delivery,
+      dining: !!meta.targets.dining
+    } : undefined,
+    code: (meta?.code ? String(meta.code).toUpperCase() : undefined),
+    meta: meta || null
+  };
 }
 
 
@@ -1460,40 +1484,62 @@ window.addEventListener("promo:unlocked", (e) => {
 
   
 function enforceFirstComeLock(){
-  // First, prune any lock that is no longer applicable (mode / qty / eligibility).
+  // First remove stale / invalid lock
   clearLockIfNoLongerApplicable();
 
-  let kept = getLock();
+  const current = getLock();
   const { base } = splitBaseVsAddons();
 
-  // Case 1: no current lock after pruning
-  if (!kept) {
-    // We only allow ONE kind of auto-pick here:
-    // roll from Banner A → Banner B using the nextEligible breadcrumb.
-    const rolled = lockNextEligibleBannerIfAny();
-    if (!rolled) {
-      // No next-eligible banner coupon could be applied → stay unlocked.
-      return;
+  // Always recompute the winning promo from the LIVE cart
+  const winner = findFirstApplicableCouponForCart();
+
+  // No applicable promo exists now
+  if (!winner) {
+    if (current) {
+      setLock(null);
+      try { localStorage.removeItem("gufa:nextEligibleItem"); } catch {}
+      window.dispatchEvent(new CustomEvent("cart:update", {
+        detail: { reason: "promo-cleared-no-winner" }
+      }));
     }
-
-    // We successfully installed a new banner lock; nothing else to change.
     return;
   }
 
-  // Case 2: we do have a lock:
-  // respect it as long as it still gives a discount
-  // OR it is banner-scoped / manual. We do NOT replace it with "better" coupons.
-  const { discount } = computeDiscount(kept, base);
-  const bannerOrManual =
-    isBannerScoped(kept) || String(kept.source || "") === "manual";
-
-  if (discount > 0 || bannerOrManual) {
-    // Keep the current non-stackable lock; nothing to auto-change.
+  // No current lock -> set winner
+  if (!current) {
+    setLock(winner);
+    window.dispatchEvent(new CustomEvent("cart:update", {
+      detail: { reason: "promo-set-first-winner" }
+    }));
     return;
   }
 
-  // Case 3: lock exists but no longer useful AND not banner/manual → drop it.
-  setLock(null);
+  const currentCouponId = String(current?.scope?.couponId || "").toLowerCase();
+  const winnerCouponId  = String(winner?.scope?.couponId || "").toLowerCase();
+
+  const currentBannerId = String(current?.scope?.bannerId || "").toLowerCase();
+  const winnerBannerId  = String(winner?.scope?.bannerId || "").toLowerCase();
+
+  const currentBaseId   = String(current?.scope?.baseId || current?.baseId || "").toLowerCase();
+  const winnerBaseId    = String(winner?.scope?.baseId || winner?.baseId || "").toLowerCase();
+
+  const currentDiscount = computeDiscount(current, base)?.discount || 0;
+
+  const sameWinner =
+    currentCouponId === winnerCouponId &&
+    currentBannerId === winnerBannerId &&
+    currentBaseId   === winnerBaseId;
+
+  // Keep only if exact same winner is still valid
+  if (sameWinner && currentDiscount > 0) {
+    return;
+  }
+
+  // Otherwise auto-switch
+  setLock(winner);
+  window.dispatchEvent(new CustomEvent("cart:update", {
+    detail: { reason: "promo-auto-switched" }
+  }));
 }
 
 
@@ -1528,7 +1574,6 @@ let eligibleBase = 0;
 let eligibleQty  = 0; // count units across eligible base lines
 const bannerOnly = isBannerScoped(locked);
 
-// NEW: if banner-scoped, remember which bannerId this lock belongs to
 const lockedBannerId = bannerOnly
   ? String(locked?.scope?.bannerId || "").toLowerCase()
   : "";
@@ -1540,11 +1585,17 @@ for (const [key, it] of entries()){
   const itemId  = String(it?.id ?? parts[0]).toLowerCase();
   const baseKey = parts.slice(0,2).join(":").toLowerCase();
   const origin  = String(it?.origin || "");
+  const qty     = clamp0(it?.qty);
 
-  // Banner-scoped coupons: only lines from the SAME bannerId are eligible
+  if (qty <= 0) continue;
+
+  // Banner-scoped coupons: only trusted SAME-banner lines are eligible
   if (bannerOnly) {
+    if (!isKnownBannerOrigin(origin)) continue;
+
     const o = origin.toLowerCase();
     if (!o.startsWith("banner:")) continue;
+
     const oId = o.slice("banner:".length);
     if (!lockedBannerId || oId !== lockedBannerId) continue;
   }
@@ -1552,11 +1603,10 @@ for (const [key, it] of entries()){
   if (
     elig.has(itemId) ||
     elig.has(baseKey) ||
-    Array.from(elig).some(x => !x.includes(":") && baseKey.startsWith(x + ":"))
+    Array.from(elig).some(x => !String(x).includes(":") && baseKey.startsWith(String(x).toLowerCase() + ":"))
   ){
-    const q = clamp0(it.qty);
-    eligibleBase += clamp0(it.price) * q;
-    eligibleQty  += q;
+    eligibleBase += clamp0(it.price) * qty;
+    eligibleQty  += qty;
   }
 }
 
