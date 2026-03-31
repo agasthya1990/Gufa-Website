@@ -801,14 +801,12 @@ try {
   if (window.Cart && typeof window.Cart.setQty === "function") {
     // Infer banner provenance from the card or its container
     const card     = document.querySelector(`.menu-item[data-id="${found.id}"]`);
-    const bannerId =
-      card?.getAttribute("data-banner-id") ||
-      card?.dataset?.bannerId ||
-      card?.closest("[data-banner-id]")?.getAttribute("data-banner-id") ||
-      document.querySelector("#globalResults")?.id ||  // safe fallback from your page
-      document.querySelector(".deals")?.className ||   // secondary fallback
-      "";
-    const origin = bannerId ? `banner:${bannerId}` : "non-banner";
+const bannerId =
+  card?.getAttribute("data-banner-id") ||
+  card?.dataset?.bannerId ||
+  card?.closest("[data-banner-id]")?.getAttribute("data-banner-id") ||
+  "";
+const origin = bannerId ? `banner:${bannerId}` : "non-banner";
 
 window.Cart.setQty(key, next, {
   id: found.id,
@@ -852,15 +850,16 @@ if (next <= 0) {
     "";
   const origin = prev.origin || (bannerId ? `banner:${bannerId}` : "non-banner");
 
-  bag[key] = {
-    id: found.id,
-    name: found.name,
-    variant: variantKey,
-    price: Number(price) || Number(prev.price) || 0,
-    thumb: prev.thumb || "",
-    qty: next,
-    origin
-  };
+bag[key] = {
+  id: found.id,
+  name: found.name,
+  variant: variantKey,
+  price: Number(price) || Number(prev.price) || 0,
+  thumb: prev.thumb || "",
+  qty: next,
+  bannerId: bannerId || "",
+  origin
+};
 }
 
 
