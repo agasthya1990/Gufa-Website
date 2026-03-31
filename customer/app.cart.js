@@ -1141,10 +1141,17 @@ for (const L of preferred){
 const eSet = (typeof resolveEligibilitySet === "function") ? resolveEligibilitySet(L) : new Set();
 
 // banner-first, order-aware
-const chosenBaseId = pickEligibleBaseIdForCouponBannerFirst(eSet, L);
-if (!chosenBaseId) { 
-  // no banner candidate → do NOT spill to non-banner
-  continue; 
+const eSet = (typeof resolveEligibilitySet === "function") ? resolveEligibilitySet(L) : new Set();
+
+let chosenBaseId = pickEligibleBaseIdForCouponBannerFirst(eSet, L);
+
+// fallback for non-banner/general coupons
+if (!chosenBaseId && !isBannerScoped(L)) {
+  chosenBaseId = Array.from(eSet || [])[0] || null;
+}
+
+if (!chosenBaseId) {
+  continue;
 }
 
 const bound = Object.assign({}, L, {
@@ -1167,10 +1174,17 @@ for (const L of fallback){
 const eSet = (typeof resolveEligibilitySet === "function") ? resolveEligibilitySet(L) : new Set();
 
 // banner-first, order-aware
-const chosenBaseId = pickEligibleBaseIdForCouponBannerFirst(eSet, L);
-if (!chosenBaseId) { 
-  // no banner candidate → do NOT spill to non-banner
-  continue; 
+const eSet = (typeof resolveEligibilitySet === "function") ? resolveEligibilitySet(L) : new Set();
+
+let chosenBaseId = pickEligibleBaseIdForCouponBannerFirst(eSet, L);
+
+// fallback for non-banner/general coupons
+if (!chosenBaseId && !isBannerScoped(L)) {
+  chosenBaseId = Array.from(eSet || [])[0] || null;
+}
+
+if (!chosenBaseId) {
+  continue;
 }
 
 const bound = Object.assign({}, L, {
@@ -1572,15 +1586,15 @@ for (const [key, it] of entries()){
   if (qty <= 0) continue;
 
   // Banner-scoped coupons: only trusted SAME-banner lines are eligible
-  if (bannerOnly) {
-    if (!isKnownBannerOrigin(origin)) continue;
+if (bannerOnly && lockedBannerId) {
+  if (!isKnownBannerOrigin(origin)) continue;
 
-    const o = origin.toLowerCase();
-    if (!o.startsWith("banner:")) continue;
+  const o = origin.toLowerCase();
+  if (!o.startsWith("banner:")) continue;
 
-    const oId = o.slice("banner:".length);
-    if (!lockedBannerId || oId !== lockedBannerId) continue;
-  }
+  const oId = o.slice("banner:".length);
+  if (oId !== lockedBannerId) continue;
+}
 
   if (
     elig.has(itemId) ||
