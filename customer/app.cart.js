@@ -1138,69 +1138,64 @@ const hasDirectHit =
   }
 
 for (const L of preferred){
-const eSet = (typeof resolveEligibilitySet === "function") ? resolveEligibilitySet(L) : new Set();
+  const eSet = (typeof resolveEligibilitySet === "function")
+    ? resolveEligibilitySet(L)
+    : new Set();
 
-// banner-first, order-aware
-const eSet = (typeof resolveEligibilitySet === "function") ? resolveEligibilitySet(L) : new Set();
+  let chosenBaseId = pickEligibleBaseIdForCouponBannerFirst(eSet, L);
 
-let chosenBaseId = pickEligibleBaseIdForCouponBannerFirst(eSet, L);
-
-// fallback for non-banner/general coupons
-if (!chosenBaseId && !isBannerScoped(L)) {
-  chosenBaseId = Array.from(eSet || [])[0] || null;
-}
-
-if (!chosenBaseId) {
-  continue;
-}
-
-const bound = Object.assign({}, L, {
-  baseId: chosenBaseId,
-  scope: Object.assign({}, L.scope || {}, {
-    baseId: chosenBaseId,
-    eligibleItemIds: Array.isArray(L?.scope?.eligibleItemIds) && L.scope.eligibleItemIds.length
-      ? L.scope.eligibleItemIds
-      : Array.from(eSet || [])
-  })
-});
-const { discount } = computeDiscount(bound, base);
-if (discount > 0) return bound;
-}
-
-
-
-    // Otherwise any coupon that actually discounts
-for (const L of fallback){
-const eSet = (typeof resolveEligibilitySet === "function") ? resolveEligibilitySet(L) : new Set();
-
-// banner-first, order-aware
-const eSet = (typeof resolveEligibilitySet === "function") ? resolveEligibilitySet(L) : new Set();
-
-let chosenBaseId = pickEligibleBaseIdForCouponBannerFirst(eSet, L);
-
-// fallback for non-banner/general coupons
-if (!chosenBaseId && !isBannerScoped(L)) {
-  chosenBaseId = Array.from(eSet || [])[0] || null;
-}
-
-if (!chosenBaseId) {
-  continue;
-}
-
-const bound = Object.assign({}, L, {
-  baseId: chosenBaseId,
-  scope: Object.assign({}, L.scope || {}, {
-    baseId: chosenBaseId,
-    eligibleItemIds: Array.isArray(L?.scope?.eligibleItemIds) && L.scope.eligibleItemIds.length
-      ? L.scope.eligibleItemIds
-      : Array.from(eSet || [])
-  })
-});
-const { discount } = computeDiscount(bound, base);
-if (discount > 0) return bound;
+  // fallback for non-banner/general coupons
+  if (!chosenBaseId && !isBannerScoped(L)) {
+    chosenBaseId = Array.from(eSet || [])[0] || null;
   }
+
+  if (!chosenBaseId) {
+    continue;
+  }
+
+  const bound = Object.assign({}, L, {
+    baseId: chosenBaseId,
+    scope: Object.assign({}, L.scope || {}, {
+      baseId: chosenBaseId,
+      eligibleItemIds: Array.isArray(L?.scope?.eligibleItemIds) && L.scope.eligibleItemIds.length
+        ? L.scope.eligibleItemIds
+        : Array.from(eSet || [])
+    })
+  });
+
+  const { discount } = computeDiscount(bound, base);
+  if (discount > 0) return bound;
 }
- return null;
+
+// Otherwise any coupon that actually discounts
+for (const L of fallback){
+  const eSet = (typeof resolveEligibilitySet === "function")
+    ? resolveEligibilitySet(L)
+    : new Set();
+
+  let chosenBaseId = pickEligibleBaseIdForCouponBannerFirst(eSet, L);
+
+  // fallback for non-banner/general coupons
+  if (!chosenBaseId && !isBannerScoped(L)) {
+    chosenBaseId = Array.from(eSet || [])[0] || null;
+  }
+
+  if (!chosenBaseId) {
+    continue;
+  }
+
+  const bound = Object.assign({}, L, {
+    baseId: chosenBaseId,
+    scope: Object.assign({}, L.scope || {}, {
+      baseId: chosenBaseId,
+      eligibleItemIds: Array.isArray(L?.scope?.eligibleItemIds) && L.scope.eligibleItemIds.length
+        ? L.scope.eligibleItemIds
+        : Array.from(eSet || [])
+    })
+  });
+
+  const { discount } = computeDiscount(bound, base);
+  if (discount > 0) return bound;
 }
 
 
