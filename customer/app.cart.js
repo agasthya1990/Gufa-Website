@@ -716,8 +716,6 @@ function findCouponByIdOrCode(input) {
 }
 
 function buildLockFromMeta(cid, meta) {
-  const bannerId = String(meta?.bannerId || "");
-
   // 1) Prefer explicit meta eligibility if present
   const explicit = Array.isArray(meta?.eligibleItemIds) ? meta.eligibleItemIds
                  : Array.isArray(meta?.eligibleIds)     ? meta.eligibleIds
@@ -725,13 +723,14 @@ function buildLockFromMeta(cid, meta) {
                  : [];
   let eligSet = new Set(explicit.map(s => String(s).toLowerCase()));
 
-  // 2) Else derive from banners using bannerId (strict)
+  // 2) Try banner-derived eligibility only if bannerId is explicitly present
+  const bannerId = String(meta?.bannerId || "");
   if (!eligSet.size && bannerId) {
     eligSet = eligibleIdsFromBanners({ bannerId });
   }
 
-  // 3) Else derive from product catalog (only when no banner scope)
-  if (!eligSet.size && !bannerId && typeof computeEligibleItemIdsForCoupon === "function") {
+  // 3) Fallback to product catalog even if bannerId is absent
+  if (!eligSet.size && typeof computeEligibleItemIdsForCoupon === "function") {
     try {
       const viaItems = computeEligibleItemIdsForCoupon(cid);
       if (Array.isArray(viaItems) && viaItems.length) {
@@ -743,7 +742,7 @@ function buildLockFromMeta(cid, meta) {
   return {
     scope: {
       couponId: String(cid),
-      bannerId,
+      bannerId, // keep if available, empty otherwise
       eligibleItemIds: Array.from(eligSet)
     },
     type:  String(meta?.type || "flat").toLowerCase(),
