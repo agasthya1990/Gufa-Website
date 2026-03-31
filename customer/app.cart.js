@@ -1127,8 +1127,27 @@ const scanOrder = [...order].reverse();
     for (const [cid, meta] of window.COUPONS){
       if (!checkUsageAvailable(meta)) continue;
 
-      const lock = buildLockFromMeta(String(cid), meta);
-      lock.source = "auto";
+const lock = buildLockFromMeta(String(cid), meta);
+lock.source = "auto";
+
+// prefer coupons whose bannerId matches the live base line origin
+try {
+  const liveBag = window.Cart?.get?.() || {};
+  const liveLine = Object.entries(liveBag).find(([k, v]) => {
+    if (isAddonKey(k)) return false;
+    return String(k).toLowerCase() === String(bKey).toLowerCase();
+  });
+
+  const liveOrigin = String(liveLine?.[1]?.origin || "").toLowerCase();
+  if (liveOrigin.startsWith("banner:")) {
+    const liveBannerId = liveOrigin.slice("banner:".length).trim().toLowerCase();
+    const lockBannerId = String(lock?.scope?.bannerId || "").toLowerCase();
+
+    if (lockBannerId && lockBannerId !== liveBannerId) {
+      continue;
+    }
+  }
+} catch {}
 
       let eligSet = (typeof resolveEligibilitySet === "function")
         ? resolveEligibilitySet(lock)
