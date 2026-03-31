@@ -1068,11 +1068,12 @@ function pickEligibleBaseIdForCouponBannerFirst(eSet, lock) {
     const pool = bannerOnly ? eligibleBanner : eligibleAny;
     if (!pool || pool.size === 0) return null;
 
-    for (const baseKey of order) {
-      const baseId = String(baseKey).split(":")[0].toLowerCase();
-      if (pool.has(baseId)) return baseId;
-    }
-    return Array.from(pool)[0] || null;
+for (let i = order.length - 1; i >= 0; i--) {
+  const baseKey = order[i];
+  const baseId = String(baseKey).split(":")[0].toLowerCase();
+  if (pool.has(baseId)) return baseId;
+}
+return Array.from(pool)[0] || null;
   } catch {
     return null;
   }
@@ -1088,21 +1089,25 @@ function findFirstApplicableCouponForCart(){
 
   const { base } = splitBaseVsAddons();
 
-  // 1) FCFS scan order of base lines
-  const order = syncBaseOrderWithCart(); // ["<itemId>:<variant>", ...]
-  const seen = new Set(order);
+// 1) Base scan order
+const order = syncBaseOrderWithCart(); // oldest -> newest
+const seen = new Set(order);
 
-  for (const [key] of es){
-    if (isAddonKey(key)) continue;
-    const b = baseKeyOf(key);
-    if (!seen.has(b)) {
-      order.push(b);
-      seen.add(b);
-    }
+for (const [key] of es){
+  if (isAddonKey(key)) continue;
+  const b = baseKeyOf(key);
+  if (!seen.has(b)) {
+    order.push(b);
+    seen.add(b);
   }
+}
+
+// For banner auto-switch, evaluate newest base first.
+// This keeps manual/global logic intact, but lets later banner additions override.
+const scanOrder = [...order].reverse();
 
   // 2) Prefer coupons whose eligibility includes the base item; then fallback to any discounting coupon
-  for (const bKey of order){
+ for (const bKey of scanOrder){
     const baseId = String(bKey).split(":")[0].toLowerCase();
     const preferred = [];
     const fallback  = [];
