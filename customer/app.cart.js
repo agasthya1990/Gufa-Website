@@ -1091,10 +1091,14 @@ function findFirstApplicableCouponForCart(){
   // 1) FCFS scan order of base lines
   const order = syncBaseOrderWithCart(); // ["<itemId>:<variant>", ...]
   const seen = new Set(order);
+
   for (const [key] of es){
     if (isAddonKey(key)) continue;
     const b = baseKeyOf(key);
-    if (!seen.has(b)) { order.push(b); seen.add(b); }
+    if (!seen.has(b)) {
+      order.push(b);
+      seen.add(b);
+    }
   }
 
   // 2) Prefer coupons whose eligibility includes the base item; then fallback to any discounting coupon
@@ -1109,95 +1113,99 @@ function findFirstApplicableCouponForCart(){
       const lock = buildLockFromMeta(String(cid), meta);
       lock.source = "auto";
 
+      let eligSet = (typeof resolveEligibilitySet === "function")
+        ? resolveEligibilitySet(lock)
+        : new Set();
 
-// --- SAFETY: resolver → meta/lock fallback (strict; no baseId injection)
-let eligSet = (typeof resolveEligibilitySet === "function") 
-  ? resolveEligibilitySet(lock) 
-  : new Set();
-if (!eligSet || eligSet.size === 0) {
-  const metaElig = Array.isArray(meta?.eligibleItemIds) ? meta.eligibleItemIds.map(s=>String(s).toLowerCase()) : [];
-  const lockElig = Array.isArray(lock?.scope?.eligibleItemIds) ? lock.scope.eligibleItemIds.map(s=>String(s).toLowerCase()) : [];
-  const merged   = Array.from(new Set([...metaElig, ...lockElig]));
-  if (merged.length) {
-    lock.scope = Object.assign({}, lock.scope, { eligibleItemIds: merged });
-    eligSet = new Set(merged);
-  } else {
-    // strict: leave empty; coupon not eligible for this base in auto selection
-    eligSet = new Set();
+      if (!eligSet || eligSet.size === 0) {
+        const metaElig = Array.isArray(meta?.eligibleItemIds)
+          ? meta.eligibleItemIds.map(s => String(s).toLowerCase())
+          : [];
+
+        const lockElig = Array.isArray(lock?.scope?.eligibleItemIds)
+          ? lock.scope.eligibleItemIds.map(s => String(s).toLowerCase())
+          : [];
+
+        const merged = Array.from(new Set([...metaElig, ...lockElig]));
+
+        if (merged.length) {
+          lock.scope = Object.assign({}, lock.scope, { eligibleItemIds: merged });
+          eligSet = new Set(merged);
+        } else {
+          eligSet = new Set();
+        }
+      }
+
+      const hasDirectHit =
+        eligSet.has(baseId) ||
+        eligSet.has(bKey.toLowerCase()) ||
+        Array.from(eligSet).some(x =>
+          !String(x).includes(":") &&
+          bKey.toLowerCase().startsWith(String(x).toLowerCase() + ":")
+        );
+
+      (hasDirectHit ? preferred : fallback).push(lock);
+    }
+
+    for (const L of preferred){
+      const eSet = (typeof resolveEligibilitySet === "function")
+        ? resolveEligibilitySet(L)
+        : new Set();
+
+      let chosenBaseId = pickEligibleBaseIdForCouponBannerFirst(eSet, L);
+
+      // fallback for non-banner/general coupons
+      if (!chosenBaseId && !isBannerScoped(L)) {
+        chosenBaseId = Array.from(eSet || [])[0] || null;
+      }
+
+      if (!chosenBaseId) continue;
+
+      const bound = Object.assign({}, L, {
+        baseId: chosenBaseId,
+        scope: Object.assign({}, L.scope || {}, {
+          baseId: chosenBaseId,
+          eligibleItemIds: Array.isArray(L?.scope?.eligibleItemIds) && L.scope.eligibleItemIds.length
+            ? L.scope.eligibleItemIds
+            : Array.from(eSet || [])
+        })
+      });
+
+      const { discount } = computeDiscount(bound, base);
+      if (discount > 0) return bound;
+    }
+
+    for (const L of fallback){
+      const eSet = (typeof resolveEligibilitySet === "function")
+        ? resolveEligibilitySet(L)
+        : new Set();
+
+      let chosenBaseId = pickEligibleBaseIdForCouponBannerFirst(eSet, L);
+
+      // fallback for non-banner/general coupons
+      if (!chosenBaseId && !isBannerScoped(L)) {
+        chosenBaseId = Array.from(eSet || [])[0] || null;
+      }
+
+      if (!chosenBaseId) continue;
+
+      const bound = Object.assign({}, L, {
+        baseId: chosenBaseId,
+        scope: Object.assign({}, L.scope || {}, {
+          baseId: chosenBaseId,
+          eligibleItemIds: Array.isArray(L?.scope?.eligibleItemIds) && L.scope.eligibleItemIds.length
+            ? L.scope.eligibleItemIds
+            : Array.from(eSet || [])
+        })
+      });
+
+      const { discount } = computeDiscount(bound, base);
+      if (discount > 0) return bound;
+    }
   }
+
+  return null;
 }
-
-
-const hasDirectHit =
-  eligSet.has(baseId) ||
-  eligSet.has(bKey.toLowerCase()) ||
-  Array.from(eligSet).some(x => !String(x).includes(":") && bKey.toLowerCase().startsWith(String(x).toLowerCase() + ":"));
-
-(hasDirectHit ? preferred : fallback).push(lock);
-      
-  }
-
-for (const L of preferred){
-  const eSet = (typeof resolveEligibilitySet === "function")
-    ? resolveEligibilitySet(L)
-    : new Set();
-
-  let chosenBaseId = pickEligibleBaseIdForCouponBannerFirst(eSet, L);
-
-  // fallback for non-banner/general coupons
-  if (!chosenBaseId && !isBannerScoped(L)) {
-    chosenBaseId = Array.from(eSet || [])[0] || null;
-  }
-
-  if (!chosenBaseId) {
-    continue;
-  }
-
-  const bound = Object.assign({}, L, {
-    baseId: chosenBaseId,
-    scope: Object.assign({}, L.scope || {}, {
-      baseId: chosenBaseId,
-      eligibleItemIds: Array.isArray(L?.scope?.eligibleItemIds) && L.scope.eligibleItemIds.length
-        ? L.scope.eligibleItemIds
-        : Array.from(eSet || [])
-    })
-  });
-
-  const { discount } = computeDiscount(bound, base);
-  if (discount > 0) return bound;
-}
-
-// Otherwise any coupon that actually discounts
-for (const L of fallback){
-  const eSet = (typeof resolveEligibilitySet === "function")
-    ? resolveEligibilitySet(L)
-    : new Set();
-
-  let chosenBaseId = pickEligibleBaseIdForCouponBannerFirst(eSet, L);
-
-  // fallback for non-banner/general coupons
-  if (!chosenBaseId && !isBannerScoped(L)) {
-    chosenBaseId = Array.from(eSet || [])[0] || null;
-  }
-
-  if (!chosenBaseId) {
-    continue;
-  }
-
-  const bound = Object.assign({}, L, {
-    baseId: chosenBaseId,
-    scope: Object.assign({}, L.scope || {}, {
-      baseId: chosenBaseId,
-      eligibleItemIds: Array.isArray(L?.scope?.eligibleItemIds) && L.scope.eligibleItemIds.length
-        ? L.scope.eligibleItemIds
-        : Array.from(eSet || [])
-    })
-  });
-
-  const { discount } = computeDiscount(bound, base);
-  if (discount > 0) return bound;
-}
-
 
 function clearLockIfNoLongerApplicable(){
   const lock = getLock();
@@ -1303,12 +1311,12 @@ if (bannerOnly) {
     if (qty <= 0) continue;
 
     // Banner-scoped lock: only consider bases from the same banner
-    if (bannerOnly) {
-      const o = origin.toLowerCase();
-      if (!o.startsWith("banner:")) continue;
-      const oId = o.slice("banner:".length);
-      if (!lockedBannerId || oId !== lockedBannerId) continue;
-    }
+if (bannerOnly && lockedBannerId) {
+  const o = origin.toLowerCase();
+  if (!o.startsWith("banner:")) continue;
+  const oId = o.slice("banner:".length);
+  if (oId !== lockedBannerId) continue;
+}
 
     if (
       elig.has(itemId) ||
