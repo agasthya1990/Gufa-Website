@@ -810,10 +810,14 @@ try {
       "";
     const origin = bannerId ? `banner:${bannerId}` : "non-banner";
 
-    window.Cart.setQty(key, next, {
-      id: found.id, name: found.name, variant: variantKey, price: Number(price) || 0,
-      origin
-    });
+window.Cart.setQty(key, next, {
+  id: found.id,
+  name: found.name,
+  variant: variantKey,
+  price: Number(price) || 0,
+  bannerId: bannerId || "",
+  origin
+});
   }
 } catch {}
 
