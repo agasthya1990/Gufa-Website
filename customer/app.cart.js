@@ -1552,6 +1552,15 @@ function readNextEligibleBannerId(){
   }
 }
 
+function readNextEligibleBaseId(){
+  try {
+    const v = localStorage.getItem("gufa:nextEligibleItem");
+    return v ? String(v).toLowerCase() : null;
+  } catch {
+    return null;
+  }
+}
+  
 async function lockNextEligibleBannerIfAny() {
   const nextBaseId = readNextEligibleBaseId();
   if (!nextBaseId) return null;
