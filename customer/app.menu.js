@@ -803,12 +803,28 @@ let origin = "non-banner";
 try {
   const card = document.querySelector(`.menu-item[data-id="${found.id}"]`);
 
-  // Only accept real banner provenance from actual banner context
+  // 1) Prefer explicit DOM banner provenance if present
   bannerId =
     card?.getAttribute("data-banner-id") ||
     card?.dataset?.bannerId ||
     card?.closest("[data-banner-id]")?.getAttribute("data-banner-id") ||
     "";
+
+  // 2) Fallback: if we are currently inside an active banner list and this item belongs
+  //    to that banner, treat it as banner-origin
+  if (!bannerId) {
+    try {
+      if (
+        typeof ACTIVE_BANNER !== "undefined" &&
+        ACTIVE_BANNER &&
+        ACTIVE_BANNER.id &&
+        typeof itemMatchesBanner === "function" &&
+        itemMatchesBanner(found, ACTIVE_BANNER)
+      ) {
+        bannerId = String(ACTIVE_BANNER.id);
+      }
+    } catch {}
+  }
 
   origin = bannerId ? `banner:${bannerId}` : "non-banner";
 
