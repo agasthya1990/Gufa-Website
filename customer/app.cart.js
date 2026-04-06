@@ -863,6 +863,7 @@ function eligibleIdsFromBanners(scope){
 // - or it was sourced from a banner,
 // - or (heuristic) any eligible base in the *current cart* came from a banner.
 function isBannerScoped(locked){
+function isBannerScoped(locked) {
   try {
     const scope = locked?.scope || {};
 
@@ -881,12 +882,6 @@ function isBannerScoped(locked){
   } catch {
     return false;
   }
-}
-}
-  } catch {
-    // fall through to false
-  }
-  return false;
 }
 
 
@@ -1440,11 +1435,13 @@ function lockNextEligibleBannerIfAny(){
     if (!meta) continue;
     if (typeof checkUsageAvailable === "function" && !checkUsageAvailable(meta)) continue;
 
-function lockNextEligibleBannerIfAny(){
+function lockNextEligibleBannerIfAny() {
   const nextBaseId = readNextEligibleBaseId();
   if (!nextBaseId) return null;
 
+  // Ensure coupon catalog is ready
   ensureCouponsReady();
+
   const coupons = window.COUPONS;
   if (!(coupons instanceof Map)) return null;
 
@@ -1457,7 +1454,7 @@ function lockNextEligibleBannerIfAny(){
   for (const [key, v] of Object.entries(bag)) {
     if (isAddonKey(key)) continue;
 
-    const parts  = String(key).split(":");
+    const parts = String(key).split(":");
     const itemId = String(v?.id ?? parts[0]).toLowerCase();
     if (itemId !== nextBaseId) continue;
 
@@ -1471,6 +1468,7 @@ function lockNextEligibleBannerIfAny(){
     break;
   }
 
+  // Breadcrumb is stale or item is no longer a live banner base
   if (!liveBannerOriginId) return null;
 
   const { base } = splitBaseVsAddons();
@@ -1515,38 +1513,6 @@ function lockNextEligibleBannerIfAny(){
       : { discount: 0 };
 
     const discount = Number(discInfo?.discount || 0);
-
-    if (discount > 0) {
-      setLock(forced);
-      try {
-        localStorage.setItem("gufa_coupon", JSON.stringify(forced));
-        localStorage.removeItem("gufa:nextEligibleItem");
-      } catch {}
-      return forced;
-    }
-  }
-
-  return null;
-}
-
-    if (!eligSet.size) continue;
-    if (!eligSet.has(nextBaseId)) continue;
-
-    const forced = Object.assign({}, lock, {
-      baseId: nextBaseId,
-      scope: Object.assign({}, lock.scope || {}, {
-        baseId: nextBaseId,
-        eligibleItemIds: Array.from(eligSet),
-        bannerId: couponBannerId
-      })
-    });
-
-    if (!forced.source) forced.source = "auto:roll";
-
-    const discInfo = (typeof computeDiscount === "function")
-      ? computeDiscount(forced, base)
-      : { discount: 0 };
-    const discount = Number(discInfo && discInfo.discount || 0);
 
     if (discount > 0) {
       setLock(forced);
@@ -2187,9 +2153,6 @@ if (!ok) {
   } catch {}
 
   // 3) First paint — Apply & FCFS are deterministic now
-  render();
-
-   // 3) First paint — Apply & FCFS are deterministic now
   render();
 
   // Normal reactive paints
