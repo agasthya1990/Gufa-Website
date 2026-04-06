@@ -505,111 +505,84 @@ const eligibleItemIds = (function () {
 })();
 
       const t = chosenMeta?.targets || {};
-      const payload = {
-        code: String((chosen?.code || chosenMeta?.code || chosenId || ACTIVE_BANNER.id)).toUpperCase(),
-        type: String(chosen?.type ?? chosenMeta?.type ?? ""),
-        value: Number(chosen?.value ?? chosenMeta?.value ?? 0),
-        valid: {
-          delivery: ("delivery" in t) ? !!t.delivery : true,
-          dining:   ("dining"   in t) ? !!t.dining   : true
-        },
-        scope: { bannerId: ACTIVE_BANNER.id, couponId: chosenId, eligibleItemIds },
-        lockedAt: Date.now(),
-        source: `banner:${ACTIVE_BANNER_ID}`
-      };
+const payload = {
+  code: String((chosen?.code || chosenMeta?.code || chosenId || ACTIVE_BANNER.id)).toUpperCase(),
+  type: String(chosen?.type ?? chosenMeta?.type ?? ""),
+  value: Number(chosen?.value ?? chosenMeta?.value ?? 0),
+  valid: {
+    delivery: ("delivery" in t) ? !!t.delivery : true,
+    dining:   ("dining"   in t) ? !!t.dining   : true
+  },
+  scope: {
+    bannerId: String(ACTIVE_BANNER.id),
+    couponId: String(chosenId),
+    eligibleItemIds: Array.isArray(eligibleItemIds) ? eligibleItemIds.map(String) : []
+  },
+  lockedAt: Date.now(),
+  source: `banner:${ACTIVE_BANNER_ID}`
+};
 
-      // Persist minimal coupon maps to help checkout resolve ids/codes
-      try {
-        if (window.COUPONS instanceof Map && window.COUPONS.size > 0) {
-          const dump = Array.from(window.COUPONS.entries());
-          localStorage.setItem("gufa:COUPONS", JSON.stringify(dump));
-        }
-      } catch {}
+// ✅ actually lock the current banner coupon
+try {
+  localStorage.setItem("gufa_coupon", JSON.stringify(payload));
+} catch {}
 
-      try {
-        const idx = {};
-        for (const it of catalog) {
-          const itemId = String(it?.id ?? "").toLowerCase();
-          if (!itemId) continue;
-          const raw = Array.isArray(it.couponIds) ? it.couponIds
-                    : Array.isArray(it.coupons)    ? it.coupons
-                    : Array.isArray(it.promotions) ? it.promotions
-                    : [];
-          for (const cid of raw.map(s => String(s).trim()).filter(Boolean)) {
-            const key = cid.toLowerCase();
-            if (!idx[key]) idx[key] = new Set();
-            idx[key].add(itemId);
-          }
-        }
-        const out = Object.fromEntries(
-          Object.entries(idx).map(([k, v]) => [k, Array.from(v)])
-        );
-        localStorage.setItem("gufa:COUPON_INDEX", JSON.stringify(out));
-      } catch {}
-
-      try {
+// keep breadcrumb for later rollover only if needed
+try {
   localStorage.setItem("gufa:nextEligibleItem", String(addedItemId));
 } catch {}
 
-window.dispatchEvent(new CustomEvent("promo:fcfs:trigger", {
-  detail: {
-    reason: "menu-banner-add",
-    itemId: String(addedItemId),
-    bannerId: String(ACTIVE_BANNER.id || "")
-  }
-}));
-
+// notify cart/menu to repaint and validate FCFS winner
 window.dispatchEvent(new CustomEvent("cart:update", {
-  detail: { reason: "menu-banner-add" }
+  detail: {
+    reason: "menu-banner-lock",
+    itemId: String(addedItemId),
+    bannerId: String(ACTIVE_BANNER.id || ""),
+    couponId: String(chosenId || "")
+  }
 }));
     } catch {}
   };
 
   // When Cart clears a stale banner lock, promote the next eligible banner (if any)
-  ["promo:unlocked", "promo:fcfs:trigger"].forEach((evtName) => {
-    window.addEventListener(evtName, () => {
-      try {
-        const bag = window?.Cart?.get?.() || {};
+ window.addEventListener("promo:unlocked", () => {
+  try {
+    const bag = window?.Cart?.get?.() || {};
 
-        // 1) Prefer explicit breadcrumb from FCFS (gufa:nextEligibleItem)
-        let targetId = null;
-        try { targetId = localStorage.getItem("gufa:nextEligibleItem"); } catch {}
-        let candidateId = null;
+    let targetId = null;
+    try { targetId = localStorage.getItem("gufa:nextEligibleItem"); } catch {}
 
-        if (targetId) {
-          const hasBase = Object.entries(bag).some(([key, it]) => {
-            const parts = String(key).split(":");
-            if (parts.length < 2) return false;
-            const baseId = String(it?.id || parts[0]).toLowerCase();
-            if (baseId !== String(targetId).toLowerCase()) return false;
-            return Number(it?.qty || 0) > 0;
-          });
-          if (hasBase) {
-            candidateId = String(targetId);
-          }
-        }
+    let candidateId = null;
 
-        // 2) Fallback: first banner-origin base still present
-        if (!candidateId) {
-          for (const [key, it] of Object.entries(bag)) {
-            const parts = String(key).split(":");
-            if (parts.length < 2) continue;
-            const origin = String(it?.origin || "");
-            if (!origin.startsWith("banner:")) continue;
-            if (Number(it?.qty || 0) <= 0) continue;
-            const baseId = String(it?.id || parts[0]);
-            candidateId = baseId;
-            break;
-          }
-        }
+    if (targetId) {
+      const hasBase = Object.entries(bag).some(([key, it]) => {
+        const parts = String(key).split(":");
+        if (parts.length < 2) return false;
+        const baseId = String(it?.id || parts[0]).toLowerCase();
+        if (baseId !== String(targetId).toLowerCase()) return false;
+        return Number(it?.qty || 0) > 0;
+      });
+      if (hasBase) candidateId = String(targetId);
+    }
 
-        if (!candidateId) return;
+    if (!candidateId) {
+      for (const [key, it] of Object.entries(bag)) {
+        const parts = String(key).split(":");
+        if (parts.length < 2) continue;
+        const origin = String(it?.origin || "");
+        if (!origin.startsWith("banner:")) continue;
+        if (Number(it?.qty || 0) <= 0) continue;
+        candidateId = String(it?.id || parts[0]);
+        break;
+      }
+    }
 
-        try { localStorage.removeItem("gufa:nextEligibleItem"); } catch {}
-        window.lockCouponForActiveBannerIfNeeded?.(candidateId);
-      } catch {}
-    });
-  });
+    if (!candidateId) return;
+
+    try { localStorage.removeItem("gufa:nextEligibleItem"); } catch {}
+    window.lockCouponForActiveBannerIfNeeded?.(candidateId);
+  } catch {}
+});
 
   
   /* ---------- DOM ---------- */
