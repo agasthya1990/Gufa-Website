@@ -796,78 +796,40 @@ function setQty(found, variantKey, price, nextQty) {
   const badge = document.querySelector(`.qty[data-key="${key}"] .num`);
   if (badge) badge.textContent = String(next);
 
-// 1️⃣ Live Cart update
+// 1️⃣ Live Cart update (single source of truth)
+let bannerId = "";
+let origin = "non-banner";
+
 try {
-  if (window.Cart && typeof window.Cart.setQty === "function") {
-    // Infer banner provenance from the card or its container
-    const card     = document.querySelector(`.menu-item[data-id="${found.id}"]`);
-const bannerId =
-  card?.getAttribute("data-banner-id") ||
-  card?.dataset?.bannerId ||
-  card?.closest("[data-banner-id]")?.getAttribute("data-banner-id") ||
-  "";
-const origin = bannerId ? `banner:${bannerId}` : "non-banner";
+  const card = document.querySelector(`.menu-item[data-id="${found.id}"]`);
 
-window.Cart.setQty(key, next, {
-  id: found.id,
-  name: found.name,
-  variant: variantKey,
-  price: Number(price) || 0,
-  bannerId: bannerId || "",
-  origin
-});
-  }
-} catch {}
-
-
-    // 2️⃣ Persistent mirror for checkout hydration (single-key, flat)
-try {
-  const LS_KEY = "gufa_cart";
-  let bag = {};
-
-  // Prefer the live store’s flat items object
-  const live = window?.Cart?.get?.();
-  if (live && typeof live === "object" && Object.keys(live).length) {
-    bag = (live.items && typeof live.items === "object") ? live.items : live;
-  } else {
-    try { bag = JSON.parse(localStorage.getItem(LS_KEY) || "{}"); }
-    catch { bag = {}; }
-  }
-  if (!bag || typeof bag !== "object") bag = {};
-
-if (next <= 0) {
-  delete bag[key];
-} else {
-  const prev = bag[key] || {};
-  // Reuse the same origin we computed above if available
-  const card     = document.querySelector(`.menu-item[data-id="${found.id}"]`);
-  const bannerId =
+  // Only accept real banner provenance from actual banner context
+  bannerId =
     card?.getAttribute("data-banner-id") ||
     card?.dataset?.bannerId ||
     card?.closest("[data-banner-id]")?.getAttribute("data-banner-id") ||
-    document.querySelector("#globalResults")?.id ||
-    document.querySelector(".deals")?.className ||
     "";
-  const origin = prev.origin || (bannerId ? `banner:${bannerId}` : "non-banner");
 
-bag[key] = {
-  id: found.id,
-  name: found.name,
-  variant: variantKey,
-  price: Number(price) || Number(prev.price) || 0,
-  thumb: prev.thumb || "",
-  qty: next,
-  bannerId: bannerId || "",
-  origin
-};
-}
+  origin = bannerId ? `banner:${bannerId}` : "non-banner";
 
-
-localStorage.setItem(LS_KEY, JSON.stringify(bag));
-window.dispatchEvent(new CustomEvent("cart:update", { detail: { cart: { items: bag } } }));
-  
+  if (window.Cart && typeof window.Cart.setQty === "function") {
+    window.Cart.setQty(key, next, {
+      id: found.id,
+      name: found.name,
+      variant: variantKey,
+      price: Number(price) || 0,
+      bannerId,
+      origin
+    });
+  }
 } catch {}
 
+
+// 2️⃣ No manual mirror write here.
+// Cart store is the single source of truth and already persists gufa_cart.
+try {
+  window.dispatchEvent(new CustomEvent("cart:update"));
+} catch {}
 
   if (next > 0) {
     try { window.lockCouponForActiveBannerIfNeeded?.(found.id); } catch {}
@@ -878,13 +840,14 @@ window.dispatchEvent(new CustomEvent("cart:update", { detail: { cart: { items: b
 
 setTimeout(() => {
   try {
-    const bag = window?.Cart?.get?.() || JSON.parse(localStorage.getItem("gufa_cart") || "{}");
+    const bag = window?.Cart?.get?.() || {};
     const cartQty = Number(bag?.[key]?.qty || 0);
-    if (badge && cartQty !== next) badge.textContent = String(cartQty || next);
+
+    if (badge) badge.textContent = String(cartQty || 0);
+
     updateItemMiniCartBadge(found.id);
     updateCartLink();
 
-    // if user had a breadcrumb from manual-apply on cart, clear it once the qualifying base is present
     const target = localStorage.getItem("gufa:nextEligibleItem");
     if (target && String(target).toLowerCase() === String(found.id).toLowerCase() && cartQty > 0) {
       localStorage.removeItem("gufa:nextEligibleItem");
@@ -892,10 +855,6 @@ setTimeout(() => {
   } catch {}
 }, 50);
 }
-
-
-
-
 
   /* ---------- Card templates ---------- */
   function dietSpan(t){
