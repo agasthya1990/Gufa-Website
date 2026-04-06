@@ -82,22 +82,21 @@ function onFlip(reason){
 // Cross-tab storage wake: respond to mode flips written by Menu
 window.addEventListener("storage", (e) => {
   try {
-    if (e.key === "gufa_mode" || e.key === "gufa:serviceMode" || e.key === "gufa:mode:ts") {
+    const keys = new Set([
+      "gufa_mode",
+      "gufa:serviceMode",
+      "gufa:mode:ts",
+      "gufa_cart",
+      "gufa_coupon",
+      "gufa:COUPONS",
+      "gufa:COUPON_CODES",
+      "gufa:COUPON_INDEX"
+    ]);
+
+    if (keys.has(e.key)) {
       onFlip("storage:" + e.key);
     }
   } catch {}
-});
-
-  
-// Cross-tab/localStorage changes
-window.addEventListener("storage", (e) => {
-  const keys = new Set([
-    "gufa_mode", "gufa:serviceMode", "gufa:mode:ts", // ← include timestamp nudge
-    "gufa_cart",                                     // cross-tab cart contents
-    "gufa_coupon",                                   // FCFS lock changes
-    "gufa:COUPONS", "gufa:COUPON_CODES", "gufa:COUPON_INDEX"
-  ]);
-  if (keys.has(e.key)) onFlip("storage:"+e.key);
 });
 })();
 
@@ -863,7 +862,6 @@ function eligibleIdsFromBanners(scope){
 // - or it was sourced from a banner,
 // - or (heuristic) any eligible base in the *current cart* came from a banner.
 function isBannerScoped(locked){
-function isBannerScoped(locked) {
   try {
     const scope = locked?.scope || {};
 
