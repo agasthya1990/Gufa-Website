@@ -1418,19 +1418,15 @@ function lockCouponForActiveBannerIfNeeded(addedItemId) {
   // Respect existing banner/manual locks, but allow overriding auto/global locks.
   try {
     const existing = JSON.parse(localStorage.getItem("gufa_coupon") || "null");
-    if (existing && existing.code) {
-      const src   = String(existing.source || "");
-      const scope = existing.scope || {};
-
-      const hasBanner = !!String(scope.bannerId || "").trim() || src.startsWith("banner:");
-      const isManual  = src === "manual";
-
-      if (hasBanner || isManual) {
-        // Already locked to a banner or manual coupon → do not override.
-        return;
-      }
-      // Otherwise: existing is auto/global → we intentionally override it.
-    }
+if (existing && existing.code) {
+  const src = String(existing.source || "");
+  const isManual = src === "manual";
+  // Manual locks should remain protected.
+  // Banner locks must be allowed to switch.
+  if (isManual) {
+    return;
+  }
+}
   } catch (e) {
     console.warn("[GUFA] banner lock parse error", e);
   }
