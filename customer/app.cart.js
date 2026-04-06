@@ -686,8 +686,17 @@ const ok = Object.keys(bag)
   .filter(k => k.split(":").length < 3)
   .some(k => {
     const id = k.split(":")[0].toLowerCase();
-    const origin = String(bag[k]?.origin || "");
-    if (bannerOnly && !isKnownBannerOrigin(origin)) return false;
+    const origin = String(bag[k]?.origin || "").toLowerCase();
+
+    if (bannerOnly) {
+      if (!origin.startsWith("banner:")) return false;
+
+      const liveBannerId = origin.slice("banner:".length).trim();
+      const lockBannerId = String(baseLock?.scope?.bannerId || "").toLowerCase();
+
+      if (lockBannerId && liveBannerId !== lockBannerId) return false;
+    }
+
     return elig.has(id);
   });
 
