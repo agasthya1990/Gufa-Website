@@ -1479,7 +1479,11 @@ function lockNextEligibleBannerIfAny() {
 window.addEventListener("promo:unlocked", (e) => {
   try {
     const detail = e?.detail || {};
-    if (detail?.reason === "eligibility-exhausted" || detail?.reason === "removed") {
+    if (
+  detail?.reason === "eligibility-exhausted" ||
+  detail?.reason === "removed" ||
+  detail?.reason === "stale-lock-cleared"
+) {
       const next = lockNextEligibleBannerIfAny();
       if (next) {
         console.info("[AUTO-LOCK] next-eligible coupon applied →", next.code || next.scope?.couponId);
