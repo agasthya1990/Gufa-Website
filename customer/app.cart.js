@@ -1661,6 +1661,16 @@ window.addEventListener("cart:update", () => {
   __FCFS_ENFORCING__ = false;
 });
 
+  window.addEventListener("cart:update", () => {
+  try {
+    if (typeof render === "function") {
+      render();
+    } else if (typeof window.renderCart === "function") {
+      window.renderCart();
+    }
+  } catch {}
+});
+  
 /* ===================== Discount computation ===================== */
 function computeDiscount(locked, baseSubtotal){
 
