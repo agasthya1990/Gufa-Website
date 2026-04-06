@@ -1666,6 +1666,13 @@ function enforceFirstComeLock(){
   }));
 }
 
+  window.addEventListener("cart:update", () => {
+  try {
+    if (typeof enforceFirstComeLock === "function") {
+      enforceFirstComeLock();
+    }
+  } catch {}
+});
 
 /* ===================== Discount computation ===================== */
 function computeDiscount(locked, baseSubtotal){
@@ -2215,7 +2222,11 @@ if (!ok) {
   render();
 
   // Normal reactive paints
-  window.addEventListener("cart:update", () => { try { enforceFirstComeLock(); } catch {} render(); }, false);
+  window.addEventListener("cart:update", () => { 
+    try { 
+      enforceFirstComeLock(); 
+    } catch {} 
+    render(); }, false);
 
   // If a banner-origin item remains but there is no active lock,
   // trigger the next-eligible banner FCFS auto-lock.
