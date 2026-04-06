@@ -2,6 +2,15 @@
 // Add-on steppers + auto-prune, Promo totals row, and Delivery Address form.
 // Refactor-friendly: clear seams for minOrder & usageLimit coming from Admin/promotions.js.
 
+(function consumeOneTimeCartReloadFlag(){
+  try {
+    const flag = sessionStorage.getItem("gufa:cartReloadOnce");
+    if (flag === "1") {
+      sessionStorage.removeItem("gufa:cartReloadOnce");
+    }
+  } catch {}
+})();
+
 // === Live Mode & Coupon Sync for Cart (cross-tab safe) ===
 (function cartLiveModeSync(){
   const readMode = () => {
