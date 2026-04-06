@@ -1176,8 +1176,7 @@ const eligibleBanner = bannerOnly
     const pool = bannerOnly ? eligibleBanner : eligibleAny;
     if (!pool || pool.size === 0) return null;
 
-for (let i = order.length - 1; i >= 0; i--) {
-  const baseKey = order[i];
+for (const baseKey of order) {
   const baseId = String(baseKey).split(":")[0].toLowerCase();
   if (pool.has(baseId)) return baseId;
 }
@@ -1212,7 +1211,7 @@ for (const [key] of es){
 
 // For banner auto-switch, evaluate newest base first.
 // This keeps manual/global logic intact, but lets later banner additions override.
-const scanOrder = [...order].reverse();
+const scanOrder = [...order];
 
   // 2) Prefer coupons whose eligibility includes the base item; then fallback to any discounting coupon
  for (const bKey of scanOrder){
@@ -1617,35 +1616,35 @@ window.addEventListener("promo:unlocked", async (e) => {
 
   
 function enforceFirstComeLock(){
-  // First remove stale / invalid lock
+  // First, prune any lock that is no longer applicable.
   clearLockIfNoLongerApplicable();
 
-  const current = getLock();
+  let kept = getLock();
   const { base } = splitBaseVsAddons();
 
-  // Always recompute the winning promo from the LIVE cart
-  const winner = findFirstApplicableCouponForCart();
-
-  // No applicable promo exists now
-  if (!winner) {
-    if (current) {
-      setLock(null);
-      try { localStorage.removeItem("gufa:nextEligibleItem"); } catch {}
-      window.dispatchEvent(new CustomEvent("cart:update", {
-        detail: { reason: "promo-cleared-no-winner" }
-      }));
+  // No current lock after pruning:
+  // only allow banner rollover via nextEligible breadcrumb.
+  if (!kept) {
+    const rolled = lockNextEligibleBannerIfAny();
+    if (!rolled) {
+      return;
     }
     return;
   }
 
-  // No current lock -> set winner
-  if (!current) {
-    setLock(winner);
-    window.dispatchEvent(new CustomEvent("cart:update", {
-      detail: { reason: "promo-set-first-winner" }
-    }));
+  // Respect the current lock if it still discounts
+  // OR if it is banner/manual.
+  const { discount } = computeDiscount(kept, base);
+  const bannerOrManual =
+    isBannerScoped(kept) || String(kept.source || "") === "manual";
+
+  if (discount > 0 || bannerOrManual) {
     return;
   }
+
+  // Otherwise drop the stale non-banner/non-manual lock.
+  setLock(null);
+}
 
   const currentCouponId = String(current?.scope?.couponId || "").toLowerCase();
   const winnerCouponId  = String(winner?.scope?.couponId || "").toLowerCase();
@@ -1675,12 +1674,18 @@ function enforceFirstComeLock(){
   }));
 }
 
-  window.addEventListener("cart:update", () => {
+let __FCFS_ENFORCING__ = false;
+
+window.addEventListener("cart:update", () => {
+  if (__FCFS_ENFORCING__) return;
+
+  __FCFS_ENFORCING__ = true;
   try {
     if (typeof enforceFirstComeLock === "function") {
       enforceFirstComeLock();
     }
   } catch {}
+  __FCFS_ENFORCING__ = false;
 });
 
 /* ===================== Discount computation ===================== */
