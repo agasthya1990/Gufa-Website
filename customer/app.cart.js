@@ -138,22 +138,24 @@ window.addEventListener("cart:update", persistCartSnapshotThrottled);
 
 // When Menu flips the mode, Cart mirrors the mode keys and lets the FCFS guard
 // decide whether to keep or clear any existing lock. No new coupon is auto-picked here.
-window.addEventListener("serviceMode:changed", async () => {
+window.addEventListener("serviceMode:changed", () => {
   const m = readMode();
+  // Keep BOTH keys in sync so older/newer listeners agree
   try { localStorage.setItem("gufa_mode", m); } catch {}
   try { localStorage.setItem("gufa:serviceMode", m); } catch {}
 
+  // Just re-validate current lock; don't pick a new coupon.
   try {
-    if (typeof enforceFirstComeLock === "function") {
-      await enforceFirstComeLock();
-    }
+    if (typeof enforceFirstComeLock === "function") enforceFirstComeLock();
   } catch {}
 
+  // Repaint immediately (prefer render(), fall back to renderCart())
   try {
     if (typeof render === "function") { render(); }
     else { window.renderCart?.(); }
   } catch {}
 
+  // Emit so any cart:update listeners (totals, badges, etc.) sync instantly
   window.dispatchEvent(new CustomEvent("cart:update", { detail: { source: "mode-change" }}));
 });
 })();
@@ -708,19 +710,11 @@ const ok = Object.keys(bag)
   });
 
 if (!ok) {
-  try {
-    if (typeof clearLockIfNoLongerApplicable === "function") {
-      clearLockIfNoLongerApplicable();
-      return;
-    }
-  } catch {}
-
-  // fallback only if the normal clearer is unavailable
   localStorage.removeItem("gufa_coupon");
   try {
-    localStorage.removeItem("gufa:nextEligibleItem");
-    localStorage.removeItem("gufa:nextEligibleBannerId");
     window.dispatchEvent(new CustomEvent("cart:update", { detail:{ reason:"stale-lock-cleared" } }));
+    // 🔔 Notify menu side to attempt next eligible banner auto-lock
+    window.dispatchEvent(new CustomEvent("promo:unlocked", { detail:{ reason:"stale-lock-cleared" } }));
   } catch {}
 }
 
@@ -1419,42 +1413,17 @@ if (bannerOnly) {
       if (itemId === next && oId !== clearedBannerId) { allow = true; break; }
     }
     if (allow) {
-      try {
-  localStorage.setItem("gufa:nextEligibleItem", next);
-
-  const bag = window.Cart?.get?.() || {};
-  let nextBannerId = "";
-
-  for (const [, v] of Object.entries(bag)) {
-    const itemId = String(v?.id || "").toLowerCase();
-    const origin = String(v?.origin || "").toLowerCase();
-
-    if (itemId !== String(next).toLowerCase()) continue;
-    if (!origin.startsWith("banner:")) continue;
-
-    nextBannerId = origin.slice("banner:".length).trim().toLowerCase();
-    break;
-  }
-
-  if (nextBannerId) {
-    localStorage.setItem("gufa:nextEligibleBannerId", nextBannerId);
-  } else {
-    localStorage.removeItem("gufa:nextEligibleBannerId");
-  }
-} catch {}
+      try { localStorage.setItem("gufa:nextEligibleItem", next); } catch {}
     } else {
-      try { localStorage.removeItem("gufa:nextEligibleItem");
-            localStorage.removeItem("gufa:nextEligibleBannerId");} catch {}
+      try { localStorage.removeItem("gufa:nextEligibleItem"); } catch {}
     }
   } else {
-    try { localStorage.removeItem("gufa:nextEligibleItem"); 
-          localStorage.removeItem("gufa:nextEligibleBannerId");} catch {}
+    try { localStorage.removeItem("gufa:nextEligibleItem"); } catch {}
   }
 } else {
 
       // Global/manual (non-banner) coupons: do NOT auto-roll to another promo
-      try { localStorage.removeItem("gufa:nextEligibleItem");
-            localStorage.removeItem("gufa:nextEligibleBannerId");} catch {}
+      try { localStorage.removeItem("gufa:nextEligibleItem"); } catch {}
     }
 
     setLock(null);
@@ -1508,29 +1477,7 @@ if (bannerOnly && lockedBannerId) {
     if (bannerOnly) {
       next = pickNextBannerBaseId();
       if (next) {
-        try {
-  localStorage.setItem("gufa:nextEligibleItem", next);
-
-  const bag = window.Cart?.get?.() || {};
-  let nextBannerId = "";
-
-  for (const [, v] of Object.entries(bag)) {
-    const itemId = String(v?.id || "").toLowerCase();
-    const origin = String(v?.origin || "").toLowerCase();
-
-    if (itemId !== String(next).toLowerCase()) continue;
-    if (!origin.startsWith("banner:")) continue;
-
-    nextBannerId = origin.slice("banner:".length).trim().toLowerCase();
-    break;
-  }
-
-  if (nextBannerId) {
-    localStorage.setItem("gufa:nextEligibleBannerId", nextBannerId);
-  } else {
-    localStorage.removeItem("gufa:nextEligibleBannerId");
-  }
-} catch {}
+        try { localStorage.setItem("gufa:nextEligibleItem", next); } catch {}
       } else {
         try { localStorage.removeItem("gufa:nextEligibleItem"); } catch {}
       }
@@ -1552,29 +1499,18 @@ if (bannerOnly && lockedBannerId) {
 
 // === Next-Eligible Banner Auto-Lock (Cart-side, banner-only) ===
 
-function readNextEligibleBannerId(){
-  try {
-    const v = localStorage.getItem("gufa:nextEligibleBannerId");
-    return v ? String(v).toLowerCase() : null;
-  } catch {
-    return null;
-  }
-}
-
-function readNextEligibleBaseId(){
+ function readNextEligibleBaseId(){
   try {
     const v = localStorage.getItem("gufa:nextEligibleItem");
     return v ? String(v).toLowerCase() : null;
   } catch {
     return null;
   }
-}
-  
-async function lockNextEligibleBannerIfAny() {
+} 
+
+  async function lockNextEligibleBannerIfAny() {
   const nextBaseId = readNextEligibleBaseId();
   if (!nextBaseId) return null;
-
-  const preferredBannerId = readNextEligibleBannerId();
 
   await ensureCouponsReady();
 
@@ -1606,10 +1542,7 @@ async function lockNextEligibleBannerIfAny() {
 
   if (!liveBannerOriginId) return null;
 
-  const targetBannerId = preferredBannerId || liveBannerOriginId;
   const { base } = splitBaseVsAddons();
-
-  const candidates = [];
 
   for (const [cid, meta] of coupons) {
     if (!meta) continue;
@@ -1617,12 +1550,6 @@ async function lockNextEligibleBannerIfAny() {
 
     const lock = buildLockFromMeta(String(cid), meta);
     if (!lock) continue;
-
-    const couponBannerId = String(lock?.scope?.bannerId || "").trim().toLowerCase();
-
-    // rollback must only consider coupons that explicitly belong to the target banner
-    if (!couponBannerId) continue;
-    if (couponBannerId !== targetBannerId) continue;
 
     const elig = (typeof resolveEligibilitySet === "function")
       ? resolveEligibilitySet(lock)
@@ -1635,14 +1562,19 @@ async function lockNextEligibleBannerIfAny() {
     if (!eligSet.size) continue;
     if (!eligSet.has(nextBaseId)) continue;
 
+    const couponBannerId = String(lock?.scope?.bannerId || "").trim().toLowerCase();
+
+    // Strict when bannerId exists, tolerant when it doesn't.
+    if (couponBannerId && couponBannerId !== liveBannerOriginId) continue;
+
     const forced = Object.assign({}, lock, {
       baseId: nextBaseId,
       scope: Object.assign({}, lock.scope || {}, {
         baseId: nextBaseId,
         eligibleItemIds: Array.from(eligSet),
-        bannerId: couponBannerId
+        bannerId: couponBannerId || liveBannerOriginId
       }),
-      source: "auto:roll"
+      source: lock.source || "auto:roll"
     });
 
     const discInfo = (typeof computeDiscount === "function")
@@ -1650,42 +1582,27 @@ async function lockNextEligibleBannerIfAny() {
       : { discount: 0 };
 
     const discount = Number(discInfo?.discount || 0);
-    if (discount <= 0) continue;
 
-    candidates.push({
-      cid: String(cid),
-      forced,
-      discount,
-      lockedAt: Number(lock?.lockedAt || meta?.lockedAt || 0)
-    });
-  }
-
-  if (!candidates.length) return null;
-
-  // prefer the oldest matching coupon, not first Map entry
-  candidates.sort((a, b) => {
-    const aTime = Number(a.lockedAt || 0);
-    const bTime = Number(b.lockedAt || 0);
-    if (aTime !== bTime) return aTime - bTime;
-    return String(a.cid).localeCompare(String(b.cid));
-  });
-
-  const winner = candidates[0].forced;
-
-  setLock(winner);
+if (discount > 0) {
+  setLock(forced);
   try {
-    localStorage.setItem("gufa_coupon", JSON.stringify(winner));
+    localStorage.setItem("gufa_coupon", JSON.stringify(forced));
     localStorage.removeItem("gufa:nextEligibleItem");
-    localStorage.removeItem("gufa:nextEligibleBannerId");
   } catch {}
 
-try {
-  window.dispatchEvent(new CustomEvent("cart:update", {
-    detail: { reason: "promo-auto-rolled" }
-  }));
-} catch {}
+  try {
+    sessionStorage.setItem("gufa:cartReloadOnce", "1");
+  } catch {}
 
-  return winner;
+  setTimeout(() => {
+    try { window.location.reload(); } catch {}
+  }, 0);
+
+  return forced;
+}
+  }
+
+  return null;
 }
   
 // === AUTO-LOCK LISTENER (next-eligible trigger) ===
@@ -1716,17 +1633,25 @@ window.addEventListener("promo:unlocked", async (e) => {
 }, false);
 
   
-async function enforceFirstComeLock(){
+function enforceFirstComeLock(){
+  // First, prune any lock that is no longer applicable.
   clearLockIfNoLongerApplicable();
 
   let kept = getLock();
   const { base } = splitBaseVsAddons();
 
+  // No current lock after pruning:
+  // only allow banner rollover via nextEligible breadcrumb.
   if (!kept) {
-    await lockNextEligibleBannerIfAny();
+    const rolled = lockNextEligibleBannerIfAny();
+    if (!rolled) {
+      return;
+    }
     return;
   }
 
+  // Respect the current lock if it still discounts
+  // OR if it is banner/manual.
   const { discount } = computeDiscount(kept, base);
   const bannerOrManual =
     isBannerScoped(kept) || String(kept.source || "") === "manual";
@@ -1735,19 +1660,20 @@ async function enforceFirstComeLock(){
     return;
   }
 
+  // Otherwise drop the stale non-banner/non-manual lock.
   setLock(null);
 }
 
 
 let __FCFS_ENFORCING__ = false;
 
-window.addEventListener("cart:update", async () => {
+window.addEventListener("cart:update", () => {
   if (__FCFS_ENFORCING__) return;
 
   __FCFS_ENFORCING__ = true;
   try {
     if (typeof enforceFirstComeLock === "function") {
-      await enforceFirstComeLock();
+      enforceFirstComeLock();
     }
   } catch {}
   __FCFS_ENFORCING__ = false;
@@ -2186,7 +2112,6 @@ if (discount > 0) showPromoError("");
     // If discount is active or the qualifying item is now present, clear the hint
     if (discount > 0 || hasAnyEligibleBaseNow) {
       localStorage.removeItem("gufa:nextEligibleItem");
-      localStorage.removeItem("gufa:nextEligibleBannerId");
       const n = document.getElementById("next-eligible"); if (n) n.remove();
       return;
     }
