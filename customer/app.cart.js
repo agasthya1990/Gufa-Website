@@ -1387,59 +1387,11 @@ if (bannerOnly && lockedBannerId) {
     return null;
   }
 } 
-function lockNextEligibleBannerIfAny(){
-  const nextBaseId = readNextEligibleBaseId();
-  if (!nextBaseId) return null;
-
-  // We only auto-roll between banner-style coupons, never for “no breadcrumb”.
-  ensureCouponsReady();
-  const coupons = window.COUPONS;
-  if (!(coupons instanceof Map)) return null;
-
-  const bag = (window.Cart && typeof window.Cart.get === "function")
-    ? window.Cart.get()
-    : {};
-
-  // Figure out which banner actually owns this nextBaseId in the LIVE cart.
-  // We only trust real cart lines, not just BANNER_MENU.
-  let liveBannerOriginId = "";
-  for (const [key, v] of Object.entries(bag)) {
-    if (isAddonKey(key)) continue;
-
-    const parts  = String(key).split(":");
-    const itemId = String(v?.id ?? parts[0]).toLowerCase();
-    if (itemId !== nextBaseId) continue;
-
-    const origin = String(v?.origin || "").toLowerCase();
-    if (!origin.startsWith("banner:")) continue;
-
-    const qty = Number(v?.qty || 0) || 0;
-    if (qty <= 0) continue;
-
-    liveBannerOriginId = origin.slice("banner:".length).trim().toLowerCase();
-    break;
-  }
-
-  // If the breadcrumb points at something that is no longer a live banner base, bail.
-  if (!liveBannerOriginId) {
-    return null;
-  }
-
-  const { base } = splitBaseVsAddons();
-
-  // Scan coupons: only banner-scoped coupons whose bannerId matches the
-  // live banner origin of nextBaseId are eligible to auto-lock.
-  for (const [cid, meta] of coupons) {
-    if (!meta) continue;
-    if (typeof checkUsageAvailable === "function" && !checkUsageAvailable(meta)) continue;
-
 function lockNextEligibleBannerIfAny() {
   const nextBaseId = readNextEligibleBaseId();
   if (!nextBaseId) return null;
 
-  // Ensure coupon catalog is ready
   ensureCouponsReady();
-
   const coupons = window.COUPONS;
   if (!(coupons instanceof Map)) return null;
 
@@ -1466,7 +1418,6 @@ function lockNextEligibleBannerIfAny() {
     break;
   }
 
-  // Breadcrumb is stale or item is no longer a live banner base
   if (!liveBannerOriginId) return null;
 
   const { base } = splitBaseVsAddons();
@@ -1477,8 +1428,6 @@ function lockNextEligibleBannerIfAny() {
 
     const lock = buildLockFromMeta(String(cid), meta);
     if (!lock) continue;
-
-    // Must truly be banner-scoped
     if (!isBannerScoped(lock)) continue;
 
     const couponBannerId = String(lock?.scope?.bannerId || "").trim().toLowerCase();
