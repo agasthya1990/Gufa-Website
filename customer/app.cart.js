@@ -1670,13 +1670,11 @@ async function lockNextEligibleBannerIfAny() {
     localStorage.removeItem("gufa:nextEligibleBannerId");
   } catch {}
 
-  try {
-    sessionStorage.setItem("gufa:cartReloadOnce", "1");
-  } catch {}
-
-  setTimeout(() => {
-    try { window.location.reload(); } catch {}
-  }, 0);
+try {
+  window.dispatchEvent(new CustomEvent("cart:update", {
+    detail: { reason: "promo-auto-rolled" }
+  }));
+} catch {}
 
   return winner;
 }
@@ -1709,25 +1707,17 @@ window.addEventListener("promo:unlocked", async (e) => {
 }, false);
 
   
-function enforceFirstComeLock(){
-  // First, prune any lock that is no longer applicable.
+async function enforceFirstComeLock(){
   clearLockIfNoLongerApplicable();
 
   let kept = getLock();
   const { base } = splitBaseVsAddons();
 
-  // No current lock after pruning:
-  // only allow banner rollover via nextEligible breadcrumb.
   if (!kept) {
-    const rolled = lockNextEligibleBannerIfAny();
-    if (!rolled) {
-      return;
-    }
+    await lockNextEligibleBannerIfAny();
     return;
   }
 
-  // Respect the current lock if it still discounts
-  // OR if it is banner/manual.
   const { discount } = computeDiscount(kept, base);
   const bannerOrManual =
     isBannerScoped(kept) || String(kept.source || "") === "manual";
@@ -1736,20 +1726,19 @@ function enforceFirstComeLock(){
     return;
   }
 
-  // Otherwise drop the stale non-banner/non-manual lock.
   setLock(null);
 }
 
 
 let __FCFS_ENFORCING__ = false;
 
-window.addEventListener("cart:update", () => {
+window.addEventListener("cart:update", async () => {
   if (__FCFS_ENFORCING__) return;
 
   __FCFS_ENFORCING__ = true;
   try {
     if (typeof enforceFirstComeLock === "function") {
-      enforceFirstComeLock();
+      await enforceFirstComeLock();
     }
   } catch {}
   __FCFS_ENFORCING__ = false;
@@ -2188,6 +2177,7 @@ if (discount > 0) showPromoError("");
     // If discount is active or the qualifying item is now present, clear the hint
     if (discount > 0 || hasAnyEligibleBaseNow) {
       localStorage.removeItem("gufa:nextEligibleItem");
+      localStorage.removeItem("gufa:nextEligibleBannerId");
       const n = document.getElementById("next-eligible"); if (n) n.remove();
       return;
     }
