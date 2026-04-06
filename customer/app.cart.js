@@ -467,17 +467,18 @@ if (!(window.BANNER_MENU instanceof Map)) window.BANNER_MENU = new Map();
         if (kind !== "coupon") return;
 
         const targetsRaw = d.channels || d.targets || {};
+        
         const meta = {
-          code:      d.code ? String(d.code) : undefined,
-          type:      String(d.type || "flat").toLowerCase(), // 'percent' | 'flat'
-          value:     Number(d.value || 0),
-          minOrder:  Number(d.minOrder || 0),
-          targets:   { delivery: !!targetsRaw.delivery, dining: !!targetsRaw.dining },
-          // optional fields if you later add them
-          eligibleItemIds: Array.isArray(d.eligibleItemIds) ? d.eligibleItemIds : undefined,
-          usageLimit: d.usageLimit ?? undefined,
-          usedCount:  d.usedCount  ?? undefined
-        };
+  code:      d.code ? String(d.code) : undefined,
+  type:      String(d.type || "flat").toLowerCase(),
+  value:     Number(d.value || 0),
+  minOrder:  Number(d.minOrder || 0),
+  targets:   { delivery: !!targetsRaw.delivery, dining: !!targetsRaw.dining },
+  bannerId:  d.bannerId ? String(d.bannerId) : undefined,
+  eligibleItemIds: Array.isArray(d.eligibleItemIds) ? d.eligibleItemIds : undefined,
+  usageLimit: d.usageLimit ?? undefined,
+  usedCount:  d.usedCount  ?? undefined
+};
 
         window.COUPONS.set(String(doc.id), meta);
         added++;
@@ -715,16 +716,19 @@ function findCouponByIdOrCode(input) {
 }
 
 function buildLockFromMeta(cid, meta) {
+  const cidStr = String(cid);
+
   const explicit = Array.isArray(meta?.eligibleItemIds) ? meta.eligibleItemIds
                  : Array.isArray(meta?.eligibleIds)     ? meta.eligibleIds
                  : Array.isArray(meta?.itemIds)         ? meta.itemIds
                  : [];
 
   let eligSet = new Set(explicit.map(s => String(s).toLowerCase()));
-  let bannerId = String(meta?.bannerId || "").trim();
-  const cidStr = String(cid);
 
-  // Derive bannerId from window.BANNERS whether it is Array or Map
+  // 1) Prefer explicit bannerId from coupon meta
+  let bannerId = String(meta?.bannerId || "").trim();
+
+  // 2) Derive from hydrated BANNERS if available
   if (!bannerId) {
     if (Array.isArray(window.BANNERS)) {
       const match = window.BANNERS.find(b =>
@@ -743,19 +747,33 @@ function buildLockFromMeta(cid, meta) {
     }
   }
 
-  // Strict banner eligibility only if we truly resolved a bannerId
-  if (!eligSet.size && bannerId) {
-    eligSet = eligibleIdsFromBanners({ bannerId });
+  // 3) If bannerId exists, banner menu is the source of truth for eligibility
+  if (bannerId) {
+    const bannerElig = eligibleIdsFromBanners({ bannerId });
+    if (bannerElig && bannerElig.size) {
+      eligSet = bannerElig;
+    }
   }
 
-  // Catalog fallback only when still unresolved
+  // 4) Fallback to catalog-linked coupon items only if still unresolved
   if (!eligSet.size && typeof computeEligibleItemIdsForCoupon === "function") {
     try {
-      const viaItems = computeEligibleItemIdsForCoupon(cid);
+      const viaItems = computeEligibleItemIdsForCoupon(cidStr);
       if (Array.isArray(viaItems) && viaItems.length) {
         eligSet = new Set(viaItems.map(s => String(s).toLowerCase()));
       }
     } catch {}
+  }
+
+  // 5) Final defensive fallback: reuse meta arrays even if named inconsistently
+  if (!eligSet.size) {
+    const fallbackMeta = []
+      .concat(Array.isArray(meta?.eligibleItemIds) ? meta.eligibleItemIds : [])
+      .concat(Array.isArray(meta?.eligibleIds) ? meta.eligibleIds : [])
+      .concat(Array.isArray(meta?.itemIds) ? meta.itemIds : []);
+    if (fallbackMeta.length) {
+      eligSet = new Set(fallbackMeta.map(s => String(s).toLowerCase()));
+    }
   }
 
   return {
@@ -771,11 +789,10 @@ function buildLockFromMeta(cid, meta) {
       delivery: !!meta.targets.delivery,
       dining: !!meta.targets.dining
     } : undefined,
-    code: (meta?.code ? String(meta.code).toUpperCase() : undefined),
+    code: meta?.code ? String(meta.code).toUpperCase() : undefined,
     meta: meta || null
   };
 }
-
 
 // Create/find a small error line under the input (single-line, red, compact)
 function ensurePromoErrorHost() {
