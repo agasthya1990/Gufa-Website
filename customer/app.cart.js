@@ -1565,14 +1565,14 @@ if (bannerOnly && lockedBannerId) {
     const couponBannerId = String(lock?.scope?.bannerId || "").trim().toLowerCase();
 
     // Strict when bannerId exists, tolerant when it doesn't.
-    if (couponBannerId && couponBannerId !== liveBannerOriginId) continue;
+    if (!couponBannerId || couponBannerId !== liveBannerOriginId) continue;
 
     const forced = Object.assign({}, lock, {
       baseId: nextBaseId,
       scope: Object.assign({}, lock.scope || {}, {
         baseId: nextBaseId,
         eligibleItemIds: Array.from(eligSet),
-        bannerId: couponBannerId || liveBannerOriginId
+        bannerId: couponBannerId
       }),
       source: lock.source || "auto:roll"
     });
