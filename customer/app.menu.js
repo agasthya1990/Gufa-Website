@@ -393,10 +393,14 @@ window.addEventListener("serviceMode:changed", () => {
         const hasBanner = !!String(scope.bannerId || "").trim() || src.startsWith("banner:");
         const isManual  = src === "manual";
 
-        if (hasBanner || isManual) {
-          // Already locked to a banner or manual code → do NOT override
-          return;
-        }
+if (existing && existing.code) {
+  const src = String(existing.source || "");
+  const isManual = src === "manual";
+
+  if (isManual) {
+    return;
+  }
+}
         // else: existing is auto/global → we intentionally override it
       }
 
@@ -543,8 +547,21 @@ const eligibleItemIds = (function () {
         localStorage.setItem("gufa:COUPON_INDEX", JSON.stringify(out));
       } catch {}
 
-      localStorage.setItem("gufa_coupon", JSON.stringify(payload));
-      window.dispatchEvent(new CustomEvent("cart:update", { detail: { coupon: payload } }));
+      try {
+  localStorage.setItem("gufa:nextEligibleItem", String(addedItemId));
+} catch {}
+
+window.dispatchEvent(new CustomEvent("promo:fcfs:trigger", {
+  detail: {
+    reason: "menu-banner-add",
+    itemId: String(addedItemId),
+    bannerId: String(ACTIVE_BANNER.id || "")
+  }
+}));
+
+window.dispatchEvent(new CustomEvent("cart:update", {
+  detail: { reason: "menu-banner-add" }
+}));
     } catch {}
   };
 
