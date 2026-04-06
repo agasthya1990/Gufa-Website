@@ -543,52 +543,96 @@ if (!(window.BANNER_MENU instanceof Map)) window.BANNER_MENU = new Map();
   }
 
 /* ========== ensure coupons exist on Checkout (Firestore-only) ========== */
+  
 async function ensureCouponsReady() {
-  // If already hydrated, done.
   if (window.COUPONS instanceof Map && window.COUPONS.size > 0) return true;
 
-  // 1) Try LocalStorage snapshot written by menu (gufa:COUPONS).
+  // 1) Try LocalStorage snapshot first, but strengthen it before trusting it
   try {
     const raw = localStorage.getItem("gufa:COUPONS");
     if (raw) {
       const dump = JSON.parse(raw);
       if (!(window.COUPONS instanceof Map)) window.COUPONS = new Map();
+
+      const putStrengthened = (id, meta) => {
+        const cid = String(id);
+        const baseMeta = meta || {};
+        const built = (typeof buildLockFromMeta === "function")
+          ? buildLockFromMeta(cid, baseMeta)
+          : { scope: {} };
+
+        const strengthenedMeta = Object.assign({}, baseMeta, {
+          bannerId: baseMeta.bannerId || built?.scope?.bannerId || undefined,
+          eligibleItemIds:
+            (Array.isArray(baseMeta.eligibleItemIds) && baseMeta.eligibleItemIds.length)
+              ? baseMeta.eligibleItemIds
+              : (Array.isArray(built?.scope?.eligibleItemIds) ? built.scope.eligibleItemIds : [])
+        });
+
+        window.COUPONS.set(cid, strengthenedMeta);
+      };
+
       if (Array.isArray(dump)) {
-        dump.forEach(([id, meta]) => window.COUPONS.set(String(id), meta || {}));
+        dump.forEach(([id, meta]) => putStrengthened(id, meta));
       } else if (dump && typeof dump === "object") {
-        Object.entries(dump).forEach(([id, meta]) => window.COUPONS.set(String(id), meta || {}));
+        Object.entries(dump).forEach(([id, meta]) => putStrengthened(id, meta));
       }
+
       if (window.COUPONS.size > 0) {
-        try { localStorage.setItem("gufa:COUPONS", JSON.stringify(Array.from(window.COUPONS.entries()))); } catch {}
+        try {
+          localStorage.setItem("gufa:COUPONS", JSON.stringify(Array.from(window.COUPONS.entries())));
+        } catch {}
         window.dispatchEvent(new CustomEvent("promotions:hydrated"));
         return true;
       }
     }
   } catch {}
 
-  // 2) Try inline JSON (non-async).
+  // 2) Try inline JSON
   try {
     if (typeof hydrateCouponsFromInlineJson === "function") {
       const ok = !!hydrateCouponsFromInlineJson();
-      if (ok && window.COUPONS instanceof Map && window.COUPONS.size > 0) return true;
+      if (ok && window.COUPONS instanceof Map && window.COUPONS.size > 0) {
+        try {
+          localStorage.setItem("gufa:COUPONS", JSON.stringify(Array.from(window.COUPONS.entries())));
+        } catch {}
+        window.dispatchEvent(new CustomEvent("promotions:hydrated"));
+        return true;
+      }
     }
   } catch {}
 
-  // 3) Firestore disabled for checkout promo hydration.
-  // Checkout should rely on localStorage / inline data only.
-  // This avoids public-client permission failures interrupting promo sync.
+  // 3) Use Firestore fallback when available
+  try {
+    if (typeof hydrateCouponsFromFirestoreOnce === "function") {
+      const ok = await hydrateCouponsFromFirestoreOnce();
+      if (ok && window.COUPONS instanceof Map && window.COUPONS.size > 0) {
+        try {
+          localStorage.setItem("gufa:COUPONS", JSON.stringify(Array.from(window.COUPONS.entries())));
+        } catch {}
+        window.dispatchEvent(new CustomEvent("promotions:hydrated"));
+        return true;
+      }
+    }
+  } catch {}
 
-  // 4) Last resort: synthesize from banners with couponCode.
+  // 4) Last resort
   try {
     if (typeof synthesizeCouponsFromBannersByCode === "function") {
       const ok = !!synthesizeCouponsFromBannersByCode();
-      if (ok && window.COUPONS instanceof Map && window.COUPONS.size > 0) return true;
+      if (ok && window.COUPONS instanceof Map && window.COUPONS.size > 0) {
+        try {
+          localStorage.setItem("gufa:COUPONS", JSON.stringify(Array.from(window.COUPONS.entries())));
+        } catch {}
+        window.dispatchEvent(new CustomEvent("promotions:hydrated"));
+        return true;
+      }
     }
   } catch {}
 
   return false;
 }
-
+  
 // Boot once on checkout: hydrate coupons (LS → inline → Firestore → synthesize)
 (async function bootCouponsOnce(){
   try {
