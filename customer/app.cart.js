@@ -1154,15 +1154,24 @@ function pickEligibleBaseIdForCouponBannerFirst(eSet, lock) {
     );
 
     // Restrict to banner-origin only when the coupon is banner-scoped
-    const eligibleBanner = bannerOnly
-      ? new Set(
-          Object.keys(bag)
-            .filter(isBase)
-            .filter(k => eSet.has(toBaseId(k)))
-            .filter(k => isKnownBannerOrigin(bag[k]?.origin))
-            .map(toBaseId)
-        )
-      : null;
+const eligibleBanner = bannerOnly
+  ? new Set(
+      Object.keys(bag)
+        .filter(isBase)
+        .filter(k => eSet.has(toBaseId(k)))
+        .filter(k => {
+          const origin = String(bag[k]?.origin || "").toLowerCase();
+          if (!origin.startsWith("banner:")) return false;
+
+          const liveBannerId = origin.slice("banner:".length).trim();
+          const lockBannerId = String(lock?.scope?.bannerId || "").toLowerCase();
+
+          if (lockBannerId && liveBannerId !== lockBannerId) return false;
+          return true;
+        })
+        .map(toBaseId)
+    )
+  : null;
 
     const pool = bannerOnly ? eligibleBanner : eligibleAny;
     if (!pool || pool.size === 0) return null;
