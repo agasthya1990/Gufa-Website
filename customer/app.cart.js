@@ -1387,13 +1387,15 @@ if (bannerOnly && lockedBannerId) {
     return null;
   }
 } 
-function lockNextEligibleBannerIfAny() {
+
+  async function lockNextEligibleBannerIfAny() {
   const nextBaseId = readNextEligibleBaseId();
   if (!nextBaseId) return null;
 
-  ensureCouponsReady();
+  await ensureCouponsReady();
+
   const coupons = window.COUPONS;
-  if (!(coupons instanceof Map)) return null;
+  if (!(coupons instanceof Map) || coupons.size === 0) return null;
 
   const bag = (window.Cart && typeof window.Cart.get === "function")
     ? window.Cart.get()
@@ -1428,10 +1430,6 @@ function lockNextEligibleBannerIfAny() {
 
     const lock = buildLockFromMeta(String(cid), meta);
     if (!lock) continue;
-    if (!isBannerScoped(lock)) continue;
-
-    const couponBannerId = String(lock?.scope?.bannerId || "").trim().toLowerCase();
-    if (!couponBannerId || couponBannerId !== liveBannerOriginId) continue;
 
     const elig = (typeof resolveEligibilitySet === "function")
       ? resolveEligibilitySet(lock)
@@ -1444,16 +1442,20 @@ function lockNextEligibleBannerIfAny() {
     if (!eligSet.size) continue;
     if (!eligSet.has(nextBaseId)) continue;
 
+    const couponBannerId = String(lock?.scope?.bannerId || "").trim().toLowerCase();
+
+    // Strict when bannerId exists, tolerant when it doesn't.
+    if (couponBannerId && couponBannerId !== liveBannerOriginId) continue;
+
     const forced = Object.assign({}, lock, {
       baseId: nextBaseId,
       scope: Object.assign({}, lock.scope || {}, {
         baseId: nextBaseId,
         eligibleItemIds: Array.from(eligSet),
-        bannerId: couponBannerId
-      })
+        bannerId: couponBannerId || liveBannerOriginId
+      }),
+      source: lock.source || "auto:roll"
     });
-
-    if (!forced.source) forced.source = "auto:roll";
 
     const discInfo = (typeof computeDiscount === "function")
       ? computeDiscount(forced, base)
@@ -1473,20 +1475,25 @@ function lockNextEligibleBannerIfAny() {
 
   return null;
 }
-
+  
 // === AUTO-LOCK LISTENER (next-eligible trigger) ===
-// When the previous coupon unlocks, immediately evaluate next-eligible banner.
-window.addEventListener("promo:unlocked", (e) => {
+
+window.addEventListener("promo:unlocked", async (e) => {
   try {
     const detail = e?.detail || {};
     if (
-  detail?.reason === "eligibility-exhausted" ||
-  detail?.reason === "removed" ||
-  detail?.reason === "stale-lock-cleared"
-) {
-      const next = lockNextEligibleBannerIfAny();
+      detail?.reason === "eligibility-exhausted" ||
+      detail?.reason === "removed" ||
+      detail?.reason === "stale-lock-cleared"
+    ) {
+      const next = await lockNextEligibleBannerIfAny();
       if (next) {
         console.info("[AUTO-LOCK] next-eligible coupon applied →", next.code || next.scope?.couponId);
+        try {
+          window.dispatchEvent(new CustomEvent("cart:update", {
+            detail: { reason: "promo-auto-rolled" }
+          }));
+        } catch {}
       } else {
         console.info("[AUTO-LOCK] no eligible next banner found.");
       }
