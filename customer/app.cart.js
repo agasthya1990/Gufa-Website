@@ -866,20 +866,6 @@ function isBannerScoped(locked){
   try {
     const scope = locked?.scope || {};
 
-    // 1) Explicit bannerId on the lock/scope
-    if (String(scope.bannerId || "").trim()) return true;
-
-    // 2) If banners explicitly list eligible ids for this banner scope, treat as banner-scoped
-    const via = eligibleIdsFromBanners(scope);
-    if (via && via.size) return true;
-
-    // 3) Source explicitly marked as banner
-    if (String(locked?.source || "").startsWith("banner:")) return true;
-
-function isBannerScoped(locked){
-  try {
-    const scope = locked?.scope || {};
-
     // 1) Explicit bannerId on lock
     if (String(scope.bannerId || "").trim()) return true;
 
@@ -890,11 +876,12 @@ function isBannerScoped(locked){
     // 3) Explicit banner source
     if (String(locked?.source || "").startsWith("banner:")) return true;
 
-    // 4) No heuristic fallback anymore
+    // 4) No heuristic fallback
     return false;
   } catch {
     return false;
   }
+}
 }
   } catch {
     // fall through to false
@@ -1453,32 +1440,94 @@ function lockNextEligibleBannerIfAny(){
     if (!meta) continue;
     if (typeof checkUsageAvailable === "function" && !checkUsageAvailable(meta)) continue;
 
-const lock = buildLockFromMeta(String(cid), meta);
-lock.source = "auto";
+function lockNextEligibleBannerIfAny(){
+  const nextBaseId = readNextEligibleBaseId();
+  if (!nextBaseId) return null;
 
-let eligSet = (typeof resolveEligibilitySet === "function")
-  ? resolveEligibilitySet(lock)
-  : new Set();
+  ensureCouponsReady();
+  const coupons = window.COUPONS;
+  if (!(coupons instanceof Map)) return null;
 
-// NEW: if current base line has banner origin, banner coupon must match that banner
-try {
-  const bag = window?.Cart?.get?.() || {};
-  const liveLine = bag[bKey];
-  const liveOrigin = String(liveLine?.origin || "").toLowerCase();
+  const bag = (window.Cart && typeof window.Cart.get === "function")
+    ? window.Cart.get()
+    : {};
 
-  if (liveOrigin.startsWith("banner:")) {
-    const liveBannerId = liveOrigin.slice("banner:".length).trim();
-    const lockBannerId = String(lock?.scope?.bannerId || "").toLowerCase();
+  // Find the live banner origin for the next eligible base item
+  let liveBannerOriginId = "";
+  for (const [key, v] of Object.entries(bag)) {
+    if (isAddonKey(key)) continue;
 
-    if (lockBannerId && lockBannerId !== liveBannerId) {
-      continue;
-    }
+    const parts  = String(key).split(":");
+    const itemId = String(v?.id ?? parts[0]).toLowerCase();
+    if (itemId !== nextBaseId) continue;
+
+    const origin = String(v?.origin || "").toLowerCase();
+    if (!origin.startsWith("banner:")) continue;
+
+    const qty = Number(v?.qty || 0) || 0;
+    if (qty <= 0) continue;
+
+    liveBannerOriginId = origin.slice("banner:".length).trim().toLowerCase();
+    break;
   }
-} catch {}
+
+  if (!liveBannerOriginId) return null;
+
+  const { base } = splitBaseVsAddons();
+
+  for (const [cid, meta] of coupons) {
+    if (!meta) continue;
+    if (typeof checkUsageAvailable === "function" && !checkUsageAvailable(meta)) continue;
+
+    const lock = buildLockFromMeta(String(cid), meta);
+    if (!lock) continue;
+
+    // Must truly be banner-scoped
+    if (!isBannerScoped(lock)) continue;
+
+    const couponBannerId = String(lock?.scope?.bannerId || "").trim().toLowerCase();
+    if (!couponBannerId || couponBannerId !== liveBannerOriginId) continue;
+
+    const elig = (typeof resolveEligibilitySet === "function")
+      ? resolveEligibilitySet(lock)
+      : new Set();
 
     const eligSet = (elig instanceof Set)
       ? elig
       : new Set(Array.isArray(elig) ? elig : []);
+
+    if (!eligSet.size) continue;
+    if (!eligSet.has(nextBaseId)) continue;
+
+    const forced = Object.assign({}, lock, {
+      baseId: nextBaseId,
+      scope: Object.assign({}, lock.scope || {}, {
+        baseId: nextBaseId,
+        eligibleItemIds: Array.from(eligSet),
+        bannerId: couponBannerId
+      })
+    });
+
+    if (!forced.source) forced.source = "auto:roll";
+
+    const discInfo = (typeof computeDiscount === "function")
+      ? computeDiscount(forced, base)
+      : { discount: 0 };
+
+    const discount = Number(discInfo?.discount || 0);
+
+    if (discount > 0) {
+      setLock(forced);
+      try {
+        localStorage.setItem("gufa_coupon", JSON.stringify(forced));
+        localStorage.removeItem("gufa:nextEligibleItem");
+      } catch {}
+      return forced;
+    }
+  }
+
+  return null;
+}
 
     if (!eligSet.size) continue;
     if (!eligSet.has(nextBaseId)) continue;
