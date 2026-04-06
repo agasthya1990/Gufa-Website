@@ -573,13 +573,9 @@ async function ensureCouponsReady() {
     }
   } catch {}
 
-  // 3) Try Firestore once.
-  try {
-    if (typeof hydrateCouponsFromFirestoreOnce === "function") {
-      const ok = !!(await hydrateCouponsFromFirestoreOnce());
-      if (ok && window.COUPONS instanceof Map && window.COUPONS.size > 0) return true;
-    }
-  } catch {}
+  // 3) Firestore disabled for checkout promo hydration.
+  // Checkout should rely on localStorage / inline data only.
+  // This avoids public-client permission failures interrupting promo sync.
 
   // 4) Last resort: synthesize from banners with couponCode.
   try {
@@ -600,8 +596,12 @@ async function ensureCouponsReady() {
       try { localStorage.setItem("gufa:COUPONS", JSON.stringify(Array.from(window.COUPONS.entries()))); } catch {}
       window.dispatchEvent(new CustomEvent("promotions:hydrated"));
       window.dispatchEvent(new CustomEvent("cart:update"));
+    } else {
+      console.warn("[checkout] coupons not hydrated from local sources");
     }
-  } catch {}
+  } catch (err) {
+    console.warn("[checkout] bootCouponsOnce failed:", err);
+  }
 })();
 
   /* ===================== Coupon Lock ===================== */
