@@ -716,32 +716,40 @@ function findCouponByIdOrCode(input) {
 }
 
 function buildLockFromMeta(cid, meta) {
-  // 1) explicit eligibility first
   const explicit = Array.isArray(meta?.eligibleItemIds) ? meta.eligibleItemIds
                  : Array.isArray(meta?.eligibleIds)     ? meta.eligibleIds
                  : Array.isArray(meta?.itemIds)         ? meta.itemIds
                  : [];
 
   let eligSet = new Set(explicit.map(s => String(s).toLowerCase()));
-
-  // 2) derive bannerId from the banner registry if not present on the coupon meta
   let bannerId = String(meta?.bannerId || "").trim();
+  const cidStr = String(cid);
 
-  if (!bannerId && Array.isArray(window.BANNERS)) {
-    const cidStr = String(cid);
-    const match = window.BANNERS.find(b =>
-      Array.isArray(b?.linkedCouponIds) &&
-      b.linkedCouponIds.map(String).includes(cidStr)
-    );
-    if (match?.id) bannerId = String(match.id);
+  // Derive bannerId from window.BANNERS whether it is Array or Map
+  if (!bannerId) {
+    if (Array.isArray(window.BANNERS)) {
+      const match = window.BANNERS.find(b =>
+        Array.isArray(b?.linkedCouponIds) &&
+        b.linkedCouponIds.map(String).includes(cidStr)
+      );
+      if (match?.id) bannerId = String(match.id);
+    } else if (window.BANNERS instanceof Map) {
+      for (const [bid, arr] of window.BANNERS.entries()) {
+        const ids = Array.isArray(arr) ? arr.map(String) : [];
+        if (ids.includes(cidStr)) {
+          bannerId = String(bid);
+          break;
+        }
+      }
+    }
   }
 
-  // 3) if bannerId exists, use strict banner menu eligibility
+  // Strict banner eligibility only if we truly resolved a bannerId
   if (!eligSet.size && bannerId) {
     eligSet = eligibleIdsFromBanners({ bannerId });
   }
 
-  // 4) only fall back to catalog if still empty
+  // Catalog fallback only when still unresolved
   if (!eligSet.size && typeof computeEligibleItemIdsForCoupon === "function") {
     try {
       const viaItems = computeEligibleItemIdsForCoupon(cid);
@@ -753,7 +761,7 @@ function buildLockFromMeta(cid, meta) {
 
   return {
     scope: {
-      couponId: String(cid),
+      couponId: cidStr,
       bannerId,
       eligibleItemIds: Array.from(eligSet)
     },
@@ -868,30 +876,26 @@ function isBannerScoped(locked){
     // 3) Source explicitly marked as banner
     if (String(locked?.source || "").startsWith("banner:")) return true;
 
-    // 4) Heuristic:
-    // If any eligible base currently in the cart comes from a banner origin,
-    // treat this lock as banner-scoped for FCFS + next-eligible behaviour.
-    const bag = (window.Cart && typeof window.Cart.get === "function")
-      ? window.Cart.get()
-      : {};
+function isBannerScoped(locked){
+  try {
+    const scope = locked?.scope || {};
 
-    const elig = (typeof resolveEligibilitySet === "function")
-      ? resolveEligibilitySet(locked)
-      : new Set();
+    // 1) Explicit bannerId on lock
+    if (String(scope.bannerId || "").trim()) return true;
 
-    if (!(elig instanceof Set) || !elig.size) return false;
+    // 2) Strict banner-derived eligibility from BANNER_MENU
+    const via = eligibleIdsFromBanners(scope);
+    if (via && via.size) return true;
 
-    for (const [key, v] of Object.entries(bag)) {
-      if (isAddonKey(key)) continue;
+    // 3) Explicit banner source
+    if (String(locked?.source || "").startsWith("banner:")) return true;
 
-      const origin = String(v?.origin || "");
-      if (!origin.toLowerCase().startsWith("banner:")) continue;
-
-      const baseId = String(key).split(":")[0].toLowerCase();
-      if (elig.has(baseId)) {
-        return true;
-      }
-    }
+    // 4) No heuristic fallback anymore
+    return false;
+  } catch {
+    return false;
+  }
+}
   } catch {
     // fall through to false
   }
@@ -1449,19 +1453,28 @@ function lockNextEligibleBannerIfAny(){
     if (!meta) continue;
     if (typeof checkUsageAvailable === "function" && !checkUsageAvailable(meta)) continue;
 
-    const lock = buildLockFromMeta(String(cid), meta);
-    if (!lock) continue;
+const lock = buildLockFromMeta(String(cid), meta);
+lock.source = "auto";
 
-    // Only consider coupons that behave as banner-style in the current cart
-    if (!isBannerScoped(lock)) continue;
+let eligSet = (typeof resolveEligibilitySet === "function")
+  ? resolveEligibilitySet(lock)
+  : new Set();
 
-    // Coupon must belong to the same banner as the live base line.
-    const couponBannerId = String(lock?.scope?.bannerId || "").trim().toLowerCase();
-    if (!couponBannerId || couponBannerId !== liveBannerOriginId) continue;
+// NEW: if current base line has banner origin, banner coupon must match that banner
+try {
+  const bag = window?.Cart?.get?.() || {};
+  const liveLine = bag[bKey];
+  const liveOrigin = String(liveLine?.origin || "").toLowerCase();
 
-    const elig = (typeof resolveEligibilitySet === "function")
-      ? resolveEligibilitySet(lock)
-      : new Set();
+  if (liveOrigin.startsWith("banner:")) {
+    const liveBannerId = liveOrigin.slice("banner:".length).trim();
+    const lockBannerId = String(lock?.scope?.bannerId || "").toLowerCase();
+
+    if (lockBannerId && lockBannerId !== liveBannerId) {
+      continue;
+    }
+  }
+} catch {}
 
     const eligSet = (elig instanceof Set)
       ? elig
