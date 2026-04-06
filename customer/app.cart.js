@@ -971,24 +971,60 @@ function scrubUnknownBannerOrigins() {
 // explicit eligibleItemIds > banner-derived (STRICT) > catalog > LS index
 function resolveEligibilitySet(locked){
   const scope = locked?.scope || {};
+
   const explicit = (
     Array.isArray(scope.eligibleItemIds) ? scope.eligibleItemIds :
     Array.isArray(scope.eligibleIds)     ? scope.eligibleIds     :
     Array.isArray(scope.itemIds)         ? scope.itemIds         :
     []
-  ).map(s=>String(s).toLowerCase());
+  ).map(s => String(s).toLowerCase());
+
   if (explicit.length) return new Set(explicit);
 
-  // If a banner scope exists, we are strict: only banner-listed items qualify.
+  // 1) Preferred strict banner source
   const byBanner = eligibleIdsFromBanners(scope);
   if (byBanner.size) return byBanner;
 
-  // 👇 NEW: if a bannerId is present but yielded no items, DO NOT fall back.
-  if (String(scope.bannerId||"").trim()) {
-    return new Set(); // no spillover to catalog/LS when banner scope is declared
+  // 2) If bannerId exists but banner map is missing/incomplete,
+  //    allow controlled fallback instead of killing the coupon.
+  if (String(scope.bannerId || "").trim()) {
+    // fallback to coupon-linked items from catalog
+    if (typeof computeEligibleItemIdsForCoupon === "function" && scope.couponId) {
+      try {
+        const via = computeEligibleItemIdsForCoupon(String(scope.couponId));
+        if (Array.isArray(via) && via.length) {
+          return new Set(via.map(s => String(s).toLowerCase()));
+        }
+      } catch {}
+    }
+
+    // fallback to LS coupon index
+    try {
+      const rawIdx = localStorage.getItem("gufa:COUPON_INDEX");
+      if (rawIdx) {
+        const idx = JSON.parse(rawIdx);
+        let key = String(scope.couponId || "").toLowerCase();
+
+        if (!idx[key]) {
+          const codesRaw = localStorage.getItem("gufa:COUPON_CODES");
+          if (codesRaw) {
+            const codes = JSON.parse(codesRaw);
+            const mapped = codes[key];
+            if (mapped && idx[mapped]) key = mapped;
+          }
+        }
+
+        const arr = idx[key] || [];
+        if (Array.isArray(arr) && arr.length) {
+          return new Set(arr.map(s => String(s).toLowerCase()));
+        }
+      }
+    } catch {}
+
+    return new Set();
   }
 
-  // Catalog fallback (only when no banner scope)
+  // 3) Normal non-banner fallback
   if (typeof computeEligibleItemIdsForCoupon === "function" && scope.couponId) {
     try {
       const via = computeEligibleItemIdsForCoupon(String(scope.couponId));
@@ -998,22 +1034,21 @@ function resolveEligibilitySet(locked){
     } catch {}
   }
 
-  // LS coupon→items index (supports code or id)
   try {
     const rawIdx = localStorage.getItem("gufa:COUPON_INDEX");
     if (rawIdx) {
-      const idx = JSON.parse(rawIdx); // { tokenLower: [itemIdLower...] }
+      const idx = JSON.parse(rawIdx);
       let key = String(scope.couponId || "").toLowerCase();
 
-      // Try mapping code -> id if needed
       if (!idx[key]) {
         const codesRaw = localStorage.getItem("gufa:COUPON_CODES");
         if (codesRaw) {
-          const codes = JSON.parse(codesRaw); // { codeLower: idLower }
+          const codes = JSON.parse(codesRaw);
           const mapped = codes[key];
           if (mapped && idx[mapped]) key = mapped;
         }
       }
+
       const arr = idx[key] || [];
       if (Array.isArray(arr) && arr.length) {
         return new Set(arr.map(s => String(s).toLowerCase()));
@@ -1023,8 +1058,6 @@ function resolveEligibilitySet(locked){
 
   return new Set();
 }
-
-
 
 
 // Provenance: did this base line come from the currently locked banner/coupon?
@@ -1629,9 +1662,7 @@ for (const [key, it] of entries()){
 
   // Banner-scoped coupons: only trusted SAME-banner lines are eligible
 if (bannerOnly && lockedBannerId) {
-  if (!isKnownBannerOrigin(origin)) continue;
-
-  const o = origin.toLowerCase();
+  const o = String(origin || "").toLowerCase();
   if (!o.startsWith("banner:")) continue;
 
   const oId = o.slice("banner:".length);
