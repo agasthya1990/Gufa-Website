@@ -138,24 +138,22 @@ window.addEventListener("cart:update", persistCartSnapshotThrottled);
 
 // When Menu flips the mode, Cart mirrors the mode keys and lets the FCFS guard
 // decide whether to keep or clear any existing lock. No new coupon is auto-picked here.
-window.addEventListener("serviceMode:changed", () => {
+window.addEventListener("serviceMode:changed", async () => {
   const m = readMode();
-  // Keep BOTH keys in sync so older/newer listeners agree
   try { localStorage.setItem("gufa_mode", m); } catch {}
   try { localStorage.setItem("gufa:serviceMode", m); } catch {}
 
-  // Just re-validate current lock; don't pick a new coupon.
   try {
-    if (typeof enforceFirstComeLock === "function") enforceFirstComeLock();
+    if (typeof enforceFirstComeLock === "function") {
+      await enforceFirstComeLock();
+    }
   } catch {}
 
-  // Repaint immediately (prefer render(), fall back to renderCart())
   try {
     if (typeof render === "function") { render(); }
     else { window.renderCart?.(); }
   } catch {}
 
-  // Emit so any cart:update listeners (totals, badges, etc.) sync instantly
   window.dispatchEvent(new CustomEvent("cart:update", { detail: { source: "mode-change" }}));
 });
 })();
@@ -710,11 +708,19 @@ const ok = Object.keys(bag)
   });
 
 if (!ok) {
+  try {
+    if (typeof clearLockIfNoLongerApplicable === "function") {
+      clearLockIfNoLongerApplicable();
+      return;
+    }
+  } catch {}
+
+  // fallback only if the normal clearer is unavailable
   localStorage.removeItem("gufa_coupon");
   try {
+    localStorage.removeItem("gufa:nextEligibleItem");
+    localStorage.removeItem("gufa:nextEligibleBannerId");
     window.dispatchEvent(new CustomEvent("cart:update", { detail:{ reason:"stale-lock-cleared" } }));
-    // 🔔 Notify menu side to attempt next eligible banner auto-lock
-    window.dispatchEvent(new CustomEvent("promo:unlocked", { detail:{ reason:"stale-lock-cleared" } }));
   } catch {}
 }
 
@@ -1437,15 +1443,18 @@ if (bannerOnly) {
   }
 } catch {}
     } else {
-      try { localStorage.removeItem("gufa:nextEligibleItem"); } catch {}
+      try { localStorage.removeItem("gufa:nextEligibleItem");
+            localStorage.removeItem("gufa:nextEligibleBannerId");} catch {}
     }
   } else {
-    try { localStorage.removeItem("gufa:nextEligibleItem"); } catch {}
+    try { localStorage.removeItem("gufa:nextEligibleItem"); 
+          localStorage.removeItem("gufa:nextEligibleBannerId");} catch {}
   }
 } else {
 
       // Global/manual (non-banner) coupons: do NOT auto-roll to another promo
-      try { localStorage.removeItem("gufa:nextEligibleItem"); } catch {}
+      try { localStorage.removeItem("gufa:nextEligibleItem");
+            localStorage.removeItem("gufa:nextEligibleBannerId");} catch {}
     }
 
     setLock(null);
