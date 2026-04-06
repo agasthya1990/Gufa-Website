@@ -1456,14 +1456,6 @@ if (!firstIntersectId) return;
   let chosen = null;
   try { chosen = pickCouponForItem(item, ACTIVE_BANNER); } catch {}
 
-  // Compute a first-intersecting coupon id as fallback (if meta hasn’t hydrated yet)
-  const rawItemIds = Array.isArray(item.couponIds) ? item.couponIds
-                  : Array.isArray(item.coupons)    ? item.coupons
-                  : Array.isArray(item.promotions) ? item.promotions
-                  : [];
-  const itemIds   = rawItemIds.map(String).map(s => s.trim()).filter(Boolean);
-  const bannerIds = (ACTIVE_BANNER.linkedCouponIds || []).map(String).map(s => s.trim()).filter(Boolean);
-  const firstIntersectId = bannerIds.find(cid => itemIds.includes(cid)) || "";
 
   // Eligible items = exactly what the user sees in the banner list right now
   const eligibleItemIds = (function() {
