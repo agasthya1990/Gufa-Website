@@ -1574,14 +1574,23 @@ if (bannerOnly && lockedBannerId) {
 
     const discount = Number(discInfo?.discount || 0);
 
-    if (discount > 0) {
-      setLock(forced);
-      try {
-        localStorage.setItem("gufa_coupon", JSON.stringify(forced));
-        localStorage.removeItem("gufa:nextEligibleItem");
-      } catch {}
-      return forced;
-    }
+if (discount > 0) {
+  setLock(forced);
+  try {
+    localStorage.setItem("gufa_coupon", JSON.stringify(forced));
+    localStorage.removeItem("gufa:nextEligibleItem");
+  } catch {}
+
+  try {
+    sessionStorage.setItem("gufa:cartReloadOnce", "1");
+  } catch {}
+
+  setTimeout(() => {
+    try { window.location.reload(); } catch {}
+  }, 0);
+
+  return forced;
+}
   }
 
   return null;
