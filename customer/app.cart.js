@@ -1646,33 +1646,6 @@ function enforceFirstComeLock(){
   setLock(null);
 }
 
-  const currentCouponId = String(current?.scope?.couponId || "").toLowerCase();
-  const winnerCouponId  = String(winner?.scope?.couponId || "").toLowerCase();
-
-  const currentBannerId = String(current?.scope?.bannerId || "").toLowerCase();
-  const winnerBannerId  = String(winner?.scope?.bannerId || "").toLowerCase();
-
-  const currentBaseId   = String(current?.scope?.baseId || current?.baseId || "").toLowerCase();
-  const winnerBaseId    = String(winner?.scope?.baseId || winner?.baseId || "").toLowerCase();
-
-  const currentDiscount = computeDiscount(current, base)?.discount || 0;
-
-  const sameWinner =
-    currentCouponId === winnerCouponId &&
-    currentBannerId === winnerBannerId &&
-    currentBaseId   === winnerBaseId;
-
-  // Keep only if exact same winner is still valid
-  if (sameWinner && currentDiscount > 0) {
-    return;
-  }
-
-  // Otherwise auto-switch
-  setLock(winner);
-  window.dispatchEvent(new CustomEvent("cart:update", {
-    detail: { reason: "promo-auto-switched" }
-  }));
-}
 
 let __FCFS_ENFORCING__ = false;
 
