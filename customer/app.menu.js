@@ -813,19 +813,20 @@ try {
   // 2) Fallback: if we are currently inside an active banner list and this item belongs
   //    to that banner, treat it as banner-origin
   if (!bannerId) {
-    try {
-      if (
-        typeof ACTIVE_BANNER !== "undefined" &&
-        ACTIVE_BANNER &&
-        ACTIVE_BANNER.id &&
-        typeof itemMatchesBanner === "function" &&
-        itemMatchesBanner(found, ACTIVE_BANNER)
-      ) {
-        bannerId = String(ACTIVE_BANNER.id);
-      }
-    } catch {}
-  }
-
+  try {
+    if (
+      typeof ACTIVE_BANNER !== "undefined" &&
+      ACTIVE_BANNER &&
+      ACTIVE_BANNER.id &&
+      view === "list" &&
+      listKind === "banner" &&
+      String(listId || "") === String(ACTIVE_BANNER.id)
+    ) {
+      bannerId = String(ACTIVE_BANNER.id);
+    }
+  } catch {}
+}
+  
   origin = bannerId ? `banner:${bannerId}` : "non-banner";
 
   if (window.Cart && typeof window.Cart.setQty === "function") {
@@ -1311,14 +1312,13 @@ function itemMatchesBanner(item, banner){
   
    return itemIds.some(cid => {
     if (!bannerIds.includes(cid)) return false;
-    const meta = (window.COUPONS instanceof Map) ? window.COUPONS.get(String(cid)) : null;
-
-    // Do not infer eligibility without actual coupon meta
-    if (!meta) return false;
-
-    if (meta.active === false) return false;
-    const t = meta.targets || {};
-    return mode === "delivery" ? !!t.delivery : !!t.dining;
+const meta = (window.COUPONS instanceof Map) ? window.COUPONS.get(String(cid)) : null;
+// If coupon meta is not hydrated yet, but the coupon id intersects,
+// still treat the item as banner-linked for banner provenance/locking.
+if (!meta) return true;
+if (meta.active === false) return false;
+const t = meta.targets || {};
+return mode === "delivery" ? !!t.delivery : !!t.dining;
   });
 }
 
@@ -1440,7 +1440,17 @@ function lockCouponForActiveBannerIfNeeded(addedItemId) {
   if (!item) return;
 
   // Item must currently match the open banner
-  if (!itemMatchesBanner(item, ACTIVE_BANNER)) return;
+  const rawItemIds = Array.isArray(item.couponIds) ? item.couponIds
+                : Array.isArray(item.coupons)    ? item.coupons
+                : Array.isArray(item.promotions) ? item.promotions
+                : [];
+const itemIds   = rawItemIds.map(String).map(s => s.trim()).filter(Boolean);
+const bannerIds = (ACTIVE_BANNER.linkedCouponIds || []).map(String).map(s => s.trim()).filter(Boolean);
+
+if (!itemIds.length || !bannerIds.length) return;
+
+const firstIntersectId = bannerIds.find(cid => itemIds.includes(cid)) || "";
+if (!firstIntersectId) return;
 
   // Prefer a fully hydrated coupon meta; else fall back gracefully
   let chosen = null;
